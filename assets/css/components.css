@@ -154,6 +154,16 @@
   color: var(--ev-slate-600);
 }
 
+.ev-badge--reserved {
+  background-color: var(--ev-sand-100);
+  color: var(--ev-terracotta-700);
+}
+
+.ev-badge--sold {
+  background-color: var(--ev-charcoal-900);
+  color: var(--ev-white);
+}
+
 .ev-chip {
   display: inline-flex;
   align-items: center;
@@ -291,12 +301,70 @@
   font-variant-numeric: tabular-nums;
 }
 
-.card-estate__footer {
-  position: relative;
+.card-estate__location {
+  margin: 0;
+  font-size: var(--ev-text-sm);
+  line-height: var(--ev-leading-snug);
+  color: var(--ev-color-text-muted);
+}
+
+.card-estate__badge {
+  position: absolute;
+  top: var(--ev-space-3);
+  left: var(--ev-space-3);
   z-index: 2;
+  box-shadow: 0 1px 6px rgba(20, 52, 43, 0.22);
+}
+
+/* These badges sit on photography, so the translucent surface variants used
+   elsewhere are not legible. Give every state an opaque backdrop. */
+.card-estate .ev-badge--available {
+  background-color: var(--ev-ivory-50);
+  color: var(--ev-forest-700);
+}
+
+.card-estate .ev-badge--reserved {
+  background-color: var(--ev-ivory-50);
+  color: var(--ev-terracotta-700);
+}
+
+.card-estate .ev-badge--sold {
+  background-color: var(--ev-charcoal-900);
+  color: var(--ev-white);
+}
+
+/* Footer sits below the stretched-link overlay so the whole card stays
+   clickable; its contents are presentational, not competing links. */
+.card-estate__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ev-space-3);
   margin-top: auto;
   padding-top: var(--ev-space-4);
   border-top: 1px solid var(--ev-color-border);
+}
+
+.card-estate__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ev-space-2);
+  font-size: var(--ev-text-sm);
+  font-weight: var(--ev-weight-semibold);
+  color: var(--ev-forest-900);
+  transition: color var(--ev-transition-fast);
+}
+
+.card-estate:hover .card-estate__cta {
+  color: var(--ev-terracotta-700);
+}
+
+.card-estate__cta svg {
+  transition: transform var(--ev-transition-fast);
+}
+
+.card-estate:hover .card-estate__cta svg {
+  transform: translateX(2px);
 }
 
 /* -----------------------------------------------------------------------------
@@ -332,7 +400,500 @@
 }
 
 /* -----------------------------------------------------------------------------
-   5. Motion preferences
+   5. Section headings
+   -------------------------------------------------------------------------- */
+.ev-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--ev-space-4) var(--ev-space-6);
+  margin-bottom: var(--ev-space-7);
+}
+
+.ev-section-head__text {
+  max-width: 62ch;
+}
+
+.ev-section-head h2 {
+  margin-bottom: var(--ev-space-3);
+}
+
+.ev-section-intro {
+  max-width: 60ch;
+  margin-bottom: 0;
+  color: var(--ev-color-text-muted);
+}
+
+.ev-section-head__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ev-space-2);
+  padding-bottom: var(--ev-space-1);
+  border-bottom: 1px solid var(--ev-sage-300);
+  font-size: var(--ev-text-sm);
+  font-weight: var(--ev-weight-semibold);
+  color: var(--ev-forest-900);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--ev-transition-fast),
+    border-color var(--ev-transition-fast);
+}
+
+.ev-section-head__link:hover {
+  color: var(--ev-terracotta-700);
+  border-bottom-color: var(--ev-terracotta-700);
+}
+
+.ev-section-head__link svg {
+  transition: transform var(--ev-transition-fast);
+}
+
+.ev-section-head__link:hover svg {
+  transform: translateX(2px);
+}
+
+/* -----------------------------------------------------------------------------
+   6. Form controls
+   Bootstrap supplies the behaviour; this supplies the visual language.
+   -------------------------------------------------------------------------- */
+.form-label {
+  margin-bottom: var(--ev-space-2);
+  font-size: var(--ev-text-xs);
+  font-weight: var(--ev-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ev-color-text-muted);
+}
+
+.form-control,
+.form-select {
+  min-height: 48px;
+  padding: var(--ev-space-3) var(--ev-space-4);
+  border: 1px solid var(--ev-color-border);
+  border-radius: var(--ev-radius-sm);
+  background-color: var(--ev-white);
+  color: var(--ev-color-text);
+  font-size: var(--ev-text-base);
+}
+
+.form-select {
+  padding-right: var(--ev-space-8);
+  background-position: right var(--ev-space-4) center;
+}
+
+.form-control::placeholder {
+  color: var(--ev-slate-600);
+  opacity: 1;
+}
+
+.form-control:hover,
+.form-select:hover {
+  border-color: var(--ev-sage-300);
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--ev-forest-700);
+  box-shadow: none;
+}
+
+/* -----------------------------------------------------------------------------
+   7. Site header and primary navigation
+   -------------------------------------------------------------------------- */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 1030;
+  background-color: var(--ev-ivory-50);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--ev-transition-base),
+    box-shadow var(--ev-transition-base);
+}
+
+.site-header.is-scrolled {
+  border-bottom-color: var(--ev-color-border);
+  box-shadow: 0 1px 14px rgba(20, 52, 43, 0.07);
+}
+
+.site-nav {
+  padding-block: var(--ev-space-4);
+}
+
+.site-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ev-space-3);
+  color: var(--ev-forest-900);
+  text-decoration: none;
+}
+
+.site-brand:hover {
+  color: var(--ev-forest-900);
+}
+
+.site-brand__mark {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--ev-radius-sm);
+}
+
+.site-brand__name {
+  font-family: var(--ev-font-display);
+  font-size: 1.375rem;
+  font-weight: var(--ev-weight-semibold);
+  letter-spacing: var(--ev-tracking-tight);
+  line-height: 1;
+}
+
+.site-nav__toggle {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--ev-color-border);
+  border-radius: var(--ev-radius-sm);
+  background-color: var(--ev-white);
+  color: var(--ev-forest-900);
+}
+
+/* Mobile: show the navigation toggle and allow the collapse panel to expand. */
+@media (max-width: 991.98px) {
+  .site-nav__toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .site-nav__panel {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    margin-top: var(--ev-space-2);
+    padding: var(--ev-space-4);
+    background-color: var(--ev-white);
+    border: 1px solid var(--ev-color-border);
+    border-radius: var(--ev-radius-md);
+    box-shadow: 0 4px 16px rgba(20, 52, 43, 0.12);
+  }
+
+  .site-nav__panel.show {
+    display: block;
+  }
+
+  .site-nav__toggle[aria-expanded="true"] + .site-nav__panel {
+    display: block;
+  }
+}
+
+.site-nav__bar {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background-color: currentColor;
+  transition: background-color var(--ev-transition-fast);
+}
+
+.site-nav__bar::before,
+.site-nav__bar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background-color: currentColor;
+  transition: transform var(--ev-transition-fast);
+}
+
+.site-nav__bar::before {
+  top: -6px;
+}
+
+.site-nav__bar::after {
+  bottom: -6px;
+}
+
+.site-nav__toggle[aria-expanded="true"] .site-nav__bar {
+  background-color: transparent;
+}
+
+.site-nav__toggle[aria-expanded="true"] .site-nav__bar::before {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.site-nav__toggle[aria-expanded="true"] .site-nav__bar::after {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+.site-nav__link {
+  position: relative;
+  padding: var(--ev-space-2) var(--ev-space-3);
+  border-radius: var(--ev-radius-xs);
+  font-size: 0.9375rem;
+  font-weight: var(--ev-weight-medium);
+  color: var(--ev-charcoal-900);
+  transition: color var(--ev-transition-fast),
+    background-color var(--ev-transition-fast);
+}
+
+.site-nav__link:hover {
+  color: var(--ev-forest-900);
+  background-color: var(--ev-sand-100);
+}
+
+.site-nav__link[aria-current="page"] {
+  color: var(--ev-forest-900);
+  font-weight: var(--ev-weight-semibold);
+}
+
+.site-nav__link[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  right: var(--ev-space-3);
+  bottom: 1px;
+  left: var(--ev-space-3);
+  height: 2px;
+  border-radius: 2px;
+  background-color: var(--ev-terracotta-500);
+}
+
+.site-nav__cta {
+  margin-left: var(--ev-space-5);
+  white-space: nowrap;
+}
+
+@media (max-width: 991.98px) {
+  .site-nav__panel {
+    margin-top: var(--ev-space-4);
+    padding-block: var(--ev-space-3) var(--ev-space-2);
+    border-top: 1px solid var(--ev-color-border);
+  }
+
+  .site-nav__link {
+    display: flex;
+    align-items: center;
+    min-height: 48px;
+    padding-inline: var(--ev-space-2);
+  }
+
+  .site-nav__link[aria-current="page"]::after {
+    right: auto;
+    left: var(--ev-space-2);
+    bottom: var(--ev-space-2);
+    width: 24px;
+  }
+
+  .site-nav__cta {
+    width: 100%;
+    margin: var(--ev-space-3) 0 0;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   8. Site footer
+   -------------------------------------------------------------------------- */
+.site-footer {
+  padding-block: var(--ev-space-8) var(--ev-space-5);
+  background-color: var(--ev-forest-900);
+  color: rgba(250, 247, 242, 0.78);
+}
+
+.site-footer__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ev-space-3);
+  margin-bottom: var(--ev-space-4);
+  color: var(--ev-ivory-50);
+  text-decoration: none;
+}
+
+.site-footer__brand:hover {
+  color: var(--ev-ivory-50);
+}
+
+.site-footer__brand-name {
+  font-family: var(--ev-font-display);
+  font-size: 1.375rem;
+  font-weight: var(--ev-weight-semibold);
+  letter-spacing: var(--ev-tracking-tight);
+  line-height: 1;
+}
+
+.site-footer__about {
+  max-width: 40ch;
+  margin-bottom: var(--ev-space-3);
+  font-size: var(--ev-text-sm);
+  line-height: var(--ev-leading-normal);
+}
+
+.site-footer__note {
+  max-width: 40ch;
+  margin-bottom: 0;
+  font-size: var(--ev-text-xs);
+  color: rgba(250, 247, 242, 0.6);
+}
+
+.site-footer__heading {
+  margin-bottom: var(--ev-space-4);
+  font-family: var(--ev-font-body);
+  font-size: var(--ev-text-xs);
+  font-weight: var(--ev-weight-semibold);
+  letter-spacing: var(--ev-tracking-wide);
+  text-transform: uppercase;
+  color: var(--ev-sage-300);
+}
+
+.site-footer__links {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-footer__links li + li {
+  margin-top: var(--ev-space-2);
+}
+
+.site-footer__links a,
+.site-footer__contact a {
+  color: var(--ev-ivory-50);
+  font-size: var(--ev-text-sm);
+  text-decoration: none;
+  transition: color var(--ev-transition-fast);
+}
+
+.site-footer a {
+  color: var(--ev-ivory-50);
+  text-decoration: none;
+}
+
+.site-footer a:hover {
+  color: var(--ev-sage-300);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.site-footer__links a:hover,
+.site-footer__contact a:hover {
+  color: var(--ev-sage-300);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.site-footer__contact {
+  margin: 0;
+  font-size: var(--ev-text-sm);
+  font-style: normal;
+  line-height: var(--ev-leading-normal);
+}
+
+.site-footer__bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ev-space-3);
+  margin-top: var(--ev-space-7);
+  padding-top: var(--ev-space-5);
+  border-top: 1px solid rgba(250, 247, 242, 0.15);
+  font-size: var(--ev-text-xs);
+  color: rgba(250, 247, 242, 0.6);
+}
+
+.site-footer__bottom p {
+  margin: 0;
+}
+
+/* The 404 page uses a reduced footer: no brand block or link columns. */
+.site-footer--compact {
+  padding-block: var(--ev-space-5);
+}
+
+.site-footer--compact .site-footer__bottom {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* -----------------------------------------------------------------------------
+   8. Notice panel (criteria summaries, inline messages)
+   -------------------------------------------------------------------------- */
+.ev-notice {
+  margin-top: var(--ev-space-6);
+  padding: var(--ev-space-5);
+  border: 1px solid var(--ev-color-border);
+  border-left: 3px solid var(--ev-terracotta-500);
+  border-radius: var(--ev-radius-sm);
+  background-color: var(--ev-color-surface);
+}
+
+.ev-notice[hidden] {
+  display: none !important;
+}
+
+.ev-notice__title {
+  margin-bottom: var(--ev-space-3);
+  font-size: var(--ev-text-lg);
+}
+
+.ev-notice__list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--ev-space-2) var(--ev-space-4);
+  margin: 0 0 var(--ev-space-4);
+}
+
+.ev-notice__list dt {
+  font-size: var(--ev-text-xs);
+  font-weight: var(--ev-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ev-color-text-muted);
+}
+
+.ev-notice__list dd {
+  margin: 0;
+  font-size: var(--ev-text-sm);
+  font-weight: var(--ev-weight-semibold);
+  color: var(--ev-color-text);
+}
+
+.ev-notice__note {
+  margin-bottom: var(--ev-space-4);
+  font-size: var(--ev-text-sm);
+  color: var(--ev-color-text-muted);
+}
+
+.ev-notice__actions {
+  margin: 0;
+}
+
+/* A button that must sit on a forest or photographic surface. */
+.btn-on-dark {
+  --bs-btn-color: var(--ev-forest-900);
+  --bs-btn-bg: var(--ev-ivory-50);
+  --bs-btn-border-color: var(--ev-ivory-50);
+  --bs-btn-hover-color: var(--ev-forest-900);
+  --bs-btn-hover-bg: var(--ev-white);
+  --bs-btn-hover-border-color: var(--ev-white);
+  --bs-btn-active-color: var(--ev-forest-900);
+  --bs-btn-active-bg: var(--ev-sand-100);
+  --bs-btn-active-border-color: var(--ev-sand-100);
+  --bs-btn-focus-shadow-rgb: 250, 247, 242;
+}
+
+.btn-on-dark:hover {
+  transform: translateY(-1px);
+}
+
+/* -----------------------------------------------------------------------------
+   9. Motion preferences
    -------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   .card-estate:hover {
@@ -340,7 +901,16 @@
   }
 
   .card-estate:hover .card-estate__media img,
-  .btn-primary:hover {
+  .card-estate:hover .card-estate__cta svg,
+  .btn-primary:hover,
+  .btn-on-dark:hover {
     transform: none;
+  }
+
+  .site-header,
+  .site-nav__bar,
+  .site-nav__bar::before,
+  .site-nav__bar::after {
+    transition: none;
   }
 }
