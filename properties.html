@@ -62,11 +62,78 @@
         <h1>Properties</h1>
         <p class="ev-lede">The full listing grid, filtering and sorting are implemented in Stage 3. This page currently confirms the shared layout and receives the criteria passed from the homepage search.</p>
 
+        <!-- Search & Filter Form -->
+        <form class="property-filters" id="propertyFilters" aria-label="Property filters">
+          <div class="row g-3 gy-3">
+            <div class="col-md-6 col-lg-4">
+              <label for="filterSearch" class="form-label small">Search</label>
+              <input type="text" class="form-control" id="filterSearch"
+                     placeholder="Keyword or location"
+                     aria-describedby="filterSearchHelp">
+              <small id="filterSearchHelp" class="form-text text-muted">Search by property title or location.</small>
+            </div>
+            <div class="col-md-6 col-lg-2">
+              <label for="filterType" class="form-label small">Type</label>
+              <select class="form-select form-select-sm" id="filterType" aria-label="Property type">
+                <option value="">All types</option>
+                <option value="apartment">Apartment</option>
+                <option value="villa">Villa</option>
+                <option value="rowhouse">Row house</option>
+                <option value="penthouse">Penthouse</option>
+              </select>
+            </div>
+            <div class="col-md-6 col-lg-2">
+              <label for="filterMinPrice" class="form-label small">Min price</label>
+              <input type="number" class="form-control form-control-sm" id="filterMinPrice"
+                     placeholder="0"
+                     aria-describedby="filterMinPriceHelp">
+              <small id="filterMinPriceHelp" class="form-text text-muted">Filter properties at or above this price (INR).</small>
+            </div>
+            <div class="col-md-6 col-lg-2">
+              <label for="filterMaxPrice" class="form-label small">Max price</label>
+              <input type="number" class="form-control form-control-sm" id="filterMaxPrice"
+                     aria-describedby="filterMaxPriceHelp">
+              <small id="filterMaxPriceHelp" class="form-text text-muted">Filter properties at or below this price (INR).</small>
+            </div>
+            <div class="col-md-6 col-lg-2">
+              <label for="filterSort" class="form-label small">Sort by</label>
+              <select class="form-select form-select-sm" id="filterSort" aria-label="Sort order">
+                <option value="price-asc">Price: low to high</option>
+                <option value="price-desc">Price: high to low</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-primary w-100" id="clearFilters">
+                Clear filters
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <!-- Results Summary -->
         <div class="ev-notice" id="searchSummary" hidden>
-          <h2 class="ev-notice__title">Search criteria received</h2>
+          <h2 class="ev-notice__title">Search criteria</h2>
           <dl class="ev-notice__list" id="searchSummaryList"></dl>
-          <p class="ev-notice__note">The listing engine that applies these criteria arrives in Stage 3. These values are not applied to any results yet.</p>
+          <p class="ev-notice__note" id="resultsCount"></p>
           <p class="ev-notice__actions"><a class="btn btn-secondary btn-sm" href="properties.html">Clear criteria</a></p>
+        </div>
+
+        <!-- Property Grid -->
+        <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4" id="propertyGrid">
+          <!-- Properties will be rendered by JavaScript -->
+        </div>
+
+        <!-- Empty Results State -->
+        <div class="col-12" id="emptyResults" hidden>
+          <div class="text-center py-5">
+            <svg class="d-block mx-auto mb-3" width="48" height="48"
+                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <h3 class="sr-only">No properties found</h3>
+            <p class="text-muted">No properties match your search criteria. Try adjusting your filters.</p>
+          </div>
         </div>
       </div>
     </section>
