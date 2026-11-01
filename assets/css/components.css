@@ -1,0 +1,346 @@
+/* =============================================================================
+   EstateVista — components.css
+   Reusable component foundations. No page-specific layout rules belong here.
+
+   Depends on tokens declared in theme.css.
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   1. Buttons
+   Height, padding and radius are shared; colour comes from the modifier class.
+   -------------------------------------------------------------------------- */
+.btn {
+  --bs-btn-font-family: var(--ev-font-body);
+  --bs-btn-font-size: 0.9375rem;
+  --bs-btn-font-weight: var(--ev-weight-semibold);
+  --bs-btn-line-height: 1.25;
+  --bs-btn-padding-y: var(--ev-space-3);
+  --bs-btn-padding-x: var(--ev-space-5);
+  --bs-btn-border-radius: var(--ev-radius-sm);
+  --bs-btn-border-width: 1px;
+  --bs-btn-transition: background-color var(--ev-transition-fast),
+    border-color var(--ev-transition-fast), color var(--ev-transition-fast),
+    transform var(--ev-transition-fast), box-shadow var(--ev-transition-fast);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ev-space-2);
+  min-height: 48px;
+  text-decoration: none;
+  letter-spacing: 0.005em;
+}
+
+.btn:focus-visible {
+  outline: 3px solid var(--ev-color-focus);
+  outline-offset: 2px;
+}
+
+/* Primary — the single main call to action on a view. */
+.btn-primary {
+  --bs-btn-color: var(--ev-white);
+  --bs-btn-bg: var(--ev-forest-900);
+  --bs-btn-border-color: var(--ev-forest-900);
+  --bs-btn-hover-color: var(--ev-white);
+  --bs-btn-hover-bg: var(--ev-forest-700);
+  --bs-btn-hover-border-color: var(--ev-forest-700);
+  --bs-btn-active-color: var(--ev-white);
+  --bs-btn-active-bg: var(--ev-forest-700);
+  --bs-btn-active-border-color: var(--ev-forest-700);
+  --bs-btn-disabled-color: var(--ev-forest-900);
+  --bs-btn-disabled-bg: var(--ev-sage-300);
+  --bs-btn-disabled-border-color: var(--ev-sage-300);
+  --bs-btn-focus-shadow-rgb: 157, 181, 165;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* Secondary — outlined counterpart for supporting actions. */
+.btn-secondary {
+  --bs-btn-color: var(--ev-forest-900);
+  --bs-btn-bg: transparent;
+  --bs-btn-border-color: var(--ev-forest-900);
+  --bs-btn-hover-color: var(--ev-white);
+  --bs-btn-hover-bg: var(--ev-forest-900);
+  --bs-btn-hover-border-color: var(--ev-forest-900);
+  --bs-btn-active-color: var(--ev-white);
+  --bs-btn-active-bg: var(--ev-forest-700);
+  --bs-btn-active-border-color: var(--ev-forest-700);
+  --bs-btn-disabled-color: var(--ev-slate-600);
+  --bs-btn-disabled-border-color: var(--ev-hairline);
+  --bs-btn-focus-shadow-rgb: 157, 181, 165;
+}
+
+/* Accent — terracotta 700 keeps white label text at AA contrast (5.8:1). */
+.btn-accent {
+  --bs-btn-color: var(--ev-white);
+  --bs-btn-bg: var(--ev-terracotta-700);
+  --bs-btn-border-color: var(--ev-terracotta-700);
+  --bs-btn-hover-color: var(--ev-white);
+  --bs-btn-hover-bg: var(--ev-forest-900);
+  --bs-btn-hover-border-color: var(--ev-forest-900);
+  --bs-btn-active-color: var(--ev-white);
+  --bs-btn-active-bg: var(--ev-forest-900);
+  --bs-btn-active-border-color: var(--ev-forest-900);
+  --bs-btn-disabled-color: var(--ev-white);
+  --bs-btn-disabled-bg: var(--ev-sage-300);
+  --bs-btn-disabled-border-color: var(--ev-sage-300);
+  --bs-btn-focus-shadow-rgb: 157, 181, 165;
+}
+
+/* Ghost — inline text action, underlined on hover. */
+.btn-ghost {
+  --bs-btn-color: var(--ev-forest-900);
+  --bs-btn-bg: transparent;
+  --bs-btn-border-color: transparent;
+  --bs-btn-hover-color: var(--ev-terracotta-700);
+  --bs-btn-hover-bg: transparent;
+  --bs-btn-hover-border-color: transparent;
+  --bs-btn-active-color: var(--ev-forest-700);
+  --bs-btn-active-bg: transparent;
+  --bs-btn-active-border-color: transparent;
+  --bs-btn-padding-x: var(--ev-space-2);
+  --bs-btn-focus-shadow-rgb: 157, 181, 165;
+}
+
+.btn-ghost:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}
+
+.btn-sm {
+  --bs-btn-padding-y: var(--ev-space-2);
+  --bs-btn-padding-x: var(--ev-space-4);
+  --bs-btn-font-size: 0.875rem;
+  min-height: 40px;
+}
+
+/* -----------------------------------------------------------------------------
+   2. Badges and chips
+   -------------------------------------------------------------------------- */
+.ev-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ev-space-1);
+  padding: 2px var(--ev-space-3);
+  border-radius: var(--ev-radius-pill);
+  font-family: var(--ev-font-body);
+  font-size: var(--ev-text-xs);
+  font-weight: var(--ev-weight-semibold);
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ev-badge--accent {
+  background-color: var(--ev-terracotta-700);
+  color: var(--ev-white);
+}
+
+.ev-badge--available {
+  background-color: rgba(47, 111, 79, 0.1);
+  color: var(--ev-status-available);
+}
+
+.ev-badge--neutral {
+  background-color: var(--ev-sand-100);
+  color: var(--ev-slate-600);
+}
+
+.ev-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ev-space-2);
+  padding: var(--ev-space-2) var(--ev-space-4);
+  border: 1px solid var(--ev-color-border);
+  border-radius: var(--ev-radius-pill);
+  background-color: transparent;
+  color: var(--ev-forest-900);
+  font-family: var(--ev-font-body);
+  font-size: var(--ev-text-sm);
+  font-weight: var(--ev-weight-medium);
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background-color var(--ev-transition-fast),
+    border-color var(--ev-transition-fast), color var(--ev-transition-fast);
+}
+
+.ev-chip:hover {
+  border-color: var(--ev-sage-300);
+  background-color: var(--ev-sand-100);
+}
+
+.ev-chip[aria-pressed="true"],
+.ev-chip.is-active {
+  border-color: var(--ev-forest-900);
+  background-color: var(--ev-forest-900);
+  color: var(--ev-white);
+}
+
+/* -----------------------------------------------------------------------------
+   3. Property card foundation
+   Markup contract:
+     .card-estate
+       .card-estate__media > img
+       .card-estate__body
+         .card-estate__price
+         .card-estate__title
+         .card-estate__meta
+         .card-estate__footer
+   -------------------------------------------------------------------------- */
+.card-estate {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--ev-color-surface);
+  border: 1px solid var(--ev-color-border);
+  border-radius: var(--ev-radius-md);
+  box-shadow: var(--ev-shadow-xs);
+  transition: transform var(--ev-transition-base),
+    box-shadow var(--ev-transition-base), border-color var(--ev-transition-base);
+}
+
+.card-estate:hover {
+  transform: translateY(-3px);
+  border-color: var(--ev-sage-300);
+  box-shadow: var(--ev-shadow-md);
+}
+
+.card-estate:focus-within {
+  border-color: var(--ev-sage-300);
+  box-shadow: var(--ev-shadow-sm);
+}
+
+.card-estate__media {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  background-color: var(--ev-sand-100);
+}
+
+.card-estate__media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 400ms ease;
+}
+
+.card-estate:hover .card-estate__media img {
+  transform: scale(1.03);
+}
+
+.card-estate__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--ev-space-2);
+  padding: var(--ev-space-5);
+}
+
+.card-estate__price {
+  margin: 0;
+  font-family: var(--ev-font-body);
+  font-size: var(--ev-text-xl);
+  font-weight: var(--ev-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--ev-tracking-tight);
+  line-height: var(--ev-leading-snug);
+  color: var(--ev-forest-900);
+}
+
+.card-estate__title {
+  margin: 0;
+  font-family: var(--ev-font-display);
+  font-size: var(--ev-text-lg);
+  font-weight: var(--ev-weight-semibold);
+  line-height: var(--ev-leading-snug);
+  color: var(--ev-color-heading);
+}
+
+.card-estate__title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Stretched link: the whole card becomes clickable without nested anchors. */
+.card-estate__title a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.card-estate__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ev-space-2) var(--ev-space-4);
+  margin: 0;
+  font-size: var(--ev-text-sm);
+  line-height: var(--ev-leading-snug);
+  color: var(--ev-color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.card-estate__footer {
+  position: relative;
+  z-index: 2;
+  margin-top: auto;
+  padding-top: var(--ev-space-4);
+  border-top: 1px solid var(--ev-color-border);
+}
+
+/* -----------------------------------------------------------------------------
+   4. Save / favourite control (sits over card media)
+   -------------------------------------------------------------------------- */
+.ev-favorite {
+  position: absolute;
+  top: var(--ev-space-3);
+  right: var(--ev-space-3);
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: var(--ev-radius-pill);
+  background-color: rgba(250, 247, 242, 0.78);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: var(--ev-forest-900);
+  cursor: pointer;
+  transition: background-color var(--ev-transition-fast),
+    color var(--ev-transition-fast);
+}
+
+.ev-favorite:hover {
+  background-color: var(--ev-white);
+}
+
+.ev-favorite[aria-pressed="true"] {
+  color: var(--ev-terracotta-700);
+}
+
+/* -----------------------------------------------------------------------------
+   5. Motion preferences
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .card-estate:hover {
+    transform: none;
+  }
+
+  .card-estate:hover .card-estate__media img,
+  .btn-primary:hover {
+    transform: none;
+  }
+}

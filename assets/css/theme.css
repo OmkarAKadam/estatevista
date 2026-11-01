@@ -1,0 +1,375 @@
+/* =============================================================================
+   EstateVista — theme.css
+   Design tokens, Bootstrap 5.3.3 variable overrides, and base element styles.
+
+   Load order (do not change):
+     1. Bootstrap 5.3.3 (CDN)
+     2. theme.css        <- this file
+     3. components.css
+
+   Custom styles must always come after Bootstrap so token overrides win.
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   1. Design tokens
+   -------------------------------------------------------------------------- */
+:root {
+  /* Brand palette --------------------------------------------------------- */
+  --ev-forest-900: #14342b;
+  --ev-forest-700: #1e4d3f;
+  --ev-sage-300: #9db5a5;
+  --ev-terracotta-500: #c05b36;
+  --ev-terracotta-700: #a44a2a;
+  --ev-ivory-50: #faf7f2;
+  --ev-sand-100: #f0eae0;
+  --ev-charcoal-900: #1c1c1a;
+  --ev-slate-600: #5f6660;
+  --ev-hairline: #e2dcd2;
+  --ev-status-available: #2f6f4f;
+  --ev-white: #ffffff;
+
+  /* Semantic roles -------------------------------------------------------- */
+  --ev-color-bg: var(--ev-ivory-50);
+  --ev-color-surface: var(--ev-white);
+  --ev-color-surface-alt: var(--ev-sand-100);
+  --ev-color-text: var(--ev-charcoal-900);
+  --ev-color-text-muted: var(--ev-slate-600);
+  --ev-color-heading: var(--ev-forest-900);
+  --ev-color-brand: var(--ev-forest-900);
+  --ev-color-brand-strong: var(--ev-forest-700);
+  --ev-color-accent: var(--ev-terracotta-500);
+  --ev-color-accent-text: var(--ev-terracotta-700);
+  --ev-color-border: var(--ev-hairline);
+  --ev-color-focus: var(--ev-sage-300);
+  --ev-color-on-brand: var(--ev-white);
+
+  /* Spacing scale — 8px base, 4px reserved for fine adjustments ----------- */
+  --ev-space-1: 4px;
+  --ev-space-2: 8px;
+  --ev-space-3: 12px;
+  --ev-space-4: 16px;
+  --ev-space-5: 24px;
+  --ev-space-6: 32px;
+  --ev-space-7: 48px;
+  --ev-space-8: 64px;
+  --ev-space-9: 96px;
+
+  /* Layout ---------------------------------------------------------------- */
+  --ev-container-max: 1240px;
+  --ev-grid-gutter: 24px;
+  --ev-section-pad-y: clamp(40px, 6vw, 96px);
+  --ev-measure: 68ch;
+
+  /* Typography ------------------------------------------------------------ */
+  --ev-font-display: "Fraunces", "Iowan Old Style", "Palatino Linotype",
+    Palatino, Georgia, "Times New Roman", serif;
+  --ev-font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji";
+
+  --ev-text-xs: 0.75rem; /* 12px — badges, eyebrows */
+  --ev-text-sm: 0.875rem; /* 14px — metadata, captions */
+  --ev-text-base: 1rem; /* 16px — body copy */
+  --ev-text-lg: 1.125rem; /* 18px — lede, card titles */
+  --ev-text-xl: 1.25rem; /* 20px — card prices */
+  --ev-text-2xl: 1.5rem; /* 24px — section headings */
+  --ev-text-3xl: 1.875rem; /* 30px — sub-page headings */
+  --ev-text-4xl: clamp(2.125rem, 1.6rem + 2.2vw, 3.5rem); /* display */
+
+  --ev-leading-tight: 1.15;
+  --ev-leading-snug: 1.35;
+  --ev-leading-normal: 1.6;
+
+  --ev-tracking-tight: -0.01em;
+  --ev-tracking-wide: 0.08em;
+
+  --ev-weight-regular: 400;
+  --ev-weight-medium: 500;
+  --ev-weight-semibold: 600;
+  --ev-weight-bold: 700;
+
+  /* Radii ----------------------------------------------------------------- */
+  --ev-radius-xs: 4px;
+  --ev-radius-sm: 8px;
+  --ev-radius-md: 12px;
+  --ev-radius-lg: 16px;
+  --ev-radius-pill: 999px;
+
+  /* Shadows — deliberately restrained ------------------------------------ */
+  --ev-shadow-xs: 0 1px 2px rgba(20, 52, 43, 0.06);
+  --ev-shadow-sm: 0 2px 8px rgba(20, 52, 43, 0.06);
+  --ev-shadow-md: 0 12px 28px rgba(20, 52, 43, 0.12);
+
+  /* Motion ---------------------------------------------------------------- */
+  --ev-transition-fast: 150ms ease;
+  --ev-transition-base: 220ms ease;
+  --ev-focus-ring: 0 0 0 3px rgba(157, 181, 165, 0.85);
+}
+
+/* -----------------------------------------------------------------------------
+   2. Bootstrap variable overrides
+   Bootstrap reads these custom properties at runtime, so components inherit
+   the EstateVista palette without editing Bootstrap's source.
+   -------------------------------------------------------------------------- */
+:root,
+[data-bs-theme="light"] {
+  --bs-body-font-family: var(--ev-font-body);
+  --bs-body-font-size: var(--ev-text-base);
+  --bs-body-font-weight: var(--ev-weight-regular);
+  --bs-body-line-height: var(--ev-leading-normal);
+  --bs-body-color: var(--ev-color-text);
+  --bs-body-bg: var(--ev-color-bg);
+
+  --bs-heading-color: var(--ev-color-heading);
+  --bs-emphasis-color: var(--ev-charcoal-900);
+  --bs-secondary-color: rgba(28, 28, 26, 0.68);
+  --bs-secondary-bg: var(--ev-sand-100);
+  --bs-tertiary-bg: var(--ev-ivory-50);
+
+  --bs-primary: #14342b;
+  --bs-primary-rgb: 20, 52, 43;
+  --bs-secondary: #1e4d3f;
+  --bs-secondary-rgb: 30, 77, 63;
+  --bs-success: #2f6f4f;
+  --bs-success-rgb: 47, 111, 79;
+
+  --bs-link-color: #a44a2a;
+  --bs-link-color-rgb: 164, 74, 42;
+  --bs-link-hover-color: #14342b;
+  --bs-link-hover-color-rgb: 20, 52, 43;
+  --bs-link-decoration: underline;
+  --bs-link-underline-opacity: 0.35;
+  --bs-link-hover-underline-opacity: 1;
+
+  --bs-border-color: #e2dcd2;
+  --bs-border-color-translucent: rgba(20, 52, 43, 0.12);
+  --bs-border-radius: var(--ev-radius-sm);
+  --bs-border-radius-sm: var(--ev-radius-xs);
+  --bs-border-radius-lg: var(--ev-radius-md);
+  --bs-border-radius-xl: var(--ev-radius-lg);
+  --bs-border-radius-pill: var(--ev-radius-pill);
+
+  --bs-focus-ring-color: rgba(157, 181, 165, 0.6);
+  --bs-focus-ring-width: 0.25rem;
+
+  --bs-gutter-x: var(--ev-grid-gutter);
+  --bs-gutter-y: var(--ev-grid-gutter);
+  --bs-font-sans-serif: var(--ev-font-body);
+}
+
+/* -----------------------------------------------------------------------------
+   3. Base elements
+   -------------------------------------------------------------------------- */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--ev-color-bg);
+  color: var(--ev-color-text);
+  font-family: var(--ev-font-body);
+  font-size: var(--ev-text-base);
+  font-weight: var(--ev-weight-regular);
+  line-height: var(--ev-leading-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis-weight: none;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.h1,
+.h2,
+.h3,
+.h4,
+.h5,
+.h6 {
+  margin-block: 0 var(--ev-space-3);
+  font-family: var(--ev-font-display);
+  font-weight: var(--ev-weight-semibold);
+  font-optical-sizing: auto;
+  line-height: var(--ev-leading-tight);
+  letter-spacing: var(--ev-tracking-tight);
+  color: var(--ev-color-heading);
+  text-wrap: balance;
+}
+
+h1,
+.h1 {
+  font-size: var(--ev-text-4xl);
+}
+
+h2,
+.h2 {
+  font-size: var(--ev-text-3xl);
+}
+
+h3,
+.h3 {
+  font-size: var(--ev-text-2xl);
+}
+
+h4,
+.h4 {
+  font-size: var(--ev-text-xl);
+}
+
+h5,
+.h5,
+h6,
+.h6 {
+  font-size: var(--ev-text-lg);
+}
+
+p {
+  margin-block: 0 var(--ev-space-4);
+}
+
+p:last-child {
+  margin-bottom: 0;
+}
+
+strong,
+b {
+  font-weight: var(--ev-weight-semibold);
+}
+
+small {
+  font-size: var(--ev-text-sm);
+}
+
+a {
+  color: var(--ev-color-accent-text);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  transition: color var(--ev-transition-fast);
+}
+
+a:hover {
+  color: var(--ev-color-brand);
+}
+
+hr {
+  margin-block: var(--ev-space-6);
+  border: 0;
+  border-top: 1px solid var(--ev-color-border);
+  opacity: 1;
+}
+
+img,
+svg,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+::selection {
+  background-color: var(--ev-sage-300);
+  color: var(--ev-forest-900);
+}
+
+/* -----------------------------------------------------------------------------
+   4. Focus visibility
+   Browser default outlines are never removed without an explicit replacement.
+   -------------------------------------------------------------------------- */
+:where(a, button, [role="button"], input, select, textarea, summary,
+  [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 3px solid var(--ev-color-focus);
+  outline-offset: 2px;
+}
+
+/* -----------------------------------------------------------------------------
+   5. Layout and typography helpers
+   -------------------------------------------------------------------------- */
+.ev-container {
+  width: 100%;
+  max-width: var(--ev-container-max);
+  margin-inline: auto;
+  padding-inline: var(--ev-space-4);
+}
+
+.ev-section {
+  padding-block: var(--ev-section-pad-y);
+}
+
+.ev-eyebrow {
+  display: block;
+  margin-bottom: var(--ev-space-2);
+  font-family: var(--ev-font-body);
+  font-size: var(--ev-text-xs);
+  font-weight: var(--ev-weight-semibold);
+  letter-spacing: var(--ev-tracking-wide);
+  line-height: var(--ev-leading-snug);
+  text-transform: uppercase;
+  color: var(--ev-color-accent-text);
+}
+
+.ev-lede {
+  max-width: var(--ev-measure);
+  font-size: var(--ev-text-lg);
+  line-height: var(--ev-leading-normal);
+  color: var(--ev-color-text-muted);
+}
+
+.ev-meta {
+  font-size: var(--ev-text-sm);
+  line-height: var(--ev-leading-snug);
+  color: var(--ev-color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ev-price {
+  font-weight: var(--ev-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--ev-tracking-tight);
+}
+
+/* -----------------------------------------------------------------------------
+   6. Accessibility helpers
+   -------------------------------------------------------------------------- */
+.ev-skip-link {
+  position: absolute;
+  top: var(--ev-space-2);
+  left: var(--ev-space-2);
+  z-index: 1080;
+  padding: var(--ev-space-3) var(--ev-space-4);
+  background-color: var(--ev-color-brand);
+  color: var(--ev-color-on-brand);
+  border-radius: var(--ev-radius-sm);
+  font-size: var(--ev-text-sm);
+  font-weight: var(--ev-weight-semibold);
+  text-decoration: none;
+  transform: translateY(-200%);
+  transition: transform var(--ev-transition-fast);
+}
+
+.ev-skip-link:focus,
+.ev-skip-link:focus-visible {
+  transform: translateY(0);
+  color: var(--ev-color-on-brand);
+}
+
+/* -----------------------------------------------------------------------------
+   7. Reduced motion
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

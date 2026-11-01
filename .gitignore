@@ -1,0 +1,40 @@
+# --- OS and shell cruft -------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+.directory
+
+# --- Editors and IDEs ---------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Logs ---------------------------------------------------------------------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Local environment --------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Dependencies -------------------------------------------------------------
+# EstateVista has no build step. This stays so node_modules is never committed
+# if a tooling helper is added later.
+node_modules/
+
+# --- Build output -------------------------------------------------------------
+dist/
+build/
+
+# --- Deployment ---------------------------------------------------------------
+.vercel
+
+# --- Local scratch ------------------------------------------------------------
+*.local
+.tmp/
