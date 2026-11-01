@@ -11,11 +11,10 @@ vanilla JavaScript — no framework, no backend, no build step.
 
 ## Stage status
 
-**Stage 1 — Project foundation and design system.** Complete.
-
-This stage delivers the document shell, design tokens, reusable component
-foundations and repository setup. Page layouts, the listing grid, filtering,
-sorting, galleries and forms are intentionally **not** implemented yet.
+**Stages 1–4 complete.** Stage 1 delivers the foundation and design system,
+Stage 2 the homepage, Stage 3 the property listings and filtering, and Stage 4
+the property details, About and Contact pages. Stage 5 (comprehensive QA) and
+Stage 6 (deployment) remain.
 
 ---
 
@@ -29,7 +28,7 @@ sorting, galleries and forms are intentionally **not** implemented yet.
 | UI framework | Bootstrap 5.3.3 via pinned jsDelivr CDN with SRI |
 | Typefaces | Fraunces (headings) and Inter (body) via Google Fonts |
 | Currency | Indian Rupees (INR, ₹) |
-| Hosting | Vercel static deployment (not deployed during Stage 1) |
+| Hosting | Vercel static deployment (not deployed in this stage) |
 
 No `package.json` exists by design. There is nothing to install and nothing to
 compile.
@@ -49,21 +48,32 @@ EstateVista/
 ├── assets/
 │   ├── css/
 │   │   ├── theme.css           Tokens, Bootstrap overrides, base elements
-│   │   └── components.css      Buttons, badges, chips, property card
+│   │   ├── components.css      Buttons, badges, chips, property card, forms
+│   │   ├── home.css            Homepage composition
+│   │   ├── property-details.css Single-listing composition
+│   │   ├── about.css           About-page composition
+│   │   └── contact.css         Contact-page composition
 │   ├── js/
 │   │   ├── data.js             Fictional property dataset (global array)
-│   │   └── main.js             Shared progressive enhancement
+│   │   ├── main.js             Shared progressive enhancement
+│   │   ├── home.js             Featured rail and homepage search
+│   │   ├── property-card.js    Shared property-card renderer
+│   │   ├── properties.js       Listing filters, sorting and grid
+│   │   ├── property-details.js Single-listing renderer and gallery
+│   │   └── contact.js          Contact-form validation
 │   └── images/
 │       ├── brand/              Logo mark, favicon
 │       ├── properties/         Listing photography (4:3)
 │       ├── heroes/             Page hero imagery
+│       ├── about/              Studio imagery
 │       └── team/               Team portraits
 ├── .gitignore
 └── README.md
 ```
 
-`properties.js` and `property-details.js` are added in Stage 2 alongside the
-features that use them, rather than being created empty now.
+The shared card renderer in `property-card.js` is used by both the listing grid
+and the related-properties rail on the details page, so card markup stays in one
+place.
 
 ---
 
@@ -106,9 +116,10 @@ overrides win:
 2. Bootstrap 5.3.3 (`bootstrap.min.css`, CDN, with `integrity`)
 3. `assets/css/theme.css`
 4. `assets/css/components.css`
+5. The page-specific stylesheet where one exists (`home.css`, `property-details.css`, `about.css` or `contact.css`)
 
 Bootstrap's JavaScript bundle is only included on pages that use a Bootstrap
-component; Stage 1 shells do not need it.
+component.
 
 ---
 
@@ -225,7 +236,8 @@ requires network access. The fallback stacks in `--ev-font-display` and
 ## Roadmap
 
 1. ~~Stage 1 — Foundation and design system~~
-2. Stage 2 — Home page and listing grid
-3. Stage 3 — Filtering, sorting and property details
-4. Stage 4 — About, contact and forms
-5. Stage 5 — Imagery, polish, deployment
+2. ~~Stage 2 — Homepage and featured properties~~
+3. ~~Stage 3 — Property listings, filtering and sorting~~
+4. ~~Stage 4 — Property details, About and Contact~~
+5. Stage 5 — Comprehensive QA and accessibility
+6. Stage 6 — Deployment
