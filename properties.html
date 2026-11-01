@@ -57,7 +57,7 @@
       <div class="container ev-container">
         <p class="ev-eyebrow">Property discovery</p>
         <h1>Properties</h1>
-        <p class="ev-lede">The full listing grid, filtering and sorting are implemented in Stage 3. This page currently confirms the shared layout and receives the criteria passed from the homepage search.</p>
+        <p class="ev-lede">Browse the full collection of fictional apartments, villas and row houses. Search by keyword or location, narrow by type and price, then sort the results.</p>
 
         <!-- Search & Filter Form -->
         <form class="property-filters" id="propertyFilters" aria-label="Property filters">
@@ -95,12 +95,16 @@
             <div class="col-md-6 col-lg-2">
               <label for="filterSort" class="form-label small">Sort by</label>
               <select class="form-select form-select-sm" id="filterSort" aria-label="Sort order">
+                <option value="">Default</option>
                 <option value="price-asc">Price: low to high</option>
                 <option value="price-desc">Price: high to low</option>
               </select>
             </div>
-            <div class="col-12">
-              <button type="submit" class="btn btn-primary w-100" id="clearFilters">
+            <div class="col-12 d-flex flex-wrap gap-2">
+              <button type="submit" class="btn btn-primary" id="applyFilters">
+                Apply filters
+              </button>
+              <button type="button" class="btn btn-secondary" id="clearFilters">
                 Clear filters
               </button>
             </div>
@@ -111,9 +115,11 @@
         <div class="ev-notice" id="searchSummary" hidden>
           <h2 class="ev-notice__title">Search criteria</h2>
           <dl class="ev-notice__list" id="searchSummaryList"></dl>
-          <p class="ev-notice__note" id="resultsCount"></p>
+          <p class="ev-notice__note">These criteria are reflected in the listing results below.</p>
           <p class="ev-notice__actions"><a class="btn btn-secondary btn-sm" href="properties.html">Clear criteria</a></p>
         </div>
+
+        <p class="ev-results-count text-muted mt-4 mb-3" id="resultsCount" role="status" aria-live="polite"></p>
 
         <!-- Property Grid -->
         <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4" id="propertyGrid">
@@ -188,6 +194,7 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous" defer></script>
+  <script src="assets/js/data.js" defer></script>
   <script src="assets/js/main.js" defer></script>
   <script src="assets/js/properties.js" defer></script>
 </body>
