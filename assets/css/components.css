@@ -520,6 +520,16 @@
   padding-block: var(--ev-space-4);
 }
 
+/* Keep the brand and the desktop navigation on a single row. The navigation
+   list itself never wraps; on mobile Bootstrap switches it to a column. */
+.site-nav > .container {
+  flex-wrap: nowrap;
+}
+
+.site-nav__list {
+  flex-wrap: nowrap;
+}
+
 .site-brand {
   display: inline-flex;
   align-items: center;
@@ -639,6 +649,7 @@
   font-size: 0.9375rem;
   font-weight: var(--ev-weight-medium);
   color: var(--ev-charcoal-900);
+  white-space: nowrap;
   transition: color var(--ev-transition-fast),
     background-color var(--ev-transition-fast);
 }

@@ -18,13 +18,36 @@
   <a class="ev-skip-link" href="#main">Skip to main content</a>
 
   <header class="site-header" data-site-header>
-    <nav class="navbar site-nav" aria-label="Primary">
+    <nav class="navbar navbar-expand-lg site-nav" aria-label="Primary">
       <div class="container ev-container">
         <a class="site-brand" href="index.html">
-          <img class="site-brand__mark" src="/assets/images/brand/favicon.svg" alt="" width="36" height="36" aria-hidden="true">
+          <img class="site-brand__mark" src="assets/images/brand/favicon.svg" alt="" width="36" height="36" aria-hidden="true">
           <span class="site-brand__name">EstateVista</span>
         </a>
-        <a class="btn btn-primary btn-sm site-nav__cta" href="properties.html">Properties</a>
+
+        <button class="navbar-toggler site-nav__toggle" type="button"
+                data-bs-toggle="collapse" data-bs-target="#primaryNav"
+                aria-controls="primaryNav" aria-expanded="false"
+                aria-label="Open navigation menu">
+          <span class="site-nav__bar" aria-hidden="true"></span>
+        </button>
+
+        <div class="collapse navbar-collapse site-nav__panel" id="primaryNav">
+          <ul class="navbar-nav site-nav__list ms-lg-auto">
+            <li class="nav-item">
+              <a class="nav-link site-nav__link" href="index.html" data-nav-link>Home</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link site-nav__link" href="properties.html" data-nav-link>Properties</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link site-nav__link" href="about.html" data-nav-link>About us</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link site-nav__link" href="contact.html" data-nav-link>Contact us</a>
+            </li>
+          </ul>
+        </div>
       </div>
     </nav>
   </header>
@@ -47,11 +70,12 @@
     <div class="container ev-container">
       <div class="site-footer__bottom">
         <p>© <span data-current-year>2026</span> EstateVista. Fictional content, built for demonstration.</p>
-        <p><a href="index.html">Home</a> · <a href="properties.html">Properties</a> · <a href="/contact.html">Contact</a></p>
+        <p><a href="index.html">Home</a> · <a href="properties.html">Properties</a> · <a href="contact.html">Contact</a></p>
       </div>
     </div>
   </footer>
 
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous" defer></script>
   <script src="assets/js/main.js" defer></script>
 </body>
 </html>
