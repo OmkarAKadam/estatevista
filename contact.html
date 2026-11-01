@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
   <link rel="stylesheet" href="assets/css/theme.css">
   <link rel="stylesheet" href="assets/css/components.css">
+  <link rel="stylesheet" href="assets/css/contact.css">
 </head>
 <body>
   <a class="ev-skip-link" href="#main">Skip to main content</a>
@@ -46,20 +47,113 @@
               <a class="nav-link site-nav__link" href="contact.html" data-nav-link aria-current="page">Contact us</a>
             </li>
           </ul>
-          
         </div>
       </div>
     </nav>
   </header>
 
   <main id="main" tabindex="-1">
-    <section class="ev-section">
+    <section class="contact-hero">
       <div class="container ev-container">
         <p class="ev-eyebrow">Get in touch</p>
-        <h1>Contact us</h1>
-        <p class="ev-lede">The enquiry form and office details are implemented in a later stage. Until then, everything below is fictional.</p>
-        <p class="ev-meta">hello@estatevista.example · +91 80 4567 1200 · Bengaluru</p>
-        <p><a class="btn btn-secondary" href="properties.html">Browse properties</a></p>
+        <h1 class="contact-hero__title">Tell us what you are looking for.</h1>
+        <p class="ev-lede">Ask about a listing, request a viewing or tell us what would make a property page more useful. The form below is a working demonstration of client-side validation, not a live enquiry channel.</p>
+        <p class="contact-hero__notice">EstateVista is fictional. The address, email address and phone number on this page are invented for this demonstration and do not belong to a real company.</p>
+      </div>
+    </section>
+
+    <section class="contact-page" aria-labelledby="contactFormHeading">
+      <div class="container ev-container">
+        <div class="contact-layout">
+          <aside class="contact-info" aria-labelledby="contactInfoHeading">
+            <h2 id="contactInfoHeading">Studio details</h2>
+            <p class="contact-info__notice">These details are part of the demonstration. The email and phone links are presentational only; no one monitors them.</p>
+
+            <dl class="contact-info__list">
+              <div class="contact-info__item">
+                <dt>Address</dt>
+                <dd>
+                  <address>
+                    14 Meridian Court<br>
+                    Indiranagar, Bengaluru 560038<br>
+                    India
+                  </address>
+                </dd>
+              </div>
+              <div class="contact-info__item">
+                <dt>Email</dt>
+                <dd><a href="mailto:hello@estatevista.example">hello@estatevista.example</a></dd>
+              </div>
+              <div class="contact-info__item">
+                <dt>Telephone</dt>
+                <dd><a href="tel:+918045671200">+91 80 4567 1200</a></dd>
+              </div>
+              <div class="contact-info__item">
+                <dt>Office hours</dt>
+                <dd>Monday to Friday, 9:00–18:00 IST <span class="contact-info__illustrative">(illustrative)</span></dd>
+              </div>
+            </dl>
+
+            <p class="contact-info__note">No message sent through this form is stored, forwarded or delivered. The site has no backend and uses no external form service.</p>
+          </aside>
+
+          <div class="contact-form-panel">
+            <h2 id="contactFormHeading">Send a message</h2>
+            <p class="contact-form-panel__intro">All fields are required. Your entries stay in this browser tab and are checked locally when you submit. Nothing is sent or saved.</p>
+
+            <form class="contact-form" id="contactForm" novalidate>
+              <div class="contact-form__grid">
+                <div class="contact-form__field">
+                  <label class="form-label" for="contactName">Full name <span class="contact-form__required" aria-hidden="true">*</span></label>
+                  <input class="form-control" id="contactName" name="name" type="text"
+                         autocomplete="name" maxlength="80" required
+                         aria-describedby="contactNameError">
+                  <p class="contact-form__error" id="contactNameError" hidden></p>
+                </div>
+
+                <div class="contact-form__field">
+                  <label class="form-label" for="contactEmail">Email address <span class="contact-form__required" aria-hidden="true">*</span></label>
+                  <input class="form-control" id="contactEmail" name="email" type="email"
+                         autocomplete="email" inputmode="email" maxlength="120" required
+                         aria-describedby="contactEmailError">
+                  <p class="contact-form__error" id="contactEmailError" hidden></p>
+                </div>
+
+                <div class="contact-form__field contact-form__field--full">
+                  <label class="form-label" for="contactSubject">Subject <span class="contact-form__required" aria-hidden="true">*</span></label>
+                  <select class="form-select" id="contactSubject" name="subject" required
+                          aria-describedby="contactSubjectError">
+                    <option value="">Choose a subject</option>
+                    <option value="general">General enquiry</option>
+                    <option value="viewing">Request a viewing</option>
+                    <option value="buying">Buying guidance</option>
+                    <option value="selling">Selling a home</option>
+                    <option value="other">Something else</option>
+                  </select>
+                  <p class="contact-form__error" id="contactSubjectError" hidden></p>
+                </div>
+
+                <div class="contact-form__field contact-form__field--full">
+                  <label class="form-label" for="contactMessage">Message <span class="contact-form__required" aria-hidden="true">*</span></label>
+                  <textarea class="form-control" id="contactMessage" name="message" rows="6"
+                            minlength="20" maxlength="1200" required spellcheck="true"
+                            aria-describedby="contactMessageHelp contactMessageError"></textarea>
+                  <p class="form-text" id="contactMessageHelp">Please write between 20 and 1,200 characters. Do not include sensitive personal information.</p>
+                  <p class="contact-form__error" id="contactMessageError" hidden></p>
+                </div>
+              </div>
+
+              <p class="contact-form__alert" id="formAlert" role="alert" hidden></p>
+
+              <div class="contact-form__actions">
+                <button class="btn btn-primary" type="submit" id="contactSubmit">Send message</button>
+                <p class="contact-form__hint">Demonstration only. The button validates the form; it does not send anything.</p>
+              </div>
+
+              <div class="contact-status" id="formStatus" role="status" aria-live="polite" aria-atomic="true"></div>
+            </form>
+          </div>
+        </div>
       </div>
     </section>
   </main>
@@ -81,7 +175,6 @@
           <ul class="site-footer__links">
             <li><a href="index.html">Home</a></li>
             <li><a href="properties.html">Properties</a></li>
-            <li><a href="property-details.html">Property details</a></li>
             <li><a href="about.html">About us</a></li>
             <li><a href="contact.html">Contact us</a></li>
           </ul>
@@ -117,5 +210,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous" defer></script>
   <script src="assets/js/main.js" defer></script>
+  <script src="assets/js/contact.js" defer></script>
 </body>
 </html>
