@@ -167,6 +167,9 @@ html {
 }
 
 body {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
   background-color: var(--ev-color-bg);
   color: var(--ev-color-text);
   font-family: var(--ev-font-body);
@@ -177,6 +180,17 @@ body {
   -moz-osx-font-smoothing: grayscale;
   font-synthesis-weight: none;
   text-rendering: optimizeLegibility;
+}
+
+@supports (min-height: 100dvh) {
+  body {
+    min-height: 100dvh;
+  }
+}
+
+/* Short pages still push the shared footer to the bottom of the viewport. */
+main {
+  flex: 1 0 auto;
 }
 
 h1,
@@ -292,7 +306,9 @@ video {
   width: 100%;
   max-width: var(--ev-container-max);
   margin-inline: auto;
-  padding-inline: var(--ev-space-4);
+  /* Container padding must always cover half of the widest row gutter used,
+     otherwise Bootstrap's negative row margins create horizontal overflow. */
+  padding-inline: clamp(16px, 3.5vw, 32px);
 }
 
 .ev-section {
