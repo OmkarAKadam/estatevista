@@ -408,9 +408,11 @@ Summary of the planned setup:
 - Production branch: **main**.
 - GitHub integration so pushes to `main` trigger deployments.
 
-The custom `404.html` is intended to handle unmatched routes. Its relative asset
-and navigation paths are a known issue for nested missing URLs and need review
-before deployment is considered complete; see `DEPLOYMENT.md`.
+The custom `404.html` handles unmatched routes. Its local asset, favicon, script
+and navigation references use root-relative paths, so they still resolve when
+the page is served for a nested missing URL. That behaviour was verified with a
+local server emulating Vercel's custom 404 fallback; production verification on
+Vercel is still pending. See [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ---
 
@@ -460,9 +462,11 @@ console for a blocked or missing file.
 **The contact form appears to do nothing.** That is expected. It validates
 locally and deliberately sends nothing; there is no backend.
 
-**A nested missing URL produces an unstyled 404 page.** This is a known issue
-with relative paths in `404.html`. It is documented in `DEPLOYMENT.md` and is
-not fixed in the current documentation phase.
+**A nested missing URL produces an unstyled 404 page.** This should not happen in
+the current build: `404.html` uses root-relative paths for its local assets,
+favicon, script and navigation. If it happens after deployment, confirm the host
+serves the root `404.html` and that those references begin with `/`. See
+[`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ---
 

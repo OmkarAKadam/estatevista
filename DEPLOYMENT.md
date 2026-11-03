@@ -39,7 +39,7 @@ Before deploying:
 - A GitHub repository exists and contains the project.
 - The production branch is `main`.
 - A Vercel account is available.
-- The custom `404.html` path issue has been reviewed (see
+- The custom `404.html` root-relative paths have been verified locally (see
   [Custom 404 behavior](#custom-404-behavior)).
 - The final repository and demo URLs are added to `README.md`.
 
@@ -66,22 +66,31 @@ No GitHub repository, remote or Vercel project is configured by this document.
 
 Vercel static hosting uses a root `404.html` file for unmatched routes.
 
-**Known issue:** the current `404.html` uses relative paths such as
-`assets/css/theme.css` and `properties.html`. When Vercel serves the 404 page
-for a nested missing URL such as `/missing/nested-page`, the browser resolves
-those paths relative to the missing directory, so the page may load without
-styles, scripts or working navigation.
+**Current state:** `404.html` uses root-relative paths for every local resource
+and link, including `/assets/css/theme.css`, `/assets/css/components.css`,
+`/assets/js/main.js`, `/assets/images/brand/favicon.svg`, `/index.html`,
+`/properties.html`, `/about.html` and `/contact.html`. External Bootstrap and
+Google Fonts URLs are unchanged. The skip link still targets the in-page
+`#main` anchor.
 
-This is intentionally **not modified in the current documentation phase**. It
-must be reviewed before deployment is considered complete. The likely fix is to
-use root-relative paths or an appropriate base path in `404.html` only.
+This was verified locally with a server that returns the root `404.html` with an
+HTTP 404 status for unmatched paths, emulating Vercel's custom 404 behaviour:
 
-Test both:
+- `/404.html` returned 200 with the custom page, theme and component styles,
+  running JavaScript and Bootstrap.
+- A nested missing route such as `/properties/nonexistent-page` returned 404 and
+  loaded the same styled page.
+- All four local assets and all navigation links returned 200 from the nested
+  route, with no local asset failures or JavaScript exceptions.
+
+Production verification on Vercel is still pending. After deployment, test both:
 
 - A missing top-level route, for example `/missing-page`.
 - A missing nested route, for example `/missing/nested-page`.
 
-Confirm the response uses the custom page and the intended HTTP 404 status.
+Confirm each response uses the custom page with the intended HTTP 404 status,
+loaded styles and scripts, and navigation links that resolve to the root-level
+pages.
 
 ---
 
@@ -207,8 +216,14 @@ coordinate.
 
 ### The custom 404 page is unstyled
 
-This is the known relative-path issue described above. It affects nested missing
-URLs and is not fixed in this documentation phase.
+The current `404.html` uses root-relative paths for its local assets and
+navigation, so nested missing URLs should render correctly. If it is still
+unstyled after deployment:
+
+- Confirm the platform serves the root `404.html` for unmatched paths.
+- Confirm the stylesheet, script, favicon and navigation references in
+  `404.html` all begin with `/`.
+- Check the browser network panel for the actual requested URLs and statuses.
 
 ### The contact form does not send anything
 
