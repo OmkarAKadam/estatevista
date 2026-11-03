@@ -29,6 +29,7 @@ invented for demonstration purposes.
 ## Table of contents
 
 - [Project overview](#project-overview)
+- [Visual preview](#visual-preview)
 - [Repository and demo links](#repository-and-demo-links)
 - [Stage status](#stage-status)
 - [Technology](#technology)
@@ -69,6 +70,25 @@ Implemented functionality includes:
 
 The site is intentionally front-end only. Search, filtering, gallery selection
 and form validation run in the browser.
+
+---
+
+## Visual preview
+
+Screenshots of the current build, captured from the locally served site at a
+1440 × 1000 desktop viewport.
+
+### Homepage
+
+![EstateVista homepage with hero, search form and site navigation](docs/screenshots/homepage.png)
+
+### Property listings
+
+![Property listings page with filters and a grid of property cards](docs/screenshots/property-listings.png)
+
+### Property details
+
+![Sunlit Courtyard Villa details page with gallery, price and property facts](docs/screenshots/property-details.png)
 
 ---
 
@@ -144,7 +164,8 @@ EstateVista/
 │       ├── properties/         Five listing photographs
 │       └── team/               Reserved directory; only .gitkeep is committed
 ├── docs/
-│   └── QA.md                   Stage 5 QA record
+│   ├── QA.md                   Stage 5 QA record
+│   └── screenshots/            README preview images (3 PNGs)
 ├── DEPLOYMENT.md               Planned Vercel deployment guide
 ├── .gitattributes              Text and binary file handling
 ├── .gitignore
