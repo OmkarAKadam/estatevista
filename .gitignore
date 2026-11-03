@@ -38,3 +38,22 @@ build/
 # --- Local scratch ------------------------------------------------------------
 *.local
 .tmp/
+
+# --- Test and audit artifacts -------------------------------------------------
+coverage/
+.lighthouseci/
+results.json
+
+# --- Other deployment hosts ---------------------------------------------------
+.netlify/
+.firebase/
+
+# --- Additional editor and OS files -------------------------------------------
+.vs/
+*.code-workspace
+
+# --- Temporary files ----------------------------------------------------------
+*.tmp
+*.bak
+*.orig
+*.rej
