@@ -70,20 +70,25 @@ EstateVista/
 │   ├── .env.example          # dummy values only; safe to commit
 │   ├── .gitignore            # ignores .env, target/, logs, IDE files
 │   ├── README.md
-│   └── src/main/
-│       ├── java/com/estatevista/
-│       │   ├── EstateVistaApplication.java
-│       │   ├── config/
-│       │   │   ├── AppProperties.java
-│       │   │   ├── CorsConfig.java
-│       │   │   ├── SecurityConfig.java
-│       │   │   └── WebSocketConfig.java
-│       │   └── common/health/HealthController.java
-│       └── resources/
-│           ├── application.yml
-│           ├── application-dev.yml
-│           ├── application-prod.yml
-│           └── db/migration/V1__spring_session_schema.sql
+│   ├── src/main/
+│   │   ├── java/com/estatevista/
+│   │   │   ├── EstateVistaApplication.java
+│   │   │   ├── config/
+│   │   │   │   ├── AppProperties.java
+│   │   │   │   ├── CorsConfig.java
+│   │   │   │   ├── SecurityConfig.java
+│   │   │   │   └── WebSocketConfig.java
+│   │   │   └── common/
+│   │   │       ├── exception/     # error codes, handler, /error controller
+│   │   │       ├── health/HealthController.java
+│   │   │       └── response/      # standard API error envelope
+│   │   └── resources/
+│   │       ├── application.yml
+│   │       ├── application-dev.yml
+│   │       ├── application-test.yml
+│   │       ├── application-prod.yml
+│   │       └── db/migration/V1__spring_session_schema.sql
+│   └── src/test/java/com/estatevista/
 ├── frontend/
 │   ├── dev-server.mjs        # zero-dependency static server, port 5500
 │   ├── assets/js/core/config.js
@@ -132,12 +137,15 @@ configure them in your IDE run configuration.
 
 | Variable | Purpose | Local default / example |
 | --- | --- | --- |
-| `SPRING_PROFILES_ACTIVE` | Activates `dev` or `prod` profile | `dev` |
+| `SPRING_PROFILES_ACTIVE` | Activates `dev`, `test`, or `prod` profile | `dev` |
 | `SERVER_PORT` | API port | `8080` |
 | `DB_URL` | JDBC URL | `jdbc:postgresql://localhost:5432/estatevista` |
 | `DB_USERNAME` | Database user | `estatevista` |
 | `DB_PASSWORD` | Database password | local-only value; never committed |
 | `DB_POOL_SIZE` | Hikari maximum pool size | `10` |
+| `TEST_DB_URL` | Isolated database for integration tests | `jdbc:postgresql://localhost:5432/estatevista_test` |
+| `TEST_DB_USERNAME` | Test database user | `estatevista` |
+| `TEST_DB_PASSWORD` | Test database password | local-only value; never committed |
 | `APP_CORS_ALLOWED_ORIGINS` | Exact, comma-separated CORS origins | `http://localhost:5500,http://127.0.0.1:5500` |
 | `APP_WEBSOCKET_ALLOWED_ORIGINS` | Exact, comma-separated WebSocket origins | `http://localhost:5500,http://127.0.0.1:5500` |
 | `SESSION_COOKIE_SECURE` | `Secure` session cookie flag | `false` locally; must be `true` in production |
@@ -247,6 +255,7 @@ valid. Flyway logs the applied version, and Tomcat logs the listening port.
 | Profile | File | Behavior |
 | --- | --- | --- |
 | `dev` | `application-dev.yml` | Debug logging for application and web; Flyway logs via SLF4J |
+| `test` | `application-test.yml` | Isolated test database; reduced logging; no production fallbacks |
 | `prod` | `application-prod.yml` | `Secure` session cookie, `forward-headers-strategy: native`, no DB fallbacks, INFO logging |
 
 Shared settings live in `application.yml`.
@@ -268,19 +277,21 @@ details hidden.
 
 `SecurityConfig` is a deny-by-default shell:
 
-- Public: `/api/v1/health`, `/actuator/health`, `/error`, `/ws`, `/ws/**`.
-- Everything else: `denyAll()` and returns `401` for unauthenticated requests.
+- Public: `/api/v1/health`, `/actuator/health`, `/error`.
+- Everything else, including `/ws` and `/ws/**`, is denied until the owning
+  stage adds an explicit matcher. Unauthenticated requests return `401` with the
+  standard error envelope.
 - Form login, HTTP Basic, and logout are disabled.
 - Boot's default in-memory user is excluded, so the shell never starts with
   generated credentials.
 - CSRF protection remains enabled with framework defaults.
-- The access-denied handler writes a small JSON body
-  (`{"error":"FORBIDDEN"}`), including for CSRF failures.
+- The access-denied handler writes the standard JSON error envelope, including
+  for CSRF failures.
 
-This is **not** an authentication implementation. The WebSocket handshake is
-currently unauthenticated and must not be exposed publicly until the
-authentication stage adds a session handshake interceptor and subscription
-authorization.
+This is **not** an authentication implementation, and it is not a CSRF
+implementation. The WebSocket transport is configured but the handshake stays
+denied until the authentication stage adds a session handshake interceptor,
+subscription authorization, and the SD-53 CSRF wiring.
 
 ### Session persistence
 
@@ -319,6 +330,10 @@ Registered for `/api/**` and `/actuator/health`:
 - STOMP broker destinations: `/queue`, `/topic`; application prefix `/app`;
   user prefix `/user`.
 - No message handlers, subscriptions, or authorization exist yet.
+- The HTTP security chain denies `/ws` and `/ws/**`; an unauthenticated
+  handshake returns `401` with the standard error envelope. The authentication
+  stage must add session handshake authentication and STOMP authorization
+  before the endpoint is made public.
 
 ---
 
@@ -402,7 +417,8 @@ Session identifiers in that transcript are redacted.
 - No business modules, property CRUD, chat handling, or Cloudinary integration.
 - No WebSocket message handlers or STOMP authorization.
 - CSRF design (SD-53) is not implemented; only framework defaults are active.
-- No automated tests exist yet.
+- Automated tests cover the health endpoint and the error-response contract
+  (Stage 2.2); no authentication or business-flow tests exist yet.
 - The setup-check page was validated at the HTTP/API layer, not through an
   automated browser.
 - Production deployment, TLS, email, and media storage are not configured.
@@ -494,3 +510,9 @@ transport, frontend hosting, and validation baseline. It does not complete
 Stage 1 as a whole. The Stage 1.9 documentation review and closure remain
 separate, and the authentication stage owns SD-53 implementation and all
 security tests.
+
+Stage 2.1 reconciles the repository baseline (HEAD `9e20ed5`, clean tree). Stage
+2.2 adds the layered application foundation: the `test` profile, the standard
+API error envelope and handlers, a replacement `/error` controller, and
+web-layer tests. It also closes the temporary public WebSocket handshake until
+authentication exists. Business schema work starts in Stage 2.3.

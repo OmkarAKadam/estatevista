@@ -1,0 +1,33 @@
+# Automated test profile.
+# Activate with SPRING_PROFILES_ACTIVE=test.
+#
+# The Stage 2 unit and web-layer tests do not start a Spring context and need no
+# database. Integration tests added in later sub-stages must point these values
+# at an isolated PostgreSQL database and must never target development or
+# production data.
+
+spring:
+  datasource:
+    url: ${TEST_DB_URL:jdbc:postgresql://localhost:5432/estatevista_test}
+    username: ${TEST_DB_USERNAME:estatevista}
+    password: ${TEST_DB_PASSWORD:}
+  jpa:
+    show-sql: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    clean-disabled: true
+
+management:
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: WARN
+    com.estatevista: INFO
+    org.springframework.web: WARN
+    org.springframework.security: WARN
+    org.flywaydb: INFO
