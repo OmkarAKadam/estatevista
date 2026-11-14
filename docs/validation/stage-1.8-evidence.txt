@@ -1,0 +1,264 @@
+EstateVista Stage 1.8 - curated validation transcript (trimmed command output)
+Captured: 2026-11-12T18:59:59.3606459+05:30
+Environment: Windows, PowerShell, JDK 23.0.2 (target 21), Maven 3.9.14, Node 24.13.0
+Backend: packaged jar on http://localhost:8080
+Frontend: node dev-server.mjs on http://localhost:5500
+PostgreSQL: isolated cluster, PostgreSQL 18.3 on localhost:55432 (trust auth, throwaway)
+Session identifiers are redacted; output is trimmed to the relevant lines.
+
+## Maven build
+[INFO] No tests to run.
+[INFO] Building jar: D:\Main\Main Projects\Internship Work\7th SEM\EstateVista\backend\target\estatevista-backend-0.1.0-SNAPSHOT.jar
+[INFO] BUILD SUCCESS
+[INFO] Total time:  17.889 s
+
+## Fresh database and Flyway migration
+Health ready: True
+2026-11-12T19:00:38.550+05:30  INFO 16048 --- [estatevista-api] [           main] o.f.c.i.s.JdbcTableSchemaHistory         : Creating Schema History table "public"."flyway_schema_history" ...
+2026-11-12T19:00:38.765+05:30  INFO 16048 --- [estatevista-api] [           main] o.f.core.internal.command.DbMigrate      : Migrating schema "public" to version "1 - spring session schema"
+2026-11-12T19:00:38.873+05:30  INFO 16048 --- [estatevista-api] [           main] o.f.core.internal.command.DbMigrate      : Successfully applied 1 migration to schema "public", now at version v1 (execution time 00:00.061s)
+2026-11-12T19:00:46.869+05:30  INFO 16048 --- [estatevista-api] [           main] com.estatevista.EstateVistaApplication   : Started EstateVistaApplication in 20.243 seconds (process running for 21.192)
+
+## No default user / no generated password
+No 'generated security password' line present in startup log.
+
+## GET /api/v1/health
+HTTP/1.1 200 
+Vary: Origin
+Vary: Access-Control-Request-Method
+Vary: Access-Control-Request-Headers
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Type: application/json
+Content-Length: 88
+Date: Thu, 12 Nov 2026 13:30:47 GMT
+
+{"status":"UP","service":"estatevista-api","timestamp":"2026-11-12T13:30:47.324612500Z"}
+
+## GET /actuator/health
+HTTP/1.1 200 
+Vary: Origin
+Vary: Access-Control-Request-Method
+Vary: Access-Control-Request-Headers
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Type: application/vnd.spring-boot.actuator.v3+json
+Transfer-Encoding: chunked
+Date: Thu, 12 Nov 2026 13:30:47 GMT
+
+{"groups":["liveness","readiness"],"status":"UP"}
+
+## GET /api/v1/unknown-protected (deny-by-default)
+HTTP/1.1 401 
+Vary: Origin
+Vary: Access-Control-Request-Method
+Vary: Access-Control-Request-Headers
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Set-Cookie: EV_SESSION=<redacted-local-session>; Path=/; HttpOnly; SameSite=Lax
+Content-Length: 0
+Date: Thu, 12 Nov 2026 13:30:47 GMT
+
+
+## POST /api/v1/unknown-protected without CSRF token
+HTTP/1.1 403 
+Vary: Origin
+Vary: Access-Control-Request-Method
+Vary: Access-Control-Request-Headers
+Access-Control-Allow-Origin: http://localhost:5500
+Access-Control-Expose-Headers: X-CSRF-TOKEN
+Access-Control-Allow-Credentials: true
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Set-Cookie: EV_SESSION=<redacted-local-session>; Path=/; HttpOnly; SameSite=Lax
+Content-Type: application/json;charset=ISO-8859-1
+Content-Length: 21
+Date: Thu, 12 Nov 2026 13:30:47 GMT
+
+{"error":"FORBIDDEN"}
+
+## CORS preflight, allowed origin
+HTTP/1.1 200 
+Vary: Origin
+Vary: Access-Control-Request-Method
+Vary: Access-Control-Request-Headers
+Access-Control-Allow-Origin: http://localhost:5500
+Access-Control-Allow-Methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
+Access-Control-Allow-Headers: content-type, x-csrf-token
+Access-Control-Expose-Headers: X-CSRF-TOKEN
+Access-Control-Allow-Credentials: true
+Access-Control-Max-Age: 3600
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Length: 0
+Date: Thu, 12 Nov 2026 13:30:47 GMT
+
+
+## CORS preflight, disallowed origin
+HTTP/1.1 403 
+Vary: Origin
+Vary: Access-Control-Request-Method
+Vary: Access-Control-Request-Headers
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Transfer-Encoding: chunked
+Date: Thu, 12 Nov 2026 13:30:47 GMT
+
+Invalid CORS request
+
+## CORS actual GET, allowed origin
+HTTP/1.1 200 
+Vary: Origin
+Vary: Access-Control-Request-Method
+Vary: Access-Control-Request-Headers
+Access-Control-Allow-Origin: http://localhost:5500
+Access-Control-Expose-Headers: X-CSRF-TOKEN
+Access-Control-Allow-Credentials: true
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Type: application/json
+Content-Length: 88
+Date: Thu, 12 Nov 2026 13:30:47 GMT
+
+{"status":"UP","service":"estatevista-api","timestamp":"2026-11-12T13:30:47.827830400Z"}
+
+## CORS actual GET, disallowed origin
+HTTP/1.1 403 
+Vary: Origin
+Vary: Access-Control-Request-Method
+Vary: Access-Control-Request-Headers
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Transfer-Encoding: chunked
+Date: Thu, 12 Nov 2026 13:30:47 GMT
+
+Invalid CORS request
+
+## WebSocket handshake, allowed origin
+HTTP/1.1 101 
+Upgrade: websocket
+Connection: upgrade
+Sec-WebSocket-Accept: JxiutQAyIqscz2eGEDtoOnqf4LU=
+Sec-WebSocket-Protocol: v12.stomp
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Date: Thu, 12 Nov 2026 13:30:47 GMT
+
+## WebSocket handshake, disallowed origin
+HTTP/1.1 403 
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 0
+Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+Pragma: no-cache
+Expires: 0
+X-Frame-Options: DENY
+Content-Length: 0
+Date: Thu, 12 Nov 2026 13:30:48 GMT
+
+## Session persistence
+HTTP/1.1 401 
+Set-Cookie: EV_SESSION=<redacted-local-session>; Path=/; HttpOnly; SameSite=Lax
+EV_SESSION=<redacted-local-session>
+Reuse before restart status: 401
+Same session row present before restart: 1
+Session creation_time before restart: 1794490248082
+ sessions | min_timeout_s | max_timeout_s 
+----------+---------------+---------------
+        3 |          1800 |          1800
+(1 row)
+
+
+## Database schema
+ installed_rank | version |      description      | success 
+----------------+---------+-----------------------+---------
+              1 | 1       | spring session schema | t
+(1 row)
+
+        table_name         
+---------------------------
+ flyway_schema_history
+ spring_session
+ spring_session_attributes
+(3 rows)
+
+
+## Frontend dev server
+GET / -> 200 text/html; charset=utf-8
+GET /dev/setup-check.html -> 200 text/html; charset=utf-8
+GET /assets/js/core/config.js -> 200 text/javascript; charset=utf-8
+GET /nope.html -> 404
+Encoded traversal -> 403
+
+## JavaScript syntax checks
+node --check frontend/dev-server.mjs -> PASS
+node --check frontend/assets/js/core/config.js -> PASS
+node --check frontend/assets/js/core/api.js -> PASS
+node --check frontend/dev/setup-check.js -> PASS
+
+## Restart: migration idempotency and session reuse
+Health ready after restart: True
+2026-11-12T19:01:04.307+05:30  INFO 9328 --- [estatevista-api] [           main] o.f.core.internal.command.DbMigrate      : Current version of schema "public": 1
+2026-11-12T19:01:14.254+05:30  INFO 9328 --- [estatevista-api] [           main] com.estatevista.EstateVistaApplication   : Started EstateVistaApplication in 21.646 seconds (process running for 22.638)
+Reuse after restart status: 401
+Same session row present after restart: 1
+Session creation_time after restart: 1794490248082
+Creation time unchanged across restart: True
+ sessions | min_timeout_s | max_timeout_s 
+----------+---------------+---------------
+        3 |          1800 |          1800
+(1 row)
+
+
+## Startup fail-fast: wildcard WebSocket origin
+Exit code: 1
+2026-11-12T19:01:35.883+05:30  WARN 7508 --- [estatevista-api] [           main] ConfigServletWebServerApplicationContext : Exception encountered during context initialization - cancelling refresh attempt: org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'stompWebSocketHandlerMapping' defined in class path resource [org/springframework/web/socket/config/annotation/DelegatingWebSocketMessageBrokerConfiguration.class]: Failed to instantiate [org.springframework.web.servlet.HandlerMapping]: Factory method 'stompWebSocketHandlerMapping' threw exception with message: Wildcard WebSocket origins are not permitted
+org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'stompWebSocketHandlerMapping' defined in class path resource [org/springframework/web/socket/config/annotation/DelegatingWebSocketMessageBrokerConfiguration.class]: Failed to instantiate [org.springframework.web.servlet.HandlerMapping]: Factory method 'stompWebSocketHandlerMapping' threw exception with message: Wildcard WebSocket origins are not permitted
+
+## Startup fail-fast: wildcard CORS origin
+Exit code: 1
+2026-11-12T19:01:55.128+05:30  WARN 2784 --- [estatevista-api] [           main] ConfigServletWebServerApplicationContext : Exception encountered during context initialization - cancelling refresh attempt: org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'corsConfigurationSource' defined in class path resource [com/estatevista/config/CorsConfig.class]: Failed to instantiate [org.springframework.web.cors.CorsConfigurationSource]: Factory method 'corsConfigurationSource' threw exception with message: Wildcard CORS origins are not permitted when credentials are enabled
+org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'corsConfigurationSource' defined in class path resource [com/estatevista/config/CorsConfig.class]: Failed to instantiate [org.springframework.web.cors.CorsConfigurationSource]: Factory method 'corsConfigurationSource' threw exception with message: Wildcard CORS origins are not permitted when credentials are enabled
+
+
+## Session access advancement
+ sessions | accessed_after_creation 
+----------+-------------------------
+        3 |                       1
+(1 row)
+

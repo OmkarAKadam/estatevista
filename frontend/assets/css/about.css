@@ -1,0 +1,393 @@
+/* =============================================================================
+   EstateVista — about.css
+   Page-only composition for about.html.
+   Depends on theme.css and components.css; shared navigation, footer and buttons
+   stay in components.css.
+   ============================================================================= */
+
+:root {
+  --ev-about-pad: clamp(48px, 6vw, 96px);
+}
+
+/* -----------------------------------------------------------------------------
+   1. Hero
+   -------------------------------------------------------------------------- */
+.about-hero {
+  padding-block: clamp(32px, 4vw, 64px) var(--ev-about-pad);
+  background-color: var(--ev-ivory-50);
+}
+
+.about-hero__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: clamp(32px, 5vw, 64px);
+  align-items: center;
+}
+
+.about-hero__copy,
+.about-hero__figure {
+  min-width: 0;
+}
+
+.about-hero__title {
+  max-width: 14ch;
+  margin-bottom: var(--ev-space-4);
+  font-size: clamp(2.25rem, 1.4rem + 2.7vw, 3.75rem);
+  line-height: 1.05;
+}
+
+.about-hero__notice {
+  max-width: 54ch;
+  margin-bottom: 0;
+  padding-left: var(--ev-space-4);
+  border-left: 2px solid var(--ev-sage-300);
+  font-size: var(--ev-text-sm);
+  line-height: var(--ev-leading-normal);
+  color: var(--ev-color-text-muted);
+}
+
+.about-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ev-space-3);
+  margin-top: var(--ev-space-5);
+}
+
+.about-hero__figure {
+  margin: 0;
+}
+
+.about-hero__image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  border-radius: var(--ev-radius-lg);
+  object-fit: cover;
+  box-shadow: var(--ev-shadow-md);
+}
+
+.about-hero__caption {
+  margin-top: var(--ev-space-3);
+  font-size: var(--ev-text-xs);
+  line-height: var(--ev-leading-normal);
+  color: var(--ev-color-text-muted);
+}
+
+/* -----------------------------------------------------------------------------
+   2. Introduction
+   -------------------------------------------------------------------------- */
+.about-story {
+  background-color: var(--ev-color-surface);
+}
+
+.about-story__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: clamp(24px, 4vw, 64px);
+  align-items: start;
+}
+
+.about-story__heading,
+.about-story__body {
+  min-width: 0;
+}
+
+.about-story__body {
+  max-width: var(--ev-measure);
+}
+
+.about-story__body p {
+  color: var(--ev-color-text-muted);
+}
+
+.about-story__note {
+  margin-top: var(--ev-space-5);
+  padding: var(--ev-space-4);
+  border: 1px solid var(--ev-color-border);
+  border-left: 3px solid var(--ev-terracotta-500);
+  border-radius: var(--ev-radius-sm);
+  background-color: var(--ev-ivory-50);
+  font-size: var(--ev-text-sm);
+  line-height: var(--ev-leading-normal);
+  color: var(--ev-color-text-muted);
+}
+
+/* -----------------------------------------------------------------------------
+   3. Mission and vision
+   -------------------------------------------------------------------------- */
+.about-pillars {
+  background-color: var(--ev-ivory-50);
+}
+
+.about-pillar {
+  height: 100%;
+  padding: clamp(24px, 3vw, 40px);
+  border: 1px solid var(--ev-color-border);
+  border-radius: var(--ev-radius-md);
+  background-color: var(--ev-color-surface);
+}
+
+.about-pillar .ev-eyebrow {
+  margin-bottom: var(--ev-space-3);
+}
+
+.about-pillar h3 {
+  margin-bottom: var(--ev-space-3);
+  font-size: var(--ev-text-2xl);
+}
+
+.about-pillar p:last-child {
+  margin: 0;
+  color: var(--ev-color-text-muted);
+}
+
+/* -----------------------------------------------------------------------------
+   4. Core values
+   -------------------------------------------------------------------------- */
+.about-values {
+  background-color: var(--ev-color-surface-alt);
+}
+
+.about-value {
+  height: 100%;
+  padding: var(--ev-space-5);
+  border: 1px solid var(--ev-color-border);
+  border-radius: var(--ev-radius-md);
+  background-color: var(--ev-color-surface);
+}
+
+.about-value__index {
+  display: block;
+  margin-bottom: var(--ev-space-4);
+  font-family: var(--ev-font-display);
+  font-size: var(--ev-text-2xl);
+  font-weight: var(--ev-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--ev-terracotta-700);
+}
+
+.about-value h3 {
+  margin-bottom: var(--ev-space-2);
+  font-size: var(--ev-text-lg);
+}
+
+.about-value p {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: var(--ev-leading-normal);
+  color: var(--ev-color-text-muted);
+}
+
+/* -----------------------------------------------------------------------------
+   5. Why EstateVista
+   -------------------------------------------------------------------------- */
+.about-why {
+  background-color: var(--ev-color-surface);
+}
+
+.about-why__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: clamp(24px, 4vw, 64px);
+  align-items: start;
+}
+
+.about-why__heading {
+  min-width: 0;
+}
+
+.about-why__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.about-why__item {
+  min-width: 0;
+  padding-block: var(--ev-space-4);
+  border-top: 1px solid var(--ev-color-border);
+}
+
+.about-why__item:last-child {
+  border-bottom: 1px solid var(--ev-color-border);
+}
+
+.about-why__item h3 {
+  margin-bottom: var(--ev-space-1);
+  font-size: var(--ev-text-lg);
+}
+
+.about-why__item p {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: var(--ev-leading-normal);
+  color: var(--ev-color-text-muted);
+}
+
+/* -----------------------------------------------------------------------------
+   6. Service highlights
+   -------------------------------------------------------------------------- */
+.about-services {
+  background-color: var(--ev-ivory-50);
+}
+
+.about-service {
+  height: 100%;
+  padding: var(--ev-space-5);
+  border-radius: var(--ev-radius-md);
+  background-color: var(--ev-forest-900);
+}
+
+.about-service h3 {
+  margin-bottom: var(--ev-space-2);
+  font-size: var(--ev-text-xl);
+  color: var(--ev-ivory-50);
+}
+
+.about-service p {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: var(--ev-leading-normal);
+  color: rgba(250, 247, 242, 0.78);
+}
+
+/* -----------------------------------------------------------------------------
+   7. Team
+   -------------------------------------------------------------------------- */
+.about-team {
+  background-color: var(--ev-color-surface);
+}
+
+.about-person {
+  height: 100%;
+  padding: var(--ev-space-5);
+  border: 1px solid var(--ev-color-border);
+  border-radius: var(--ev-radius-md);
+  background-color: var(--ev-ivory-50);
+}
+
+.about-person__initials {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: var(--ev-space-4);
+  border-radius: var(--ev-radius-pill);
+  background-color: var(--ev-sand-100);
+  color: var(--ev-forest-900);
+  font-family: var(--ev-font-display);
+  font-size: var(--ev-text-lg);
+  font-weight: var(--ev-weight-semibold);
+}
+
+.about-person h3 {
+  margin-bottom: var(--ev-space-1);
+  font-size: var(--ev-text-lg);
+}
+
+.about-person__role {
+  margin-bottom: var(--ev-space-3);
+  font-size: var(--ev-text-xs);
+  font-weight: var(--ev-weight-semibold);
+  letter-spacing: 0.06em;
+  line-height: var(--ev-leading-snug);
+  text-transform: uppercase;
+  color: var(--ev-terracotta-700);
+}
+
+.about-person p:last-child {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: var(--ev-leading-normal);
+  color: var(--ev-color-text-muted);
+}
+
+/* -----------------------------------------------------------------------------
+   8. Closing call to action
+   -------------------------------------------------------------------------- */
+.about-cta {
+  padding-block: clamp(56px, 7vw, 104px);
+  background-color: var(--ev-forest-900);
+  color: var(--ev-ivory-50);
+}
+
+.about-cta__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ev-space-6);
+}
+
+.about-cta__copy {
+  max-width: 56ch;
+}
+
+.about-cta h2 {
+  margin-bottom: var(--ev-space-3);
+  color: var(--ev-ivory-50);
+}
+
+.about-cta p {
+  margin: 0;
+  color: rgba(250, 247, 242, 0.82);
+}
+
+.about-cta .ev-eyebrow {
+  color: var(--ev-sage-300);
+}
+
+.about-cta__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ev-space-3);
+}
+
+.about-cta .btn-secondary {
+  --bs-btn-color: var(--ev-ivory-50);
+  --bs-btn-bg: transparent;
+  --bs-btn-border-color: rgba(250, 247, 242, 0.55);
+  --bs-btn-hover-color: var(--ev-forest-900);
+  --bs-btn-hover-bg: var(--ev-ivory-50);
+  --bs-btn-hover-border-color: var(--ev-ivory-50);
+  --bs-btn-active-color: var(--ev-forest-900);
+  --bs-btn-active-bg: var(--ev-sand-100);
+  --bs-btn-active-border-color: var(--ev-sand-100);
+  --bs-btn-focus-shadow-rgb: 250, 247, 242;
+}
+
+/* -----------------------------------------------------------------------------
+   9. Responsive adjustments
+   -------------------------------------------------------------------------- */
+@media (max-width: 991.98px) {
+  .about-hero__grid,
+  .about-story__grid,
+  .about-why__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .about-hero__title {
+    max-width: 20ch;
+  }
+
+  .about-hero__figure {
+    max-width: 560px;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .about-hero__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .about-hero__actions .btn,
+  .about-cta__actions .btn {
+    width: 100%;
+  }
+
+  .about-cta__actions {
+    width: 100%;
+  }
+}

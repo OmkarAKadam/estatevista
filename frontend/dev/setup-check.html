@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EstateVista — Environment Setup Check</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { max-width: 52rem; margin: 3rem auto; padding: 0 1.25rem; line-height: 1.55; }
+    h1 { font-size: 1.5rem; }
+    dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1rem; }
+    dt { font-weight: 600; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { padding: 1rem; border-radius: 0.5rem; background: #1113; overflow: auto; }
+    .pass { color: #16794a; font-weight: 600; }
+    .fail { color: #b3261e; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <h1>Environment Setup Check</h1>
+  <p>
+    This development-only page verifies that the static frontend can reach the
+    separately hosted API with credentialed CORS. It is not a product page.
+  </p>
+
+  <dl>
+    <dt>Frontend origin</dt>
+    <dd id="frontend-origin">—</dd>
+    <dt>API base URL</dt>
+    <dd id="api-base-url">—</dd>
+    <dt>WebSocket URL</dt>
+    <dd id="websocket-url">—</dd>
+    <dt>API health</dt>
+    <dd id="health-status">Checking…</dd>
+  </dl>
+
+  <h2>Response</h2>
+  <pre id="output">Waiting for the API…</pre>
+
+  <p>
+    If the health check fails, confirm that the backend is running on port 8080,
+    that the database is reachable, and that this page is served from one of the
+    origins in <code>APP_CORS_ALLOWED_ORIGINS</code>.
+  </p>
+
+  <script type="module" src="./setup-check.js"></script>
+</body>
+</html>

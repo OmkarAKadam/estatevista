@@ -1,0 +1,557 @@
+/* =============================================================================
+   EstateVista — home.css
+   Homepage-only composition. Depends on theme.css and components.css.
+   Shared pieces (header, footer, cards, buttons, forms) live in components.css.
+   ============================================================================= */
+
+:root {
+  --ev-home-pad: clamp(48px, 6vw, 96px);
+}
+
+/* -----------------------------------------------------------------------------
+   1. Hero
+   -------------------------------------------------------------------------- */
+.hero {
+  padding-block: clamp(32px, 4vw, 64px) var(--ev-home-pad);
+  background-color: var(--ev-ivory-50);
+}
+
+.hero__title {
+  max-width: 15ch;
+  margin-bottom: var(--ev-space-4);
+  font-size: clamp(2.25rem, 1.4rem + 2.7vw, 3.75rem);
+  line-height: 1.05;
+}
+
+.hero__lede {
+  max-width: 46ch;
+  margin-bottom: var(--ev-space-6);
+}
+
+.hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ev-space-3);
+  margin-bottom: var(--ev-space-6);
+}
+
+.hero__places {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ev-space-2) var(--ev-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--ev-text-sm);
+  color: var(--ev-color-text-muted);
+}
+
+.hero__places li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ev-space-3);
+}
+
+.hero__places li:not(:last-child)::after {
+  content: "";
+  width: 4px;
+  height: 4px;
+  border-radius: var(--ev-radius-pill);
+  background-color: var(--ev-sage-300);
+}
+
+.hero__figure {
+  position: relative;
+  margin: 0;
+  overflow: hidden;
+  border-radius: var(--ev-radius-lg);
+  box-shadow: var(--ev-shadow-md);
+}
+
+.hero__image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.hero__tag {
+  position: absolute;
+  top: var(--ev-space-4);
+  left: var(--ev-space-4);
+  max-width: calc(100% - var(--ev-space-8));
+  padding: var(--ev-space-2) var(--ev-space-3);
+  border-radius: var(--ev-radius-pill);
+  background-color: rgba(20, 52, 43, 0.92);
+  color: var(--ev-ivory-50);
+  font-size: var(--ev-text-xs);
+  font-weight: var(--ev-weight-semibold);
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+/* -----------------------------------------------------------------------------
+   2. Search interface
+   -------------------------------------------------------------------------- */
+.search-band {
+  position: relative;
+  z-index: 2;
+  padding-bottom: var(--ev-home-pad);
+}
+
+.search-panel {
+  padding: var(--ev-space-5);
+  border: 1px solid var(--ev-color-border);
+  border-radius: var(--ev-radius-md);
+  background-color: var(--ev-color-surface);
+  box-shadow: var(--ev-shadow-sm);
+}
+
+.search-panel__grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr auto;
+  gap: var(--ev-space-4);
+  align-items: end;
+}
+
+.search-panel__field {
+  min-width: 0;
+}
+
+.search-panel__action .btn {
+  padding-inline: var(--ev-space-6);
+}
+
+.search-panel__note {
+  margin: var(--ev-space-4) 0 0;
+  font-size: var(--ev-text-xs);
+  color: var(--ev-color-text-muted);
+}
+
+.search-panel [hidden] {
+  display: none !important;
+}
+
+/* -----------------------------------------------------------------------------
+   3. Featured properties
+   -------------------------------------------------------------------------- */
+.featured {
+  padding-block: var(--ev-home-pad);
+  background-color: var(--ev-ivory-50);
+}
+
+.featured__empty {
+  padding: var(--ev-space-6);
+  border: 1px dashed var(--ev-color-border);
+  border-radius: var(--ev-radius-md);
+  text-align: center;
+  color: var(--ev-color-text-muted);
+}
+
+.featured [hidden] {
+  display: none !important;
+}
+
+/* -----------------------------------------------------------------------------
+   4. Categories
+   -------------------------------------------------------------------------- */
+.categories {
+  padding-block: var(--ev-home-pad);
+  background-color: var(--ev-color-surface-alt);
+}
+
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--ev-space-5);
+}
+
+.category-tile {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  aspect-ratio: 4 / 5;
+  border-radius: var(--ev-radius-md);
+  color: var(--ev-white);
+  text-decoration: none;
+  isolation: isolate;
+}
+
+.category-tile img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 450ms ease;
+}
+
+.category-tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(
+    to top,
+    rgba(20, 52, 43, 0.94) 0%,
+    rgba(20, 52, 43, 0.58) 36%,
+    rgba(20, 52, 43, 0.12) 68%,
+    rgba(20, 52, 43, 0) 88%
+  );
+}
+
+.category-tile:hover img,
+.category-tile:focus-visible img {
+  transform: scale(1.04);
+}
+
+.category-tile:hover {
+  color: var(--ev-white);
+}
+
+.category-tile__label {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--ev-space-3);
+  padding: var(--ev-space-5);
+}
+
+.category-tile__title {
+  margin: 0;
+  font-family: var(--ev-font-display);
+  font-size: var(--ev-text-2xl);
+  font-weight: var(--ev-weight-semibold);
+  line-height: var(--ev-leading-snug);
+  color: var(--ev-white);
+}
+
+.category-tile__meta {
+  margin: var(--ev-space-1) 0 0;
+  font-size: var(--ev-text-sm);
+  color: rgba(250, 247, 242, 0.82);
+}
+
+/* Tiles sit side by side from 576px up. Reserving two lines keeps every
+   title on the same baseline even when one meta line wraps and another does
+   not, which otherwise leaves the row visibly misaligned. */
+@media (min-width: 576px) {
+  .category-tile__meta {
+    min-height: 2lh;
+  }
+}
+
+.category-tile__arrow {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(250, 247, 242, 0.45);
+  border-radius: var(--ev-radius-pill);
+  color: var(--ev-ivory-50);
+  transition: background-color var(--ev-transition-fast),
+    border-color var(--ev-transition-fast), color var(--ev-transition-fast);
+}
+
+.category-tile:hover .category-tile__arrow {
+  border-color: var(--ev-ivory-50);
+  background-color: var(--ev-ivory-50);
+  color: var(--ev-forest-900);
+}
+
+/* -----------------------------------------------------------------------------
+   5. Company introduction
+   -------------------------------------------------------------------------- */
+.intro {
+  padding-block: var(--ev-home-pad);
+  background-color: var(--ev-ivory-50);
+}
+
+.intro__figure {
+  margin: 0;
+  overflow: hidden;
+  border-radius: var(--ev-radius-lg);
+}
+
+.intro__image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+}
+
+.intro__body {
+  max-width: 54ch;
+}
+
+.intro__body p {
+  color: var(--ev-color-text-muted);
+}
+
+.intro__list {
+  margin: var(--ev-space-5) 0 var(--ev-space-6);
+  padding: 0;
+  list-style: none;
+}
+
+.intro__list li {
+  position: relative;
+  padding-left: var(--ev-space-5);
+  font-size: var(--ev-text-sm);
+  color: var(--ev-color-text);
+}
+
+.intro__list li + li {
+  margin-top: var(--ev-space-2);
+}
+
+.intro__list li::before {
+  content: "";
+  position: absolute;
+  top: 0.7em;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--ev-radius-pill);
+  background-color: var(--ev-terracotta-500);
+}
+
+/* -----------------------------------------------------------------------------
+   6. Principles
+   -------------------------------------------------------------------------- */
+.principles {
+  padding-block: var(--ev-home-pad);
+  background-color: var(--ev-color-surface);
+}
+
+.principle {
+  height: 100%;
+  padding: var(--ev-space-5);
+  border: 1px solid var(--ev-color-border);
+  border-radius: var(--ev-radius-md);
+  background-color: var(--ev-ivory-50);
+}
+
+.principle__icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: var(--ev-space-4);
+  border-radius: var(--ev-radius-pill);
+  background-color: rgba(157, 181, 165, 0.22);
+  color: var(--ev-forest-900);
+}
+
+.principle h3 {
+  margin-bottom: var(--ev-space-2);
+  font-size: var(--ev-text-lg);
+}
+
+.principle p {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: var(--ev-leading-normal);
+  color: var(--ev-color-text-muted);
+}
+
+/* -----------------------------------------------------------------------------
+   7. Testimonials
+   -------------------------------------------------------------------------- */
+.voices {
+  padding-block: var(--ev-home-pad);
+  background-color: var(--ev-ivory-50);
+}
+
+.voices__notice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ev-space-2);
+  margin-top: var(--ev-space-3);
+  padding: var(--ev-space-1) var(--ev-space-3);
+  border-radius: var(--ev-radius-pill);
+  background-color: var(--ev-sand-100);
+  font-size: var(--ev-text-xs);
+  font-weight: var(--ev-weight-medium);
+  color: var(--ev-slate-600);
+}
+
+.voice {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  gap: var(--ev-space-5);
+  padding: var(--ev-space-5);
+  border: 1px solid var(--ev-color-border);
+  border-radius: var(--ev-radius-md);
+  background-color: var(--ev-color-surface);
+}
+
+.voice__quote {
+  margin: 0;
+  font-family: var(--ev-font-display);
+  font-size: var(--ev-text-lg);
+  line-height: 1.45;
+  color: var(--ev-forest-900);
+}
+
+.voice__person {
+  display: flex;
+  align-items: center;
+  gap: var(--ev-space-3);
+  margin-top: auto;
+  padding-top: var(--ev-space-4);
+  border-top: 1px solid var(--ev-color-border);
+}
+
+.voice__initials {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--ev-radius-pill);
+  background-color: var(--ev-sand-100);
+  color: var(--ev-forest-900);
+  font-size: var(--ev-text-sm);
+  font-weight: var(--ev-weight-semibold);
+}
+
+.voice__name {
+  margin: 0;
+  font-size: var(--ev-text-sm);
+  font-style: normal;
+  font-weight: var(--ev-weight-semibold);
+  color: var(--ev-color-text);
+}
+
+.voice__role {
+  margin: 0;
+  font-size: var(--ev-text-xs);
+  color: var(--ev-color-text-muted);
+}
+
+/* -----------------------------------------------------------------------------
+   8. Closing call to action
+   -------------------------------------------------------------------------- */
+.cta-band {
+  padding-block: clamp(56px, 7vw, 104px);
+  background-color: var(--ev-forest-900);
+  color: var(--ev-ivory-50);
+}
+
+.cta-band__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ev-space-6);
+}
+
+.cta-band__copy {
+  max-width: 56ch;
+}
+
+.cta-band h2 {
+  margin-bottom: var(--ev-space-3);
+  color: var(--ev-ivory-50);
+}
+
+.cta-band p {
+  margin: 0;
+  color: rgba(250, 247, 242, 0.82);
+}
+
+/* The terracotta eyebrow is too dark for a forest surface. */
+.cta-band .ev-eyebrow {
+  color: var(--ev-sage-300);
+}
+
+/* -----------------------------------------------------------------------------
+   9. Responsive adjustments
+   -------------------------------------------------------------------------- */
+@media (min-width: 992px) {
+  .search-panel {
+    margin-top: calc(var(--ev-space-7) * -1);
+  }
+}
+
+@media (max-width: 991.98px) {
+  .hero__title {
+    max-width: 20ch;
+  }
+
+  .search-panel__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .search-panel__field--wide,
+  .search-panel__action {
+    grid-column: 1 / -1;
+  }
+
+  .category-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .category-tile {
+    aspect-ratio: 4 / 3;
+  }
+
+  .category-tile:last-child {
+    grid-column: 1 / -1;
+    aspect-ratio: 16 / 9;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .hero__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero__actions .btn {
+    width: 100%;
+  }
+
+  .search-panel {
+    padding: var(--ev-space-4);
+  }
+
+  .search-panel__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .category-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .category-tile,
+  .category-tile:last-child {
+    grid-column: auto;
+    aspect-ratio: 4 / 3;
+  }
+
+  .category-tile__label {
+    padding: var(--ev-space-4);
+  }
+
+  .cta-band__inner .btn {
+    width: 100%;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   10. Motion preferences
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .category-tile:hover img {
+    transform: none;
+  }
+}

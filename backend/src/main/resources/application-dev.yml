@@ -1,0 +1,17 @@
+# Local development profile.
+# Activate with SPRING_PROFILES_ACTIVE=dev.
+
+spring:
+  jpa:
+    show-sql: false
+  flyway:
+    # Development only: surfaces migration progress in the console.
+    loggers: slf4j
+
+logging:
+  level:
+    com.estatevista: DEBUG
+    org.springframework.web: DEBUG
+    org.springframework.security: INFO
+    org.springframework.session: INFO
+    org.flywaydb: INFO

@@ -1,0 +1,28 @@
+# Production profile.
+# Deployment values are supplied by Render environment variables; nothing here
+# contains a real credential or a production hostname.
+# Activate with SPRING_PROFILES_ACTIVE=prod.
+
+server:
+  forward-headers-strategy: native
+  servlet:
+    session:
+      cookie:
+        secure: true
+
+spring:
+  datasource:
+    # No defaults: startup must fail if production database configuration is absent.
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    root: INFO
+    com.estatevista: INFO
+    org.springframework.web: INFO
+    org.springframework.security: INFO
+    org.flywaydb: INFO

@@ -1,0 +1,75 @@
+# EstateVista V2 backend — shared configuration.
+# Environment-specific overrides live in application-dev.yml / application-prod.yml.
+# No credentials are stored in this file.
+
+server:
+  port: ${SERVER_PORT:8080}
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
+  error:
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        name: EV_SESSION
+        http-only: true
+        secure: ${SESSION_COOKIE_SECURE:false}
+        same-site: lax
+        path: /
+
+spring:
+  application:
+    name: estatevista-api
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/estatevista}
+    username: ${DB_USERNAME:estatevista}
+    password: ${DB_PASSWORD:}
+    hikari:
+      pool-name: EstateVistaPool
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      connection-timeout: 10000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    validate-on-migrate: true
+    clean-disabled: true
+  session:
+    timeout: 30m
+    jdbc:
+      # Schema is owned by Flyway (see db/migration), never by Spring Session.
+      initialize-schema: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+app:
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5500,http://127.0.0.1:5500}
+  websocket:
+    endpoint: /ws
+    allowed-origins: ${APP_WEBSOCKET_ALLOWED_ORIGINS:http://localhost:5500,http://127.0.0.1:5500}
+
+logging:
+  level:
+    root: INFO
+    com.estatevista: INFO
+    org.springframework.web: INFO
+    org.springframework.security: INFO
+    org.flywaydb: INFO
