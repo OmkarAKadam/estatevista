@@ -1,10 +1,12 @@
 # Automated test profile.
 # Activate with SPRING_PROFILES_ACTIVE=test.
 #
-# The Stage 2 unit and web-layer tests do not start a Spring context and need no
-# database. Integration tests added in later sub-stages must point these values
-# at an isolated PostgreSQL database and must never target development or
-# production data.
+# Web-layer tests start no Spring context and need no database. The opt-in
+# persistence tests (com.estatevista.persistence) run only when TEST_DB_URL is
+# set and must never target development or production data.
+#
+# Note: password deliberately has no usable default. A real test database must
+# supply TEST_DB_PASSWORD explicitly.
 
 spring:
   datasource:
