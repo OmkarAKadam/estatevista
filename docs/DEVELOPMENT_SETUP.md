@@ -78,17 +78,26 @@ EstateVista/
 │   │   │   │   ├── CorsConfig.java
 │   │   │   │   ├── SecurityConfig.java
 │   │   │   │   └── WebSocketConfig.java
-│   │   │   └── common/
-│   │   │       ├── exception/     # error codes, handler, /error controller
-│   │   │       ├── health/HealthController.java
-│   │   │       └── response/      # standard API error envelope
+│   │   │   ├── common/
+│   │   │   │   ├── exception/     # error codes, handler, /error controller
+│   │   │   │   ├── health/HealthController.java
+│   │   │   │   └── response/      # standard API error envelope
+│   │   │   ├── user/              # roles, users, agent profiles
+│   │   │   ├── property/          # properties, categories, details, images, amenities
+│   │   │   ├── favorite/          # buyer favorites
+│   │   │   ├── inquiry/           # buyer inquiries
+│   │   │   ├── chat/              # conversations, messages, read states
+│   │   │   ├── notification/      # user notifications
+│   │   │   └── audit/             # audit history
 │   │   └── resources/
 │   │       ├── application.yml
 │   │       ├── application-dev.yml
 │   │       ├── application-test.yml
 │   │       ├── application-prod.yml
-│   │       └── db/migration/V1__spring_session_schema.sql
+│   │       └── db/migration/      # V1 Spring Session; V2–V14 business schema
 │   └── src/test/java/com/estatevista/
+│       ├── common/                # web-layer contract tests
+│       └── persistence/           # opt-in PostgreSQL integration tests
 ├── frontend/
 │   ├── dev-server.mjs        # zero-dependency static server, port 5500
 │   ├── assets/js/core/config.js
@@ -219,13 +228,19 @@ nonstandard port. It is not a development or production configuration.
   `spring.session.jdbc.initialize-schema: never`.
 - `V1__spring_session_schema.sql` creates the framework-owned
   `SPRING_SESSION` and `SPRING_SESSION_ATTRIBUTES` tables approved by SD-03.
-- No business/domain tables are created in Stage 1.8.
+  It must never be modified or renumbered.
+- `V2`–`V14` create the approved business schema (18 tables, seeded roles and
+  property categories, constraints, and indexes). The sequence is defined in
+  `DATABASE_DESIGN.md` §19; the implementation and evidence are recorded in
+  `docs/validation/stage-2.3-2.4-completion-report.md`.
 - `ddl-auto` is `validate`; Hibernate must never create or alter schema.
 - `flyway.clean-disabled` is `true`.
+- A fresh database must migrate through all 14 versions before the application
+  starts. Startup fails if Hibernate validation finds a schema mismatch.
 
 PostgreSQL folds unquoted identifiers to lowercase, so the physical tables are
-`spring_session`, `spring_session_attributes`, and `flyway_schema_history`.
-Spring Session queries them with unquoted names and works correctly.
+`spring_session`, `spring_session_attributes`, `users`, `properties`, and so on.
+Spring Session and JPA queries use unquoted names and work correctly.
 
 ---
 
@@ -409,6 +424,28 @@ The curated, trimmed command transcript for these checks is retained at
 [`docs/validation/stage-1.8-evidence.txt`](validation/stage-1.8-evidence.txt).
 Session identifiers in that transcript are redacted.
 
+### 10.1 Stage 2.3 / 2.4 persistence validation (2026-11-14)
+
+Executed against a throwaway PostgreSQL 18.3 cluster on port `55433`
+(`estatevista` and `estatevista_test` databases, trust authentication, deleted
+after validation). Full evidence and acceptance assessment are in
+`docs/validation/stage-2.3-2.4-completion-report.md`.
+
+| # | Check | Result |
+| --- | --- | --- |
+| 1 | Fresh cold build (`mvn -B clean package`) | PASS — `BUILD SUCCESS` |
+| 2 | Fresh migration V1→V14 | PASS — all 14 versions applied, `success = true` |
+| 3 | Business tables created | PASS — 18 tables |
+| 4 | Foreign keys | PASS — 28, including composite `(category_id, subtype_id)` |
+| 5 | CHECK constraints | PASS — 6 (account status, listing type, status, price, latitude, longitude) |
+| 6 | Indexes | PASS — 53, including partial primary-image unique index |
+| 7 | Migration idempotency | PASS — restart reported version `14`, no reapply |
+| 8 | Hibernate `ddl-auto=validate` | PASS — application started, health `UP` |
+| 9 | Case-insensitive duplicate email | PASS — rejected by `uk_users_email` |
+| 10 | Real-PostgreSQL integration tests | PASS — 11 tests |
+| 11 | Full `mvn -B clean verify` with test DB | PASS — 17 tests, 0 failures, 0 errors, 0 skipped |
+| 12 | `V1__spring_session_schema.sql` unchanged | PASS — no diff |
+
 ---
 
 ## 11. Known limitations and deferred work
@@ -418,7 +455,12 @@ Session identifiers in that transcript are redacted.
 - No WebSocket message handlers or STOMP authorization.
 - CSRF design (SD-53) is not implemented; only framework defaults are active.
 - Automated tests cover the health endpoint and the error-response contract
-  (Stage 2.2); no authentication or business-flow tests exist yet.
+  (Stage 2.2) plus schema/mapping persistence tests (Stage 2.3/2.4). Persistence
+  tests run only when `TEST_DB_URL` points at an isolated PostgreSQL database;
+  they are skipped otherwise. No authentication or business-flow tests exist.
+- The persistence layer has no services, controllers, or endpoints; role,
+  ownership, participant, and status-transition rules remain application-layer
+  work for later stages.
 - The setup-check page was validated at the HTTP/API layer, not through an
   automated browser.
 - Production deployment, TLS, email, and media storage are not configured.
@@ -501,6 +543,12 @@ The installed service uses `scram-sha-256`. Set a known password for the
 development role instead of weakening `pg_hba.conf`. Use the isolated cluster
 approach only for throwaway validation.
 
+**Persistence tests do not run**
+`BusinessSchemaIntegrationTest` is disabled unless `TEST_DB_URL` is set. Provide
+`TEST_DB_URL`, `TEST_DB_USERNAME`, and `TEST_DB_PASSWORD` for an isolated
+PostgreSQL database. The `test` profile defaults the password to empty, so a
+real test database must supply it explicitly.
+
 ---
 
 ## 15. Stage boundary
@@ -515,4 +563,6 @@ Stage 2.1 reconciles the repository baseline (HEAD `9e20ed5`, clean tree). Stage
 2.2 adds the layered application foundation: the `test` profile, the standard
 API error envelope and handlers, a replacement `/error` controller, and
 web-layer tests. It also closes the temporary public WebSocket handshake until
-authentication exists. Business schema work starts in Stage 2.3.
+authentication exists. Stage 2.3 creates the approved business schema through
+Flyway `V2`–`V14`; Stage 2.4 adds the matching JPA entities and repositories.
+Business services, authentication, and API endpoints remain in later stages.

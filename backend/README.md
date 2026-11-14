@@ -3,10 +3,11 @@
 Spring Boot modular monolith for the EstateVista V2 REST API and
 WebSocket/STOMP endpoint.
 
-**Stage 2.2 status:** application foundation established. The build, profiles,
-PostgreSQL connectivity, Flyway, Spring Session JDBC, security shell, global
-error handling, and health endpoints are in place. Authentication, business
-modules, and WebSocket message handling are not implemented.
+**Stage 2.4 status:** application foundation and persistence layer established.
+The build, profiles, PostgreSQL connectivity, Flyway, Spring Session JDBC,
+security shell, global error handling, health endpoints, approved business
+schema, JPA entities, and repositories are in place. Authentication, business
+services, API endpoints, and WebSocket message handling are not implemented.
 
 ## Quick start
 
@@ -57,24 +58,69 @@ backend/
     │   ├── java/com/estatevista/
     │   │   ├── EstateVistaApplication.java
     │   │   ├── config/            # CORS, security shell, WebSocket, app properties
-    │   │   └── common/
-    │   │       ├── exception/     # Error codes, ApiException, global handler, /error
-    │   │       ├── health/        # setup-only health endpoint
-    │   │       └── response/      # standard API error envelope
+    │   │   ├── common/
+    │   │   │   ├── exception/     # Error codes, ApiException, global handler, /error
+    │   │   │   ├── health/        # setup-only health endpoint
+    │   │   │   └── response/      # standard API error envelope
+    │   │   ├── user/              # Role, User, AgentProfile + repositories
+    │   │   ├── property/          # Property, category/subtype, details, images,
+    │   │   │                      # amenities + repositories
+    │   │   ├── favorite/          # Favorite + repository
+    │   │   ├── inquiry/           # Inquiry + repository
+    │   │   ├── chat/              # Conversation, Message, ConversationReadState
+    │   │   │                      # + repositories
+    │   │   ├── notification/      # Notification + repository
+    │   │   └── audit/             # AuditLog + repository
     │   └── resources/
     │       ├── application.yml
     │       ├── application-dev.yml
     │       ├── application-test.yml
     │       ├── application-prod.yml
-    │       └── db/migration/      # Flyway migrations (V1 = Spring Session)
+    │       └── db/migration/      # Flyway V1 (Spring Session) + V2–V14 (business)
     └── test/java/com/estatevista/
-        └── common/                # health and error-contract tests
+        ├── common/                # health and error-contract web tests
+        └── persistence/           # opt-in PostgreSQL schema/mapping tests
 ```
 
 Business modules will follow `SYSTEM_ARCHITECTURE.md` §5.3
 (`com.estatevista.auth`, `user`, `property`, `favorite`, `inquiry`, `chat`,
-`notification`, `dashboard`, `audit`, `storage`). Empty placeholder packages are
-deliberately not created.
+`notification`, `dashboard`, `audit`, `storage`). Only packages with approved
+persistence types exist; services and controllers are added in later stages.
+
+## Database schema
+
+Flyway owns the schema and runs all migrations on startup. Hibernate is
+configured with `ddl-auto: validate`; it never creates or alters tables.
+
+| Migrations | Contents |
+| --- | --- |
+| `V1__spring_session_schema.sql` | Framework-owned Spring Session JDBC tables (SD-03) |
+| `V2` | `roles`, `users` plus seeded BUYER/AGENT/ADMIN roles |
+| `V3` | `agent_profiles` |
+| `V4` | `property_categories`, `property_subtypes` plus seeded RESIDENTIAL/COMMERCIAL categories |
+| `V5` | `properties`, `property_residential_details`, `property_commercial_details` |
+| `V6` | `property_images` |
+| `V7` | `amenities`, `property_amenities` |
+| `V8` | `favorites` |
+| `V9` | `inquiries` |
+| `V10` | `conversations`, `messages` |
+| `V11` | `conversation_read_states` |
+| `V12` | `notifications` |
+| `V13` | `audit_logs` |
+| `V14` | Approved indexes from `DATABASE_DESIGN.md` §15 |
+
+Database-level rules include the case-insensitive unique email index, a
+composite `(category_id, subtype_id)` foreign key that binds a property to a
+subtype in the same category, status/type/price/coordinate CHECK constraints,
+and a partial unique index for one primary image per property. Foreign-key
+delete behavior follows `DATABASE_DESIGN.md` §17.1: `RESTRICT` for business
+history, `CASCADE` only for dependent rows, and `SET NULL` where retaining the
+record matters more than the reference.
+
+Role-specific authorization, account-status eligibility, conversation
+participant rules, last-read-message scoping, subtype/detail-table consistency,
+and email normalization remain application-layer rules; they are not enforced
+by these mappings. See `docs/validation/stage-2.3-2.4-completion-report.md`.
 
 ## API errors
 
@@ -100,10 +146,21 @@ are never returned.
 ## Tests
 
 ```powershell
+# Web-layer tests only; no database required (the PostgreSQL tests are skipped)
+mvn clean verify
+
+# Full run including real-PostgreSQL persistence tests
+$env:TEST_DB_URL = "jdbc:postgresql://localhost:5432/estatevista_test"
+$env:TEST_DB_USERNAME = "estatevista"
+$env:TEST_DB_PASSWORD = "your-local-test-password"
 mvn clean verify
 ```
 
-Current tests are web-layer unit tests and do not require a database. The
-`test` profile is reserved for database-backed integration tests added in later
-sub-stages; point `TEST_DB_URL`, `TEST_DB_USERNAME`, and `TEST_DB_PASSWORD` at an
-isolated database.
+`BusinessSchemaIntegrationTest` verifies Flyway history, entity metadata,
+repository wiring, column types, full relationship persistence, enum storage,
+and database constraint enforcement. It is enabled only when `TEST_DB_URL` is
+set, uses the `test` profile, and rolls back its transactions. Never point it at
+a development or production database.
+
+Stage 2.4 test totals: 6 web-layer tests plus 11 PostgreSQL integration tests
+(17 total, 0 failures, 0 errors, 0 skipped) when the test database is supplied.
