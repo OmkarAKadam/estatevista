@@ -3,13 +3,14 @@
 Spring Boot modular monolith for the EstateVista V2 REST API and
 WebSocket/STOMP endpoint.
 
-**Stage 2.6 status:** application foundation, persistence layer, validation
-infrastructure, configuration hardening, and logging/health controls are
-established. The build, profiles, PostgreSQL connectivity, Flyway, Spring
-Session JDBC, security shell, global error handling, health endpoints, approved
-business schema, JPA entities, and repositories are in place. Authentication,
-business services, API endpoints, and WebSocket message handling are not
-implemented.
+**Stage 2.8 status:** the backend foundation is established and internally
+verified. The build, profiles, PostgreSQL connectivity, Flyway, Spring Session
+JDBC, security shell, global error handling, health endpoints, approved business
+schema, JPA entities, and repositories are in place. Stage 2.7 adds the automated
+test strategy: 83 tests (60 unit/web-layer and 23 PostgreSQL-backed), JaCoCo
+coverage reporting, a repeatable isolated-cluster script, and a CI workflow.
+Authentication, business services, API endpoints, and WebSocket message handling
+are not implemented. This is not a production-readiness claim.
 
 ## Quick start
 
@@ -60,6 +61,8 @@ backend/
 ├── pom.xml
 ├── .env.example
 ├── .gitignore
+├── scripts/
+│   └── postgres-test-cluster.ps1  # disposable test cluster + full verification
 └── src/
     ├── main/
     │   ├── java/com/estatevista/
@@ -85,9 +88,12 @@ backend/
     │       ├── application-prod.yml
     │       └── db/migration/      # Flyway V1 (Spring Session) + V2–V14 (business)
     └── test/java/com/estatevista/
-        ├── common/                # health and error-contract web tests
-        ├── config/                # security-chain, CORS, and origin-validation tests
-        └── persistence/           # opt-in PostgreSQL schema/mapping tests
+        ├── ApplicationIntegrationTest.java  # full context + real PostgreSQL
+        ├── common/                # health, error-contract, and error-model tests
+        ├── config/                # configuration, security-chain, CORS, origin tests
+        ├── property/entity/       # composite identifier tests
+        ├── chat/entity/           # composite identifier tests
+        └── persistence/           # real-PostgreSQL schema/mapping tests
 ```
 
 Business modules will follow `SYSTEM_ARCHITECTURE.md` §5.3
@@ -177,11 +183,26 @@ logged.
 
 ## Tests
 
+The recommended full verification reuses one disposable PostgreSQL cluster,
+runs Maven, and stops the cluster afterwards:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\postgres-test-cluster.ps1 -Action verify
+```
+
+The script initialises `backend/.test-postgres` on `localhost:55433` with trust
+authentication, creates `estatevista_test`, exports `TEST_DB_*`, and runs
+`mvn -B clean verify`. It never modifies the installed PostgreSQL service. The
+cluster directory and log are Git-ignored. See
+[`../docs/TESTING_STRATEGY.md`](../docs/TESTING_STRATEGY.md) for the full strategy.
+
+Manual equivalent:
+
 ```powershell
 # Web-layer tests only; no database required (the PostgreSQL tests are skipped)
 mvn clean verify
 
-# Full run including real-PostgreSQL persistence tests
+# Full run including real-PostgreSQL integration tests
 $env:TEST_DB_URL = "jdbc:postgresql://localhost:5432/estatevista_test"
 $env:TEST_DB_USERNAME = "estatevista"
 $env:TEST_DB_PASSWORD = "your-local-test-password"
@@ -189,17 +210,31 @@ mvn clean verify
 ```
 
 `BusinessSchemaIntegrationTest` verifies Flyway history, entity metadata,
-repository wiring, column types, full relationship persistence, enum storage,
-and database constraint enforcement. It is enabled only when `TEST_DB_URL` is
-set, uses the `test` profile, and rolls back its transactions. Never point it at
-a development or production database.
+repository wiring, column types, full relationship persistence (including both
+residential and commercial detail tables), enum storage, and database constraint
+enforcement. `ApplicationIntegrationTest` starts the complete application context
+against PostgreSQL and verifies migration state, Hibernate validation, health
+endpoints, Actuator exposure, deny-by-default security, `/ws` denial, CSRF
+failure, and credentialed CORS. Both are enabled only when `TEST_DB_URL` is set,
+use the `test` profile, and roll back their transactions. Never point them at a
+development or production database.
 
-Web-layer tests cover the health endpoint, the complete error-response contract,
-malformed-request log redaction, the deny-by-default security chain, CSRF
-rejection, CORS behavior, and exact-origin validation. They start no
-database-backed context.
+Unit and web-layer tests cover the health endpoint, the complete error-response
+contract and error-code mapping, malformed-request log redaction, the
+deny-by-default security chain, CSRF rejection, CORS behavior, configuration
+contracts for shared/production profiles, and composite identifier equality.
 
-Stage 2.5/2.6 test totals: 29 web-layer tests plus 11 PostgreSQL integration
-tests (40 total, 0 failures, 0 errors, 0 skipped) when the test database is
-supplied. Without `TEST_DB_URL`, the 29 web-layer tests run and the 11
-persistence tests are skipped.
+Current totals with the test database supplied: **83 tests, 0 failures, 0
+errors, 0 skipped** (60 unit/web-layer plus 23 PostgreSQL-backed). Without
+`TEST_DB_URL`, the 60 unit/web-layer tests run and the 23 integration tests are
+skipped.
+
+JaCoCo generates `target/site/jacoco/` during `verify`:
+instruction coverage 70.09%, branch coverage 75.45%, line coverage 65.94%. No
+coverage threshold is enforced because Stage 2 has no approved gate; coverage is
+reported as execution evidence, not as proof of correctness.
+
+The GitHub Actions workflow `.github/workflows/backend-verify.yml` runs the same
+`mvn -B clean verify` against a `postgres:18` service container on Java 21 and
+uploads the Surefire and JaCoCo reports. It has not been executed yet because
+this branch has not been pushed.

@@ -1,8 +1,8 @@
 # EstateVista V2 — Development & Environment Setup
 
-**Stage:** 2.6 — Configuration, Logging & Health Check Infrastructure
-**Status:** Repository, persistence, validation, configuration, and logging
-baseline complete and validated locally
+**Stage:** 2.8 — Backend Integration Review & Stage 2 Closure
+**Status:** Repository, persistence, validation, configuration, logging, and
+automated test baseline complete and validated locally
 **Last validated:** 2026-11-15 (Windows, PowerShell, local PostgreSQL 18.3)
 
 This document describes the actual, validated development environment for the
@@ -71,6 +71,8 @@ EstateVista/
 │   ├── .env.example          # dummy values only; safe to commit
 │   ├── .gitignore            # ignores .env, target/, logs, IDE files
 │   ├── README.md
+│   ├── scripts/
+│   │   └── postgres-test-cluster.ps1   # disposable test DB + full verification
 │   ├── src/main/
 │   │   ├── java/com/estatevista/
 │   │   │   ├── EstateVistaApplication.java
@@ -204,9 +206,40 @@ The installed PostgreSQL service on the validation machine uses
 the validation run used an isolated temporary cluster instead (next section).
 Do not weaken the installed service's authentication to make local setup work.
 
-### 5.2 Isolated validation cluster (used for this stage)
+### 5.2 Repeatable isolated test cluster (used for this stage)
 
-A temporary cluster avoids changing the installed service:
+The integration tests require a real PostgreSQL database. Testcontainers is not
+used because Docker is not installed or available in this environment. Instead,
+`backend/scripts/postgres-test-cluster.ps1` provisions a disposable cluster that
+never touches the installed service:
+
+```powershell
+# Full verification: init/start cluster, run mvn -B clean verify, stop cluster
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\postgres-test-cluster.ps1 -Action verify
+
+# Or leave the cluster running for repeated runs
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\postgres-test-cluster.ps1 -Action start
+$env:TEST_DB_URL = "jdbc:postgresql://localhost:55433/estatevista_test"
+$env:TEST_DB_USERNAME = "postgres"
+$env:TEST_DB_PASSWORD = ""
+mvn -B clean verify
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\postgres-test-cluster.ps1 -Action stop
+```
+
+Facts about the script:
+
+- Cluster directory: `backend/.test-postgres` (Git-ignored, outside `target/` so
+  `mvn clean` cannot delete a running cluster).
+- Port: `55433` (the installed service on `5432` is not used).
+- Authentication: `trust`, localhost only.
+- Database: `estatevista_test`.
+- Actions: `verify`, `start`, `stop`, `status`.
+- `verify` always stops the cluster, even when Maven fails.
+
+Trust authentication is acceptable only for this throwaway cluster on a
+nonstandard port. It is not a development or production configuration.
+
+A manual throwaway cluster remains possible if the script cannot be used:
 
 ```powershell
 $pg = "C:\Program Files\PostgreSQL\18\bin"
@@ -224,9 +257,6 @@ $env:DB_URL = "jdbc:postgresql://localhost:55432/estatevista"
 $env:DB_USERNAME = "postgres"
 $env:DB_PASSWORD = ""
 ```
-
-Trust authentication is acceptable only for this throwaway cluster on a
-nonstandard port. It is not a development or production configuration.
 
 ### 5.3 Schema ownership
 
@@ -508,6 +538,39 @@ after validation). The full acceptance assessment is in
 | 19 | Structured JSON logs, formal redaction policy, log retention | NOT PERFORMED — requirements remain unspecified (SD-44 deferred) |
 | 20 | Production deployment/TLS/proxy checks | NOT PERFORMED — out of scope and no production credentials |
 
+### 10.3 Stage 2.7 / 2.8 automated verification (2026-11-15)
+
+Executed from `backend/` with
+`postgres-test-cluster.ps1 -Action verify` against a disposable PostgreSQL 18.3
+cluster on port `55433`. The full acceptance assessment is in
+`docs/validation/stage-2.7-2.8-completion-report.md`.
+
+A database-free run (`mvn -B clean verify` without `TEST_DB_URL`) executed 60
+tests, skipped the 23 PostgreSQL-backed tests, and passed with 0 failures and 0
+errors. That mode does not verify persistence.
+
+| # | Check | Result |
+| --- | --- | --- |
+| 1 | Full `mvn -B clean verify` with test DB (run 1) | PASS — 83 tests, 0 failures, 0 errors, 0 skipped; `BUILD SUCCESS`; 1 min 38 s |
+| 2 | Full `mvn -B clean verify` with test DB (run 2) | PASS — identical totals; 1 min 37 s; confirms repeatability with a fresh cluster |
+| 3 | Flyway validation | PASS — 14 migrations validated, schema at version 14 |
+| 4 | Hibernate schema validation | PASS — `ddl-auto=validate`; full context started |
+| 5 | Full-context integration tests | PASS — 7 tests: migration state, health, Actuator, `/ws`, unknown route, CORS, CSRF |
+| 6 | Persistence/schema tests | PASS — 16 tests: metadata, repositories, column types, full graph, commercial details, enums, constraints |
+| 7 | Unit/web-layer tests | PASS — 60 tests across error contract, configuration, security, CORS, and identifiers |
+| 8 | JaCoCo report | PASS — instruction 70.09% (1720/2454), branch 75.45% (83/110), line 65.94% (517/784); no threshold enforced |
+| 9 | Packaged-jar runtime smoke (dev profile, port 18080) | PASS — started in 29.6 s; Flyway validated 14 migrations; `/api/v1/health` 200; `/actuator/health` 200 |
+| 10 | Actuator restriction at runtime | PASS — `/actuator/beans` 401 JSON envelope |
+| 11 | Deny-by-default at runtime | PASS — `/ws` and `/api/v1/not-implemented` 401 JSON envelopes |
+| 12 | Credentialed CORS at runtime | PASS — allowed origin 200 with matching origin, credentials, exposed `X-CSRF-TOKEN`; disallowed origin 403 without allow-origin |
+| 13 | CSRF default at runtime | PASS — tokenless `POST` 403 JSON envelope |
+| 14 | Session persistence at runtime | PASS — `EV_SESSION` cookie `HttpOnly; SameSite=Lax`; row in `spring_session`; `MAX_INACTIVE_INTERVAL` 1800 |
+| 15 | CI workflow | CONFIGURED, NOT EXECUTED — `.github/workflows/backend-verify.yml`; branch has not been pushed |
+| 16 | `V1`–`V14` unchanged | PASS — no migration diff |
+| 17 | Browser E2E / production deployment | NOT PERFORMED — no browser automation and no production credentials |
+
+No unavailable check is reported as PASS.
+
 ---
 
 ## 11. Known limitations and deferred work
@@ -530,11 +593,24 @@ after validation). The full acceptance assessment is in
   configured.
 - Multipart and some data-binding failures can fall through to the generic
   `500` handler; they are safe (no internal detail) but not mapped to `400`.
-- Automated tests cover the health endpoint, the error-response contract,
-  security-chain/CORS behavior, and origin validation (Stages 2.2/2.5/2.6) plus
-  schema/mapping persistence tests (Stage 2.3/2.4). Persistence tests run only
-  when `TEST_DB_URL` points at an isolated PostgreSQL database; they are skipped
-  otherwise. No authentication or business-flow tests exist.
+- Automated tests cover the health endpoint, the complete error-response
+  contract, configuration contracts, security-chain/CORS behavior, origin
+  validation, and composite identifiers (Stages 2.2/2.5/2.6/2.7) plus schema,
+  mapping, and constraint verification (Stage 2.3/2.4/2.7). The suite is 83 tests
+  when `TEST_DB_URL` points at an isolated PostgreSQL database: 60 unit/web-layer
+  and 23 PostgreSQL-backed. Without `TEST_DB_URL`, the 23 integration tests are
+  skipped and are not represented as persistence coverage. No authentication or
+  business-flow tests exist because those features are not implemented.
+- Testcontainers is not used because Docker is not available in the current
+  environment. The repository provides a disposable-cluster script instead, and
+  the CI workflow uses a `postgres:18` service container. Like `TEST_DB_URL`
+  itself, this is an environment/provisioning choice, not an application
+  dependency.
+- The GitHub Actions workflow is committed but has not run: the branch has not
+  been pushed. CI execution remains unverified until the first push.
+- JaCoCo reports coverage but enforces no threshold, because no coverage gate has
+  been approved. Current instruction coverage is 70.09%; this is an execution
+  indicator, not a correctness or production-readiness claim.
 - Render supplies `PORT`, while this application reads `SERVER_PORT`. Deployment
   configuration must bridge that mismatch; it is not resolved in this stage.
 - The persistence layer has no services, controllers, or endpoints; role,
@@ -640,10 +716,17 @@ development role instead of weakening `pg_hba.conf`. Use the isolated cluster
 approach only for throwaway validation.
 
 **Persistence tests do not run**
-`BusinessSchemaIntegrationTest` is disabled unless `TEST_DB_URL` is set. Provide
-`TEST_DB_URL`, `TEST_DB_USERNAME`, and `TEST_DB_PASSWORD` for an isolated
-PostgreSQL database. The `test` profile defaults the password to empty, so a
-real test database must supply it explicitly.
+`ApplicationIntegrationTest` and `BusinessSchemaIntegrationTest` are disabled
+unless `TEST_DB_URL` is set. Run the disposable cluster script first:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\postgres-test-cluster.ps1 -Action verify
+```
+
+For a manual setup, provide `TEST_DB_URL`, `TEST_DB_USERNAME`, and
+`TEST_DB_PASSWORD` for an isolated PostgreSQL database. The `test` profile
+defaults the password to empty, so a password-protected test database must supply
+it explicitly.
 
 ---
 
@@ -665,6 +748,10 @@ Stage 2.5 expands exception-handling and security-filter contract tests and
 removes parser messages from malformed-request logs. Stage 2.6 adds shared
 exact-origin validation, fail-fast production origin configuration, explicit
 production SQL/bind/extract logging suppression, and verified health/Actuator
-behavior. Business services, authentication, and API endpoints remain in later
-stages. SD-44 (structured logging, formal redaction policy, retention) and SD-53
-(CSRF wiring) remain incomplete; no production-readiness claim is made.
+behavior. Stage 2.7 adds the automated testing strategy: unit, web-layer,
+full-context, and persistence coverage; JaCoCo reporting; a disposable
+PostgreSQL test-cluster script; and a CI workflow. Stage 2.8 performs the
+integration review and final Stage 2 verification. Business services,
+authentication, and API endpoints remain in later stages. SD-44 (structured
+logging, formal redaction policy, retention) and SD-53 (CSRF wiring) remain
+incomplete; no production-readiness claim is made.
