@@ -123,10 +123,13 @@ public class GlobalExceptionHandler {
     })
     public ResponseEntity<ApiErrorResponse> handleMalformedRequest(
             Exception exception, HttpServletRequest request) {
-        log.debug("Malformed request at {} {}: {}",
+        // Log only the failure category. Framework parse messages can embed an
+        // excerpt of the rejected body, which must never reach the logs (SD-44,
+        // Security Architecture §11.13, §11.17, and §14.9).
+        log.debug("Malformed request at {} {} ({})",
                 request.getMethod(),
                 request.getRequestURI(),
-                exception.getMessage());
+                exception.getClass().getSimpleName());
         return respond(ErrorCode.BAD_REQUEST, null, List.of(), request);
     }
 

@@ -1,0 +1,125 @@
+package com.estatevista.config;
+
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * Verifies the deny-by-default security shell and the standard error envelope
+ * for authentication, authorization, and CSRF failures without starting a
+ * database-backed application context.
+ */
+@WebMvcTest
+@Import({SecurityConfig.class, CorsConfig.class, SecurityFilterChainTest.ProbeController.class})
+@EnableConfigurationProperties(AppProperties.class)
+@TestPropertySource(properties = {
+        "app.cors.allowed-origins=http://localhost:5500",
+        "app.websocket.endpoint=/ws",
+        "app.websocket.allowed-origins=http://localhost:5500"
+})
+class SecurityFilterChainTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Test
+    void unauthenticatedRequestReturnsUnauthorizedEnvelope() throws Exception {
+        mockMvc.perform(get("/api/v1/probe/read"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"))
+                .andExpect(jsonPath("$.error.message").value("Authentication is required"))
+                .andExpect(jsonPath("$.error.details").isArray())
+                .andExpect(jsonPath("$.path").value("/api/v1/probe/read"));
+    }
+
+    @Test
+    void authenticatedRequestDeniedByPolicyReturnsForbiddenEnvelope() throws Exception {
+        mockMvc.perform(get("/api/v1/probe/read").with(user("probe")))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"))
+                .andExpect(jsonPath("$.error.message").value("Access is denied"));
+    }
+
+    @Test
+    void mutatingRequestWithoutCsrfTokenReturnsForbiddenEnvelope() throws Exception {
+        mockMvc.perform(post("/api/v1/probe/write").with(user("probe")))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void healthEndpointRemainsPublic() throws Exception {
+        mockMvc.perform(get("/api/v1/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
+    }
+
+    @Test
+    void websocketHandshakePathRemainsDenied() throws Exception {
+        mockMvc.perform(get("/ws"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void allowedOriginPreflightReturnsCredentialedCorsHeaders() throws Exception {
+        mockMvc.perform(options("/api/v1/probe/read")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:5500"))
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"))
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, containsString("X-CSRF-TOKEN")));
+    }
+
+    @Test
+    void disallowedOriginPreflightIsRejectedWithoutCorsHeaders() throws Exception {
+        mockMvc.perform(options("/api/v1/probe/read")
+                        .header(HttpHeaders.ORIGIN, "http://evil.example.com")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));
+    }
+
+    @RestController
+    @RequestMapping("/api/v1/probe")
+    static class ProbeController {
+
+        @GetMapping("/read")
+        String read() {
+            return "ok";
+        }
+
+        @PostMapping("/write")
+        String write() {
+            return "ok";
+        }
+    }
+}
