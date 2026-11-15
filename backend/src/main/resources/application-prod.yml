@@ -19,6 +19,14 @@ spring:
   jpa:
     show-sql: false
 
+app:
+  # No localhost fallback in production. Exact deployment origins must be
+  # supplied, otherwise startup fails rather than silently allowing dev origins.
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS}
+  websocket:
+    allowed-origins: ${APP_WEBSOCKET_ALLOWED_ORIGINS}
+
 logging:
   level:
     root: INFO
@@ -26,3 +34,8 @@ logging:
     org.springframework.web: INFO
     org.springframework.security: INFO
     org.flywaydb: INFO
+    # SD-47: SQL, bind-parameter, and result-extraction logging stay off in
+    # production even if a parent logger is raised later.
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN
+    org.hibernate.orm.jdbc.extract: WARN

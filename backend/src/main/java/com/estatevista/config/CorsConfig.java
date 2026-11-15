@@ -28,18 +28,11 @@ public class CorsConfig {
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource(AppProperties properties) {
-        List<String> origins = properties.cors().allowedOrigins();
-        if (origins == null || origins.isEmpty()) {
-            throw new IllegalStateException(
-                    "app.cors.allowed-origins must contain at least one explicit origin");
-        }
-        if (origins.contains("*")) {
-            throw new IllegalStateException(
-                    "Wildcard CORS origins are not permitted when credentials are enabled");
-        }
+        List<String> origins = AllowedOrigins.requireExplicit(
+                properties.cors().allowedOrigins(), "app.cors.allowed-origins");
 
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.copyOf(origins));
+        configuration.setAllowedOrigins(origins);
         configuration.setAllowedMethods(ALLOWED_METHODS);
         configuration.setAllowedHeaders(ALLOWED_HEADERS);
         configuration.setExposedHeaders(EXPOSED_HEADERS);

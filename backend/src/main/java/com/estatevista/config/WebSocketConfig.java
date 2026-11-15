@@ -33,19 +33,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         String endpoint = properties.websocket().endpoint();
-        List<String> origins = properties.websocket().allowedOrigins();
+        List<String> origins = AllowedOrigins.requireExplicit(
+                properties.websocket().allowedOrigins(),
+                "app.websocket.allowed-origins");
 
         if (endpoint == null || endpoint.isBlank()) {
             throw new IllegalStateException(
                     "app.websocket.endpoint must be a non-empty path");
-        }
-        if (origins == null || origins.isEmpty()) {
-            throw new IllegalStateException(
-                    "app.websocket.allowed-origins must contain at least one explicit origin");
-        }
-        if (origins.contains("*")) {
-            throw new IllegalStateException(
-                    "Wildcard WebSocket origins are not permitted");
         }
 
         registry.addEndpoint(endpoint)
