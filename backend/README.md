@@ -3,11 +3,13 @@
 Spring Boot modular monolith for the EstateVista V2 REST API and
 WebSocket/STOMP endpoint.
 
-**Stage 2.4 status:** application foundation and persistence layer established.
-The build, profiles, PostgreSQL connectivity, Flyway, Spring Session JDBC,
-security shell, global error handling, health endpoints, approved business
-schema, JPA entities, and repositories are in place. Authentication, business
-services, API endpoints, and WebSocket message handling are not implemented.
+**Stage 2.6 status:** application foundation, persistence layer, validation
+infrastructure, configuration hardening, and logging/health controls are
+established. The build, profiles, PostgreSQL connectivity, Flyway, Spring
+Session JDBC, security shell, global error handling, health endpoints, approved
+business schema, JPA entities, and repositories are in place. Authentication,
+business services, API endpoints, and WebSocket message handling are not
+implemented.
 
 ## Quick start
 
@@ -42,9 +44,14 @@ validation commands are in [`../docs/DEVELOPMENT_SETUP.md`](../docs/DEVELOPMENT_
 | --- | --- | --- |
 | `dev` | `application-dev.yml` | Local debug logging and Flyway console output |
 | `test` | `application-test.yml` | Isolated test database; no production defaults |
-| `prod` | `application-prod.yml` | Secure cookie, native forwarded headers, no DB fallbacks |
+| `prod` | `application-prod.yml` | Secure cookie, native forwarded headers, no DB or origin fallbacks, INFO logging with SQL/bind/extract suppression |
 
-Shared settings live in `application.yml`.
+Shared settings live in `application.yml`. The `prod` profile has no fallback
+for `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `APP_CORS_ALLOWED_ORIGINS`, or
+`APP_WEBSOCKET_ALLOWED_ORIGINS`; startup fails if any is missing or invalid.
+Comma-separated origins are validated as exact `http`/`https` origins. Blank
+entries, wildcards, unresolved `${...}` placeholders, paths, queries, fragments,
+and user info are rejected at startup.
 
 ## Structure
 
@@ -57,7 +64,7 @@ backend/
     ├── main/
     │   ├── java/com/estatevista/
     │   │   ├── EstateVistaApplication.java
-    │   │   ├── config/            # CORS, security shell, WebSocket, app properties
+    │   │   ├── config/            # CORS, origin validation, security shell, WebSocket, app properties
     │   │   ├── common/
     │   │   │   ├── exception/     # Error codes, ApiException, global handler, /error
     │   │   │   ├── health/        # setup-only health endpoint
@@ -79,6 +86,7 @@ backend/
     │       └── db/migration/      # Flyway V1 (Spring Session) + V2–V14 (business)
     └── test/java/com/estatevista/
         ├── common/                # health and error-contract web tests
+        ├── config/                # security-chain, CORS, and origin-validation tests
         └── persistence/           # opt-in PostgreSQL schema/mapping tests
 ```
 
@@ -141,7 +149,31 @@ Every REST error uses the envelope from `API_SPECIFICATION.md` §17:
 
 Security-filter failures (401/403/CSRF) and container error dispatches use the
 same envelope. Stack traces, exception class names, SQL text, and internal paths
-are never returned.
+are never returned. Malformed-request logging records only the failure category;
+framework parser messages that can embed a rejected body excerpt are never
+logged.
+
+## Configuration, logging, and health
+
+- Exact-origin allowlists are validated once by `AllowedOrigins` and shared by
+  `CorsConfig` and `WebSocketConfig`. Startup fails rather than building a list
+  that can never match a browser origin.
+- Production requires explicit `APP_CORS_ALLOWED_ORIGINS` and
+  `APP_WEBSOCKET_ALLOWED_ORIGINS`; there are no localhost fallbacks.
+- `prod` pins root/application/Web/Security/Flyway loggers to INFO and forces
+  `org.hibernate.SQL`, `org.hibernate.orm.jdbc.bind`, and
+  `org.hibernate.orm.jdbc.extract` to WARN so SQL and bind values stay out of
+  logs even if a parent logger is raised later.
+- `dev` enables application and web debug logging; `test` reduces logging and
+  targets an isolated test database. The persistence tests run only when
+  `TEST_DB_URL` is supplied.
+- `/api/v1/health` is a minimal liveness document (`status`, `service`,
+  `timestamp`) and remains `200 UP` even when PostgreSQL is down.
+- `/actuator/health` reports the database state: `200 UP` when reachable and
+  `503 DOWN` when not. Only `health` is exposed; details are hidden, and every
+  other `/actuator/**` path returns the standard `401` envelope.
+- `/ws` remains denied by the HTTP security chain. This stage does not add
+  handshake authentication or STOMP authorization.
 
 ## Tests
 
@@ -162,5 +194,12 @@ and database constraint enforcement. It is enabled only when `TEST_DB_URL` is
 set, uses the `test` profile, and rolls back its transactions. Never point it at
 a development or production database.
 
-Stage 2.4 test totals: 6 web-layer tests plus 11 PostgreSQL integration tests
-(17 total, 0 failures, 0 errors, 0 skipped) when the test database is supplied.
+Web-layer tests cover the health endpoint, the complete error-response contract,
+malformed-request log redaction, the deny-by-default security chain, CSRF
+rejection, CORS behavior, and exact-origin validation. They start no
+database-backed context.
+
+Stage 2.5/2.6 test totals: 29 web-layer tests plus 11 PostgreSQL integration
+tests (40 total, 0 failures, 0 errors, 0 skipped) when the test database is
+supplied. Without `TEST_DB_URL`, the 29 web-layer tests run and the 11
+persistence tests are skipped.

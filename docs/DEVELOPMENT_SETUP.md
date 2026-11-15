@@ -1,8 +1,9 @@
 # EstateVista V2 — Development & Environment Setup
 
-**Stage:** 1.8 — Repository & Environment Setup
-**Status:** Project shell complete and validated locally
-**Last validated:** 2026-11-12 (Windows, PowerShell, local PostgreSQL)
+**Stage:** 2.6 — Configuration, Logging & Health Check Infrastructure
+**Status:** Repository, persistence, validation, configuration, and logging
+baseline complete and validated locally
+**Last validated:** 2026-11-15 (Windows, PowerShell, local PostgreSQL 18.3)
 
 This document describes the actual, validated development environment for the
 EstateVista V2 backend and frontend shell. It is intentionally limited to
@@ -74,6 +75,7 @@ EstateVista/
 │   │   ├── java/com/estatevista/
 │   │   │   ├── EstateVistaApplication.java
 │   │   │   ├── config/
+│   │   │   │   ├── AllowedOrigins.java
 │   │   │   │   ├── AppProperties.java
 │   │   │   │   ├── CorsConfig.java
 │   │   │   │   ├── SecurityConfig.java
@@ -96,7 +98,8 @@ EstateVista/
 │   │       ├── application-prod.yml
 │   │       └── db/migration/      # V1 Spring Session; V2–V14 business schema
 │   └── src/test/java/com/estatevista/
-│       ├── common/                # web-layer contract tests
+│       ├── common/                # web-layer contract and handler tests
+│       ├── config/                # security-chain, CORS, origin-validation tests
 │       └── persistence/           # opt-in PostgreSQL integration tests
 ├── frontend/
 │   ├── dev-server.mjs        # zero-dependency static server, port 5500
@@ -155,8 +158,8 @@ configure them in your IDE run configuration.
 | `TEST_DB_URL` | Isolated database for integration tests | `jdbc:postgresql://localhost:5432/estatevista_test` |
 | `TEST_DB_USERNAME` | Test database user | `estatevista` |
 | `TEST_DB_PASSWORD` | Test database password | local-only value; never committed |
-| `APP_CORS_ALLOWED_ORIGINS` | Exact, comma-separated CORS origins | `http://localhost:5500,http://127.0.0.1:5500` |
-| `APP_WEBSOCKET_ALLOWED_ORIGINS` | Exact, comma-separated WebSocket origins | `http://localhost:5500,http://127.0.0.1:5500` |
+| `APP_CORS_ALLOWED_ORIGINS` | Exact, comma-separated CORS origins; **required** in `prod` | `http://localhost:5500,http://127.0.0.1:5500` |
+| `APP_WEBSOCKET_ALLOWED_ORIGINS` | Exact, comma-separated WebSocket origins; **required** in `prod` | `http://localhost:5500,http://127.0.0.1:5500` |
 | `SESSION_COOKIE_SECURE` | `Secure` session cookie flag | `false` locally; must be `true` in production |
 | `FORWARD_HEADERS_STRATEGY` | Proxy header handling | `none` locally; `native` behind a trusted proxy |
 | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM` | Reserved email placeholders | dummy values only; not wired in Stage 1.8 |
@@ -164,12 +167,15 @@ configure them in your IDE run configuration.
 
 Rules:
 
-- CORS and WebSocket origins must be explicit. `*` is rejected at startup when
-  credentials are enabled.
+- CORS and WebSocket origins must be explicit comma-separated `http`/`https`
+  origins. `AllowedOrigins` rejects wildcards, blank or empty lists, unresolved
+  `${...}` placeholders, paths (including a trailing `/`), queries, fragments,
+  user info, and non-HTTP schemes at startup.
 - Production values are supplied by the hosting environment. No production
   hostname or credential is committed.
 - `application-prod.yml` deliberately has no fallback for `DB_URL`,
-  `DB_USERNAME`, or `DB_PASSWORD`; startup must fail if they are missing.
+  `DB_USERNAME`, `DB_PASSWORD`, `APP_CORS_ALLOWED_ORIGINS`, or
+  `APP_WEBSOCKET_ALLOWED_ORIGINS`; startup must fail if any is missing.
 
 ---
 
@@ -271,9 +277,14 @@ valid. Flyway logs the applied version, and Tomcat logs the listening port.
 | --- | --- | --- |
 | `dev` | `application-dev.yml` | Debug logging for application and web; Flyway logs via SLF4J |
 | `test` | `application-test.yml` | Isolated test database; reduced logging; no production fallbacks |
-| `prod` | `application-prod.yml` | `Secure` session cookie, `forward-headers-strategy: native`, no DB fallbacks, INFO logging |
+| `prod` | `application-prod.yml` | `Secure` session cookie, `forward-headers-strategy: native`, no DB or origin fallbacks, INFO logging, SQL/bind/extract at WARN |
 
-Shared settings live in `application.yml`.
+Shared settings live in `application.yml`. The `prod` profile fails fast:
+starting without `APP_CORS_ALLOWED_ORIGINS` exits with code `1` and reports
+`app.cors.allowed-origins contains an invalid origin:
+${APP_CORS_ALLOWED_ORIGINS}`; the WebSocket list behaves the same way. This is
+intentional, so a misconfigured deployment cannot silently accept development
+origins.
 
 ### Health endpoints
 
@@ -282,9 +293,27 @@ GET http://localhost:8080/api/v1/health
 GET http://localhost:8080/actuator/health
 ```
 
-The application health endpoint returns a minimal JSON document
-(`status`, `service`, `timestamp`). Actuator exposes only `health`, with
-details hidden.
+The application health endpoint returns a minimal liveness JSON document
+(`status`, `service`, `timestamp`) and does not query the database. Actuator
+exposes only `health`, with details hidden. Actuator includes the database
+indicator, so it returns `200 {"status":"UP"}` while PostgreSQL is reachable and
+`503 {"status":"DOWN"}` when it is not; `/api/v1/health` stays `200 UP` in both
+cases. Every other `/actuator/**` path (for example `/actuator/env`,
+`/actuator/beans`, `/actuator/configprops`, `/actuator/heapdump`, or
+`/actuator`) is not exposed and returns the standard `401` envelope.
+
+### Logging and exception hygiene
+
+- `GlobalExceptionHandler` logs client errors at debug and unexpected server
+  errors at error with the exception, but never logs request bodies or headers.
+- Malformed JSON and similar parser failures log only the method, path, and
+  exception simple name. Framework parser messages can contain an excerpt of the
+  rejected body and are not logged (SD-44, Security Architecture §11.13,
+  §11.17, and §14.9).
+- `prod` pins SQL, JDBC bind, and result-extraction loggers to `WARN` even if a
+  parent logger is raised later (SD-47).
+- Responses never contain stack traces, exception class names, SQL text, bean
+  names, or internal paths.
 
 ---
 
@@ -335,13 +364,16 @@ Registered for `/api/**` and `/actuator/health`:
 - Exposed response header: `X-CSRF-TOKEN` (reserved for SD-53).
 - `Access-Control-Allow-Credentials: true`.
 - Preflight cache: 3600 seconds.
-- Wildcard origins cause startup failure.
+- Wildcard, blank, malformed, placeholder, path, query, fragment, user-info, and
+  non-HTTP origins cause startup failure through the shared `AllowedOrigins`
+  validator.
 
 ### WebSocket
 
 - Native WebSocket (no SockJS), endpoint `/ws`.
 - Exact allowed origins from `APP_WEBSOCKET_ALLOWED_ORIGINS`.
-- Empty or wildcard origin lists fail startup, matching the CORS guard.
+- Empty, wildcard, and otherwise invalid origin lists fail startup through the
+  same `AllowedOrigins` validator as CORS.
 - STOMP broker destinations: `/queue`, `/topic`; application prefix `/app`;
   user prefix `/user`.
 - No message handlers, subscriptions, or authorization exist yet.
@@ -446,6 +478,36 @@ after validation). Full evidence and acceptance assessment are in
 | 11 | Full `mvn -B clean verify` with test DB | PASS — 17 tests, 0 failures, 0 errors, 0 skipped |
 | 12 | `V1__spring_session_schema.sql` unchanged | PASS — no diff |
 
+### 10.2 Stage 2.5 / 2.6 validation infrastructure (2026-11-15)
+
+Executed against the packaged jar and a throwaway PostgreSQL 18.3 cluster on
+port `55433` (`estatevista`, `estatevista_test`, trust authentication, deleted
+after validation). The full acceptance assessment is in
+`docs/validation/stage-2.5-2.6-completion-report.md`.
+
+| # | Check | Result |
+| --- | --- | --- |
+| 1 | Full `mvn -B clean verify` with test DB | PASS — 40 tests, 0 failures, 0 errors, 0 skipped; Flyway validated 14 migrations at version 14 |
+| 2 | Web-only `mvn clean verify` without test DB | PASS — 29 executed, 11 skipped, no failures |
+| 3 | Exception/logging unit tests | PASS — 13 tests, including malformed-body log redaction |
+| 4 | Security filter-chain tests | PASS — 7 tests covering 401, 403, CSRF, public health, `/ws` denial, allowed/disallowed CORS |
+| 5 | Exact-origin validator tests | PASS — 6 tests |
+| 6 | `dev` application health | PASS — `200 {"status":"UP",...}` |
+| 7 | `dev` Actuator health | PASS — `200 {"status":"UP"}` |
+| 8 | Non-exposed Actuator paths | PASS — `/actuator`, `/actuator/env`, `/actuator/beans`, `/actuator/configprops`, `/actuator/heapdump` all `401` JSON envelope |
+| 9 | `/ws` remains denied | PASS — `401` JSON envelope |
+| 10 | Unknown API path | PASS — `401` JSON envelope |
+| 11 | CORS allowed origin | PASS — `200`, matching `Access-Control-Allow-Origin`, `Access-Control-Allow-Credentials: true`, `Access-Control-Expose-Headers: X-CSRF-TOKEN` |
+| 12 | CORS disallowed origin | PASS — `403`; body is Spring's plain-text `Invalid CORS request` (known limitation) |
+| 13 | Health with PostgreSQL stopped | PASS — `/actuator/health` `503 {"status":"DOWN"}`; `/api/v1/health` `200 UP` |
+| 14 | `prod` missing origin configuration | PASS — exit code `1`, `app.cors.allowed-origins contains an invalid origin: ${APP_CORS_ALLOWED_ORIGINS}` |
+| 15 | `prod` configured startup | PASS — started on the configured port; no `DEBUG` lines; synthetic DB password absent from logs |
+| 16 | `prod` session cookie | PASS — `EV_SESSION=...; Path=/; Secure; HttpOnly; SameSite=Lax` |
+| 17 | `prod` CORS allowed origin | PASS — `200` with credentialed CORS headers |
+| 18 | `V1`–`V14` unchanged | PASS — no migration diff |
+| 19 | Structured JSON logs, formal redaction policy, log retention | NOT PERFORMED — requirements remain unspecified (SD-44 deferred) |
+| 20 | Production deployment/TLS/proxy checks | NOT PERFORMED — out of scope and no production credentials |
+
 ---
 
 ## 11. Known limitations and deferred work
@@ -454,10 +516,27 @@ after validation). Full evidence and acceptance assessment are in
 - No business modules, property CRUD, chat handling, or Cloudinary integration.
 - No WebSocket message handlers or STOMP authorization.
 - CSRF design (SD-53) is not implemented; only framework defaults are active.
-- Automated tests cover the health endpoint and the error-response contract
-  (Stage 2.2) plus schema/mapping persistence tests (Stage 2.3/2.4). Persistence
-  tests run only when `TEST_DB_URL` points at an isolated PostgreSQL database;
-  they are skipped otherwise. No authentication or business-flow tests exist.
+- SD-44 is only partially addressed. Safe logging practices and malformed-body
+  redaction are in place, but a structured JSON log format, a formal redaction
+  policy, log retention/rotation, and a correlation-ID scheme remain
+  unspecified/deferred.
+- There is no request correlation ID yet. Error envelopes expose success/code/
+  message/details/timestamp/path only.
+- Disallowed-origin CORS responses are Spring's plain-text
+  `Invalid CORS request`, not the JSON error envelope. Allowed and disallowed
+  decisions are correct; only the body format differs.
+- Actuator shares the application port. It is protected by the deny-by-default
+  chain and exposes only `health`, but a separate management port is not
+  configured.
+- Multipart and some data-binding failures can fall through to the generic
+  `500` handler; they are safe (no internal detail) but not mapped to `400`.
+- Automated tests cover the health endpoint, the error-response contract,
+  security-chain/CORS behavior, and origin validation (Stages 2.2/2.5/2.6) plus
+  schema/mapping persistence tests (Stage 2.3/2.4). Persistence tests run only
+  when `TEST_DB_URL` points at an isolated PostgreSQL database; they are skipped
+  otherwise. No authentication or business-flow tests exist.
+- Render supplies `PORT`, while this application reads `SERVER_PORT`. Deployment
+  configuration must bridge that mismatch; it is not resolved in this stage.
 - The persistence layer has no services, controllers, or endpoints; role,
   ownership, participant, and status-transition rules remain application-layer
   work for later stages.
@@ -530,8 +609,25 @@ Verify `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD`. The `prod` profile has no
 fallbacks by design.
 
 **CORS preflight fails**
-Use an exact origin from `APP_CORS_ALLOWED_ORIGINS`. Wildcards are rejected.
-Remember that `localhost` and `127.0.0.1` are different origins.
+Use an exact origin from `APP_CORS_ALLOWED_ORIGINS`. Wildcards, trailing
+slashes, paths, queries, fragments, user info, and non-HTTP schemes are rejected
+at startup and will not match a browser origin. Remember that `localhost` and
+`127.0.0.1` are different origins.
+
+**Production startup fails on an origin property**
+`prod` requires `APP_CORS_ALLOWED_ORIGINS` and
+`APP_WEBSOCKET_ALLOWED_ORIGINS`. An unresolved placeholder or an empty list
+produces `contains an invalid origin` or `must contain at least one explicit
+origin` and exit code `1`. Supply comma-separated exact origins.
+
+**Actuator returns 401**
+Only `/actuator/health` is exposed. Every other Actuator path is protected by
+the deny-by-default chain and returns the standard `401` envelope; this is
+expected, not a misconfiguration.
+
+**`/actuator/health` is DOWN but `/api/v1/health` is UP**
+Actuator includes the database indicator; the application health endpoint is a
+liveness check and does not. Check PostgreSQL connectivity and `DB_URL`.
 
 **Port already in use**
 Change `SERVER_PORT` for the API or `FRONTEND_PORT` for the dev server. Update
@@ -565,4 +661,10 @@ API error envelope and handlers, a replacement `/error` controller, and
 web-layer tests. It also closes the temporary public WebSocket handshake until
 authentication exists. Stage 2.3 creates the approved business schema through
 Flyway `V2`–`V14`; Stage 2.4 adds the matching JPA entities and repositories.
-Business services, authentication, and API endpoints remain in later stages.
+Stage 2.5 expands exception-handling and security-filter contract tests and
+removes parser messages from malformed-request logs. Stage 2.6 adds shared
+exact-origin validation, fail-fast production origin configuration, explicit
+production SQL/bind/extract logging suppression, and verified health/Actuator
+behavior. Business services, authentication, and API endpoints remain in later
+stages. SD-44 (structured logging, formal redaction policy, retention) and SD-53
+(CSRF wiring) remain incomplete; no production-readiness claim is made.
