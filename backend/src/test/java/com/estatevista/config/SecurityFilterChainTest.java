@@ -79,6 +79,17 @@ class SecurityFilterChainTest {
     }
 
     @Test
+    void nonExposedActuatorPathsAreDeniedByDefault() throws Exception {
+        mockMvc.perform(get("/actuator/beans"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+
+        mockMvc.perform(get("/actuator/env"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
     void websocketHandshakePathRemainsDenied() throws Exception {
         mockMvc.perform(get("/ws"))
                 .andExpect(status().isUnauthorized())

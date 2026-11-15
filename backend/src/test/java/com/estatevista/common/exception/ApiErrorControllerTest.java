@@ -37,6 +37,25 @@ class ApiErrorControllerTest {
     }
 
     @Test
+    void unknownContainerStatusFallsBackToSafeInternalError() throws Exception {
+        mockMvc.perform(get("/error")
+                        .requestAttr(RequestDispatcher.ERROR_STATUS_CODE, 418)
+                        .requestAttr(RequestDispatcher.ERROR_REQUEST_URI, "/api/v1/probe"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.error.code").value("INTERNAL_ERROR"))
+                .andExpect(jsonPath("$.error.message").value("An unexpected error occurred"));
+    }
+
+    @Test
+    void missingContainerStatusDefaultsToSafeInternalError() throws Exception {
+        mockMvc.perform(get("/error")
+                        .requestAttr(RequestDispatcher.ERROR_REQUEST_URI, "/api/v1/probe"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.error.code").value("INTERNAL_ERROR"))
+                .andExpect(jsonPath("$.path").value("/api/v1/probe"));
+    }
+
+    @Test
     void containerServerErrorDoesNotExposeContainerMessage() throws Exception {
         mockMvc.perform(get("/error")
                         .requestAttr(RequestDispatcher.ERROR_STATUS_CODE, 500)

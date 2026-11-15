@@ -25,6 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.mock.http.MockHttpInputMessage;
@@ -36,10 +37,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 class GlobalExceptionHandlerTest {
@@ -165,6 +168,32 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void missingRequestHeaderReturnsBadRequestEnvelope() throws Exception {
+        mockMvc.perform(get("/api/v1/probe/requires-header"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("BAD_REQUEST"))
+                .andExpect(jsonPath("$.error.details", empty()));
+    }
+
+    @Test
+    void responseStatusExceptionMapsToDeclaredClientStatusAndReason() throws Exception {
+        mockMvc.perform(get("/api/v1/probe/conflict"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("CONFLICT"))
+                .andExpect(jsonPath("$.error.message")
+                        .value("The resource changed during the request"));
+    }
+
+    @Test
+    void serverResponseStatusExceptionHidesInternalReason() throws Exception {
+        mockMvc.perform(get("/api/v1/probe/server-status"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.error.code").value("INTERNAL_ERROR"))
+                .andExpect(jsonPath("$.error.message").value("An unexpected error occurred"))
+                .andExpect(content().string(not(containsString("synthetic internal reason"))));
+    }
+
+    @Test
     void typeMismatchReturnsBadRequestEnvelope() throws Exception {
         mockMvc.perform(get("/api/v1/probe/number/not-a-number"))
                 .andExpect(status().isBadRequest())
@@ -235,6 +264,23 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/requires-param")
         String requiresParam(@RequestParam String value) {
             return value;
+        }
+
+        @GetMapping("/requires-header")
+        String requiresHeader(@RequestHeader String token) {
+            return token;
+        }
+
+        @GetMapping("/conflict")
+        String conflict() {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT, "The resource changed during the request");
+        }
+
+        @GetMapping("/server-status")
+        String serverStatus() {
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR, "synthetic internal reason");
         }
 
         @GetMapping("/limited")

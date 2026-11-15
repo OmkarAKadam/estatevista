@@ -31,6 +31,7 @@ import com.estatevista.property.entity.Property;
 import com.estatevista.property.entity.PropertyAmenity;
 import com.estatevista.property.entity.PropertyAmenityId;
 import com.estatevista.property.entity.PropertyCategory;
+import com.estatevista.property.entity.PropertyCommercialDetails;
 import com.estatevista.property.entity.PropertyImage;
 import com.estatevista.property.entity.PropertyResidentialDetails;
 import com.estatevista.property.entity.PropertyStatus;
@@ -38,6 +39,7 @@ import com.estatevista.property.entity.PropertySubtype;
 import com.estatevista.property.repository.AmenityRepository;
 import com.estatevista.property.repository.PropertyAmenityRepository;
 import com.estatevista.property.repository.PropertyCategoryRepository;
+import com.estatevista.property.repository.PropertyCommercialDetailsRepository;
 import com.estatevista.property.repository.PropertyImageRepository;
 import com.estatevista.property.repository.PropertyRepository;
 import com.estatevista.property.repository.PropertyResidentialDetailsRepository;
@@ -108,6 +110,9 @@ class BusinessSchemaIntegrationTest {
 
     @Autowired
     private PropertyResidentialDetailsRepository propertyResidentialDetailsRepository;
+
+    @Autowired
+    private PropertyCommercialDetailsRepository propertyCommercialDetailsRepository;
 
     @Autowired
     private PropertyImageRepository propertyImageRepository;
@@ -384,6 +389,54 @@ class BusinessSchemaIntegrationTest {
     }
 
     @Test
+    void persistsAndRetrievesCommercialDetailsWithTheSharedPropertyKey() {
+        User agent = newUser(roleRepository.findByName("AGENT").orElseThrow(), "commercial-agent");
+        User admin = newUser(roleRepository.findByName("ADMIN").orElseThrow(), "commercial-admin");
+        userRepository.saveAll(List.of(agent, admin));
+
+        PropertyCategory commercial = categoryNamed("COMMERCIAL");
+        PropertySubtype subtype = new PropertySubtype();
+        subtype.setCategory(commercial);
+        subtype.setName("Office Space " + shortId());
+        propertySubtypeRepository.save(subtype);
+
+        Property property = newProperty(
+                commercial, subtype, agent, admin, new BigDecimal("1800000.00"));
+        propertyRepository.save(property);
+
+        PropertyCommercialDetails details = new PropertyCommercialDetails();
+        details.setProperty(property);
+        details.setParkingSpaces((short) 12);
+        details.setFloorNumber((short) 4);
+        details.setTotalFloors((short) 10);
+        details.setWashrooms((short) 6);
+        details.setPowerBackup(true);
+        details.setSuitableFor("Corporate office and retail");
+        propertyCommercialDetailsRepository.save(details);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        PropertyCommercialDetails loaded = propertyCommercialDetailsRepository
+                .findById(property.getId())
+                .orElseThrow();
+
+        assertThat(loaded.getPropertyId()).isEqualTo(property.getId());
+        assertThat(loaded.getProperty().getId()).isEqualTo(property.getId());
+        assertThat(loaded.getParkingSpaces()).isEqualTo((short) 12);
+        assertThat(loaded.getFloorNumber()).isEqualTo((short) 4);
+        assertThat(loaded.getTotalFloors()).isEqualTo((short) 10);
+        assertThat(loaded.getWashrooms()).isEqualTo((short) 6);
+        assertThat(loaded.getPowerBackup()).isTrue();
+        assertThat(loaded.getSuitableFor()).isEqualTo("Corporate office and retail");
+        assertThat(jdbcTemplate.queryForObject(
+                "select suitable_for from property_commercial_details where property_id = ?",
+                String.class,
+                property.getId()))
+                .isEqualTo("Corporate office and retail");
+    }
+
+    @Test
     void enumsArePersistedAsApprovedText() {
         User buyer = newUser(roleRepository.findByName("BUYER").orElseThrow(), "enum");
         userRepository.saveAndFlush(buyer);
@@ -483,6 +536,97 @@ class BusinessSchemaIntegrationTest {
         propertyImageRepository.saveAndFlush(primaryImage(property, 0));
         assertThatThrownBy(() -> propertyImageRepository.saveAndFlush(primaryImage(property, 1)))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void rejectsASecondAgentProfileForTheSameUser() {
+        User agent = newUser(roleRepository.findByName("AGENT").orElseThrow(), "profile");
+        userRepository.saveAndFlush(agent);
+
+        AgentProfile first = new AgentProfile();
+        first.setUser(agent);
+        first.setAgencyName("First Agency");
+        agentProfileRepository.saveAndFlush(first);
+
+        AgentProfile second = new AgentProfile();
+        second.setUser(agent);
+        second.setAgencyName("Second Agency");
+
+        assertThatThrownBy(() -> agentProfileRepository.saveAndFlush(second))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void rejectsDuplicateFavoriteForTheSameBuyerAndProperty() {
+        User buyer = newUser(roleRepository.findByName("BUYER").orElseThrow(), "favorite");
+        User agent = newUser(roleRepository.findByName("AGENT").orElseThrow(), "favorite-agent");
+        User admin = newUser(roleRepository.findByName("ADMIN").orElseThrow(), "favorite-admin");
+        userRepository.saveAllAndFlush(List.of(buyer, agent, admin));
+
+        Property property = propertyRepository.saveAndFlush(newUnsavedProperty(agent, admin));
+
+        Favorite first = new Favorite();
+        first.setBuyer(buyer);
+        first.setProperty(property);
+        favoriteRepository.saveAndFlush(first);
+
+        Favorite second = new Favorite();
+        second.setBuyer(buyer);
+        second.setProperty(property);
+
+        assertThatThrownBy(() -> favoriteRepository.saveAndFlush(second))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void rejectsDuplicateConversationForTheSameBuyerAndProperty() {
+        User buyer = newUser(roleRepository.findByName("BUYER").orElseThrow(), "conversation");
+        User agent = newUser(
+                roleRepository.findByName("AGENT").orElseThrow(), "conversation-agent");
+        User admin = newUser(
+                roleRepository.findByName("ADMIN").orElseThrow(), "conversation-admin");
+        userRepository.saveAllAndFlush(List.of(buyer, agent, admin));
+
+        Property property = propertyRepository.saveAndFlush(newUnsavedProperty(agent, admin));
+
+        Conversation first = new Conversation();
+        first.setBuyer(buyer);
+        first.setProperty(property);
+        first.setAssignedAgent(agent);
+        first.setStatus("OPEN");
+        conversationRepository.saveAndFlush(first);
+
+        Conversation second = new Conversation();
+        second.setBuyer(buyer);
+        second.setProperty(property);
+        second.setAssignedAgent(agent);
+        second.setStatus("OPEN");
+
+        assertThatThrownBy(() -> conversationRepository.saveAndFlush(second))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void rejectsOutOfRangeLatitude() {
+        User agent = newUser(roleRepository.findByName("AGENT").orElseThrow(), "latitude-agent");
+        User admin = newUser(roleRepository.findByName("ADMIN").orElseThrow(), "latitude-admin");
+        userRepository.saveAllAndFlush(List.of(agent, admin));
+
+        Property property = newUnsavedProperty(agent, admin);
+        property.setLatitude(new BigDecimal("90.0000001"));
+
+        assertThatThrownBy(() -> propertyRepository.saveAndFlush(property))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private Property newUnsavedProperty(User agent, User admin) {
+        PropertyCategory residential = categoryNamed("RESIDENTIAL");
+        PropertySubtype subtype = new PropertySubtype();
+        subtype.setCategory(residential);
+        subtype.setName("Constraint " + shortId());
+        propertySubtypeRepository.saveAndFlush(subtype);
+
+        return newProperty(residential, subtype, agent, admin, new BigDecimal("100000.00"));
     }
 
     private PropertyImage primaryImage(Property property, int sortOrder) {
