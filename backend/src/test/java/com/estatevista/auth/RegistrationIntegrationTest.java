@@ -16,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.util.Optional;
 import java.util.UUID;
 
+import com.estatevista.auth.security.CredentialVerificationService;
 import com.estatevista.user.entity.AccountStatus;
 import com.estatevista.user.entity.User;
 import com.estatevista.user.repository.UserRepository;
@@ -64,6 +65,9 @@ class RegistrationIntegrationTest {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private CredentialVerificationService credentialVerificationService;
 
     @Test
     void registersABuyerWithNormalizedEmailAndAnIrreversibleHash() throws Exception {
@@ -274,6 +278,23 @@ class RegistrationIntegrationTest {
         User unchanged = userRepository.findById(user.getId()).orElseThrow();
         assertThat(unchanged.getRole().getName()).isEqualTo("BUYER");
         assertThat(unchanged.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+    }
+
+    @Test
+    void stage32BcryptHashesRemainCompatibleWithCredentialVerification() throws Exception {
+        User user = registerAndLoad("verify.compatible@example.com");
+
+        var verified = credentialVerificationService.verify("  VERIFY.COMPATIBLE@example.com  ", RAW_PASSWORD);
+
+        assertThat(verified).isPresent();
+        assertThat(verified.get().id()).isEqualTo(user.getId());
+        assertThat(verified.get().email()).isEqualTo("verify.compatible@example.com");
+        assertThat(verified.get().roleName()).isEqualTo("BUYER");
+        assertThat(verified.get().accountStatus()).isEqualTo(AccountStatus.ACTIVE);
+
+        assertThat(credentialVerificationService.verify("verify.compatible@example.com", "wrong-password"))
+                .isEmpty();
+        assertThat(credentialVerificationService.verify("nobody@example.com", RAW_PASSWORD)).isEmpty();
     }
 
     private org.springframework.test.web.servlet.RequestBuilder register(String email)
