@@ -13,6 +13,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -22,56 +23,58 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 /**
- * Baseline security shell.
+ * Security filter chain.
  *
- * <p>Only the environment health endpoints and the error dispatch are public.
- * Every other request is denied until the authentication and business stages
- * add explicit matchers. No login, registration, logout, or authorization
- * workflow is implemented in this stage.</p>
+ * <p>The chain is deny-by-default. Stage 3.2 opens exactly two additions:</p>
+ * <ul>
+ *   <li>{@code POST /api/v1/auth/register} for visitor registration, CSRF-exempt
+ *       because no session exists yet, with exact Origin/Referer validation; and</li>
+ *   <li>{@code GET|PATCH /api/v1/users/me} for the authenticated principal's own
+ *       account. The PATCH keeps the default session-bound CSRF requirement.</li>
+ * </ul>
+ * <p>Every other request remains denied. Login, logout, the CSRF bootstrap, and
+ * the authorization model for business endpoints are later sub-stages.</p>
  *
- * <p>The WebSocket handshake path is intentionally <strong>not</strong> public.
- * The transport is configured ({@link WebSocketConfig}), but the handshake stays
- * denied until the authentication stage adds session handshake authentication,
- * exact-Origin enforcement, and STOMP CONNECT/SUBSCRIBE/SEND authorization.</p>
- *
- * <p>Authentication and authorization failures use the same standard API error
- * envelope as controller exceptions. The access-denied handler is also used by
- * {@code CsrfFilter}, so tokenless mutating requests return the same JSON
- * shape.</p>
- *
- * <p><strong>SD-53 caveat:</strong> Spring Security's default CSRF
- * configuration is left enabled, but the approved session-bound synchronizer
- * design (256-bit token generator, {@code X-CSRF-TOKEN} response-header
- * delivery, raw-header-compatible request handler, post-authentication
- * rotation ordering, audit event, and Section 17 tests) is not implemented
- * here. Note that {@code csrf.spa()} installs a cookie-backed repository and
- * the default XOR handler expects a masked token; neither may be used as-is
- * with the approved session-backed raw-header flow. The authentication stage
- * must wire and test the design against the pinned Spring Security version.</p>
+ * <p>The WebSocket handshake path is still intentionally denied.</p>
  */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
     private final ObjectMapper objectMapper;
+    private final AppProperties appProperties;
 
-    public SecurityConfig(ObjectMapper objectMapper) {
+    public SecurityConfig(ObjectMapper objectMapper, AppProperties appProperties) {
         this.objectMapper = objectMapper;
+        this.appProperties = appProperties;
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         AuthenticationEntryPoint authenticationEntryPoint = (request, response, exception) ->
-                writeJsonError(request, response, ErrorCode.UNAUTHORIZED);
+                writeJsonError(request, response, ErrorCode.UNAUTHORIZED, null);
         AccessDeniedHandler accessDeniedHandler = (request, response, exception) ->
-                writeJsonError(request, response, ErrorCode.FORBIDDEN);
+                writeJsonError(request, response, ErrorCode.FORBIDDEN, null);
+
+        PathPatternRequestMatcher registrationPost = PathPatternRequestMatcher.pathPattern(
+                HttpMethod.POST, "/api/v1/auth/register");
+
+        List<String> allowedOrigins = AllowedOrigins.requireExplicit(
+                appProperties.cors().allowedOrigins(), "app.cors.allowed-origins");
+        AuthOriginValidationFilter originFilter = new AuthOriginValidationFilter(
+                allowedOrigins, objectMapper, registrationPost);
 
         http
                 .cors(Customizer.withDefaults())
-                .csrf(Customizer.withDefaults())
+                .csrf(csrf -> csrf.ignoringRequestMatchers(registrationPost))
                 .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers(registrationPost).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/users/me").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/users/me").authenticated()
                         .requestMatchers("/api/v1/health", "/actuator/health", "/error").permitAll()
                         .anyRequest().denyAll())
                 .sessionManagement(session -> session
@@ -79,6 +82,7 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
+                .addFilterBefore(originFilter, CsrfFilter.class)
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler));
@@ -88,7 +92,8 @@ public class SecurityConfig {
     private void writeJsonError(
             HttpServletRequest request,
             HttpServletResponse response,
-            ErrorCode errorCode) throws IOException {
+            ErrorCode errorCode,
+            String message) throws IOException {
         response.setStatus(errorCode.status().value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -96,7 +101,7 @@ public class SecurityConfig {
                 response.getOutputStream(),
                 ApiErrorResponse.of(
                         errorCode,
-                        null,
+                        message,
                         List.of(),
                         request.getRequestURI()));
     }
