@@ -2,7 +2,10 @@ package com.estatevista.config;
 
 import java.util.List;
 
+import com.estatevista.authorization.StompAuthorizationInterceptor;
+
 import org.springframework.context.annotation.Configuration;
+import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
@@ -13,21 +16,25 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
  *
  * <p>The approved architecture uses native WebSocket (no SockJS fallback) at
  * {@code /ws}, with direct browser-to-API connections and an exact Origin
- * allowlist. No message handlers, destinations, or subscription authorization
- * are implemented in this stage.</p>
+ * allowlist.</p>
  *
- * <p><strong>Pending:</strong> session-based handshake authentication and
- * STOMP CONNECT/SUBSCRIBE/SEND authorization are part of the authentication
- * and messaging stages. Until then the handshake must not be exposed publicly.</p>
+ * <p><strong>Stage 3.5:</strong> the HTTP handshake requires the existing
+ * server-side session, and a channel interceptor authorizes CONNECT, the three
+ * approved user-queue SUBSCRIBE destinations, and SEND participant membership.
+ * Message handlers, message persistence, and chat UI remain deferred to Stage 7.</p>
  */
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final AppProperties properties;
+    private final StompAuthorizationInterceptor stompAuthorizationInterceptor;
 
-    public WebSocketConfig(AppProperties properties) {
+    public WebSocketConfig(
+            AppProperties properties,
+            StompAuthorizationInterceptor stompAuthorizationInterceptor) {
         this.properties = properties;
+        this.stompAuthorizationInterceptor = stompAuthorizationInterceptor;
     }
 
     @Override
@@ -51,5 +58,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registry.enableSimpleBroker("/queue", "/topic");
         registry.setApplicationDestinationPrefixes("/app");
         registry.setUserDestinationPrefix("/user");
+    }
+
+    @Override
+    public void configureClientInboundChannel(ChannelRegistration registration) {
+        registration.interceptors(stompAuthorizationInterceptor);
     }
 }

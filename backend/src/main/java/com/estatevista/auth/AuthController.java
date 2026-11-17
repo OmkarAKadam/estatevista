@@ -5,8 +5,14 @@ import com.estatevista.auth.dto.CsrfTokenResponse;
 import com.estatevista.auth.dto.LoginRequest;
 import com.estatevista.auth.dto.RegisterRequest;
 import com.estatevista.auth.dto.RegisteredUserResponse;
+import com.estatevista.authorization.AuthenticatedAccount;
+import com.estatevista.authorization.PlatformRole;
+import com.estatevista.authorization.SessionAuthenticationToken;
+import com.estatevista.common.exception.ApiException;
+import com.estatevista.common.exception.ErrorCode;
 import com.estatevista.common.response.ApiResponse;
 import com.estatevista.common.validation.UnknownFieldGuard;
+import com.estatevista.user.entity.AccountStatus;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -15,9 +21,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
@@ -84,11 +88,9 @@ public class AuthController {
             httpRequest.changeSessionId();
         }
 
-        UsernamePasswordAuthenticationToken authentication =
-                new UsernamePasswordAuthenticationToken(
-                        user.id().toString(),
-                        null,
-                        AuthorityUtils.NO_AUTHORITIES);
+        AuthenticatedAccount account = trustedAccount(user);
+        SessionAuthenticationToken authentication =
+                new SessionAuthenticationToken(account.id().toString(), account.authorities());
 
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(authentication);
@@ -136,5 +138,34 @@ public class AuthController {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(ApiResponse.success("Logout successful", null));
+    }
+
+    /**
+     * Grants authorities only from the authenticated account loaded by
+     * {@link AuthService#authenticate}. Role and status are trusted database
+     * values, never request input. Unknown roles and non-active accounts fail
+     * closed before a session is established.
+     */
+    private static AuthenticatedAccount trustedAccount(AuthenticatedUserResponse user) {
+        if (user == null || user.id() == null) {
+            throw unauthorized();
+        }
+        PlatformRole role = PlatformRole.fromDatabaseName(user.role())
+                .orElseThrow(AuthController::unauthorized);
+        AccountStatus status;
+        try {
+            status = AccountStatus.valueOf(user.accountStatus());
+        } catch (IllegalArgumentException | NullPointerException exception) {
+            throw unauthorized();
+        }
+        if (status != AccountStatus.ACTIVE) {
+            throw unauthorized();
+        }
+        return AuthenticatedAccount.of(user.id(), role, status);
+    }
+
+    private static ApiException unauthorized() {
+        return new ApiException(
+                ErrorCode.UNAUTHORIZED, ErrorCode.UNAUTHORIZED.defaultMessage());
     }
 }

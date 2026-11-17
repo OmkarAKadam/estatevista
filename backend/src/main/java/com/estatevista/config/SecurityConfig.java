@@ -7,10 +7,13 @@ import java.util.List;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import com.estatevista.authorization.AccountAuthorizationService;
+import com.estatevista.authorization.SessionAuthorizationFilter;
 import com.estatevista.common.exception.ErrorCode;
 import com.estatevista.common.response.ApiErrorResponse;
 import tools.jackson.databind.ObjectMapper;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -24,6 +27,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
@@ -36,8 +40,10 @@ import org.springframework.security.web.servlet.util.matcher.PathPatternRequestM
  * endpoints: CSRF bootstrap and login are publicly reachable (login remains CSRF
  * protected), the authenticated principal can be inspected at {@code /auth/me},
  * and logout invalidates the server-side session. Registration remains
- * CSRF-exempt with exact Origin/Referer validation. The WebSocket handshake path
- * remains intentionally denied.</p>
+ * CSRF-exempt with exact Origin/Referer validation. Stage 3.5 requires an
+ * authenticated session for the WebSocket handshake and restricts the management
+ * path prefixes by role. Everything not explicitly allowlisted stays denied,
+ * including non-health Actuator endpoints and non-GET health probes.</p>
  */
 @Configuration
 @EnableWebSecurity
@@ -45,10 +51,15 @@ public class SecurityConfig {
 
     private final ObjectMapper objectMapper;
     private final AppProperties appProperties;
+    private final ObjectProvider<AccountAuthorizationService> accountAuthorizationService;
 
-    public SecurityConfig(ObjectMapper objectMapper, AppProperties appProperties) {
+    public SecurityConfig(
+            ObjectMapper objectMapper,
+            AppProperties appProperties,
+            ObjectProvider<AccountAuthorizationService> accountAuthorizationService) {
         this.objectMapper = objectMapper;
         this.appProperties = appProperties;
+        this.accountAuthorizationService = accountAuthorizationService;
     }
 
     @Bean
@@ -89,9 +100,25 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/v1/users/me").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/users/me").authenticated()
-                        .requestMatchers("/api/v1/health", "/actuator/health", "/error").permitAll()
+                        .requestMatchers(HttpMethod.GET, appProperties.websocket().endpoint()).authenticated()
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/agents/me/**").hasRole("AGENT")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/health", "/actuator/health").permitAll()
+                        .requestMatchers("/error").permitAll()
                         .anyRequest().denyAll())
-                .securityContext(context -> context.securityContextRepository(securityContextRepository))
+                .securityContext(context -> context.securityContextRepository(securityContextRepository));
+
+        // The resolver is absent only in isolated web-slice tests that import
+        // this filter chain without persistence. Full application contexts
+        // always install it and therefore re-verify session authorities.
+        AccountAuthorizationService resolver = accountAuthorizationService.getIfAvailable();
+        if (resolver != null) {
+            http.addFilterAfter(
+                    new SessionAuthorizationFilter(resolver, securityContextRepository),
+                    SecurityContextHolderFilter.class);
+        }
+
+        http
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                         .sessionFixation().migrateSession())
