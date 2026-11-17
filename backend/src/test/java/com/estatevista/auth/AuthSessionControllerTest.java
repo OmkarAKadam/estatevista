@@ -2,6 +2,9 @@ package com.estatevista.auth;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -15,12 +18,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.util.UUID;
 
+import com.estatevista.audit.AuditEventService;
 import com.estatevista.auth.dto.AuthenticatedUserResponse;
 import com.estatevista.common.exception.ApiException;
 import com.estatevista.common.exception.ErrorCode;
 import com.estatevista.config.AppProperties;
 import com.estatevista.config.CorsConfig;
 import com.estatevista.config.SecurityConfig;
+import com.estatevista.security.RateLimitService;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,6 +58,12 @@ class AuthSessionControllerTest {
 
     @MockitoBean
     private AuthService authService;
+
+    @MockitoBean
+    private RateLimitService rateLimitService;
+
+    @MockitoBean
+    private AuditEventService auditEventService;
 
     @Test
     void csrfBootstrapIsPublicAndReturnsToken() throws Exception {
@@ -110,6 +121,10 @@ class AuthSessionControllerTest {
                 .andExpect(jsonPath("$.data.password").doesNotExist())
                 .andExpect(jsonPath("$.data.passwordHash").doesNotExist())
                 .andExpect(content().string(org.hamcrest.Matchers.not(containsString("Example-Password-123"))));
+
+        verify(rateLimitService).acquire(eq(RateLimitService.SCOPE_LOGIN), anyString());
+        verify(rateLimitService).reset(eq(RateLimitService.SCOPE_LOGIN), anyString());
+        verify(auditEventService).recordLoginSuccess(USER_ID);
     }
 
     @Test
@@ -126,6 +141,9 @@ class AuthSessionControllerTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"))
                 .andExpect(jsonPath("$.error.message").value("Invalid email or password"));
+
+        verify(rateLimitService).acquire(eq(RateLimitService.SCOPE_LOGIN), anyString());
+        verify(auditEventService).recordLoginFailure();
     }
 
     @Test
@@ -187,6 +205,8 @@ class AuthSessionControllerTest {
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("Logout successful"));
+
+        verify(auditEventService).recordLogout(USER_ID);
     }
 
     private static String validLoginBody() {

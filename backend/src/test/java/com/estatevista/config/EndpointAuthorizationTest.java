@@ -23,7 +23,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.estatevista.audit.AuditEventService;
 import com.estatevista.auth.AuthService;
+import com.estatevista.security.RateLimitService;
 import com.estatevista.user.UserService;
 
 /**
@@ -52,6 +54,12 @@ class EndpointAuthorizationTest {
 
     @MockitoBean
     private UserService userService;
+
+    @MockitoBean
+    private RateLimitService rateLimitService;
+
+    @MockitoBean
+    private AuditEventService auditEventService;
 
     @Test
     void adminPrefixAllowsOnlyAdminAndStillRequiresCsrfForWrites() throws Exception {

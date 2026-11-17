@@ -64,6 +64,7 @@ public class AuthService {
         String lastName = request.getLastName().trim();
         String phone = trimToNull(request.getPhone());
 
+        PasswordPolicy.rejectBreachedPassword(request.getPassword());
         PasswordPolicy.rejectContextWords(request.getPassword(), email, firstName, lastName);
 
         // Fast, friendly conflict response. The functional unique index remains

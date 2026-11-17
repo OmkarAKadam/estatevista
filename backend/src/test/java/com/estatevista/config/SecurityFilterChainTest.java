@@ -27,7 +27,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.estatevista.audit.AuditEventService;
 import com.estatevista.auth.AuthService;
+import com.estatevista.security.RateLimitService;
 import com.estatevista.user.UserService;
 
 /**
@@ -53,6 +55,12 @@ class SecurityFilterChainTest {
 
     @MockitoBean
     private UserService userService;
+
+    @MockitoBean
+    private RateLimitService rateLimitService;
+
+    @MockitoBean
+    private AuditEventService auditEventService;
 
     @Test
     void unauthenticatedRequestReturnsUnauthorizedEnvelope() throws Exception {
@@ -159,7 +167,52 @@ class SecurityFilterChainTest {
                 .andExpect(header().string(
                         HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"))
                 .andExpect(header().string(
-                        HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, containsString("X-CSRF-TOKEN")));
+                        HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, containsString("X-CSRF-TOKEN")))
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_MAX_AGE, "600"));
+    }
+
+    @Test
+    void preflightRejectsHeadersOutsideTheApprovedAllowList() throws Exception {
+        mockMvc.perform(options("/api/v1/probe/read")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "x-requested-with"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));
+    }
+
+    @Test
+    void hardenedSecurityHeadersArePresentOnPublicResponses() throws Exception {
+        mockMvc.perform(get("/api/v1/health"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Security-Policy",
+                        containsString("default-src 'self'")))
+                .andExpect(header().string("Content-Security-Policy",
+                        containsString("frame-ancestors 'none'")))
+                .andExpect(header().string("Referrer-Policy", "no-referrer"))
+                .andExpect(header().string("Permissions-Policy", containsString("camera=()")))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string("X-Frame-Options", "DENY"));
+    }
+
+    @Test
+    void hstsIsPresentOnSecureResponses() throws Exception {
+        mockMvc.perform(get("/api/v1/health").secure(true))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Strict-Transport-Security",
+                        containsString("max-age=31536000")))
+                .andExpect(header().string("Strict-Transport-Security",
+                        containsString("includeSubDomains")));
+    }
+
+    @Test
+    void correlationIdIsEchoedAndCanBeSuppliedByTheCaller() throws Exception {
+        mockMvc.perform(get("/api/v1/health").header("X-Request-Id", "stage36-request-1"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Request-Id", "stage36-request-1"));
+        mockMvc.perform(get("/api/v1/health"))
+                .andExpect(status().isOk())
+                .andExpect(header().exists("X-Request-Id"));
     }
 
     @Test

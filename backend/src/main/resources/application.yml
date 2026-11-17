@@ -65,6 +65,14 @@ app:
   websocket:
     endpoint: /ws
     allowed-origins: ${APP_WEBSOCKET_ALLOWED_ORIGINS:http://localhost:5500,http://127.0.0.1:5500}
+  rate-limit:
+    enabled: ${APP_RATE_LIMIT_ENABLED:true}
+    login:
+      max-attempts: ${APP_RATE_LIMIT_LOGIN_MAX_ATTEMPTS:10}
+      window-seconds: ${APP_RATE_LIMIT_LOGIN_WINDOW_SECONDS:900}
+    registration:
+      max-attempts: ${APP_RATE_LIMIT_REGISTRATION_MAX_ATTEMPTS:5}
+      window-seconds: ${APP_RATE_LIMIT_REGISTRATION_WINDOW_SECONDS:60}
 
 logging:
   level:

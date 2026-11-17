@@ -21,6 +21,15 @@ spring:
     enabled: true
     clean-disabled: true
 
+app:
+  rate-limit:
+    login:
+      max-attempts: 1000
+      window-seconds: 900
+    registration:
+      max-attempts: 1000
+      window-seconds: 60
+
 management:
   endpoint:
     health:

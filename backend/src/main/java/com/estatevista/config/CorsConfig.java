@@ -22,7 +22,7 @@ public class CorsConfig {
             List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS");
 
     private static final List<String> ALLOWED_HEADERS =
-            List.of("Content-Type", "X-CSRF-TOKEN", "Accept", "Origin", "X-Requested-With");
+            List.of("Content-Type", "X-CSRF-TOKEN");
 
     private static final List<String> EXPOSED_HEADERS = List.of("X-CSRF-TOKEN");
 
@@ -37,7 +37,7 @@ public class CorsConfig {
         configuration.setAllowedHeaders(ALLOWED_HEADERS);
         configuration.setExposedHeaders(EXPOSED_HEADERS);
         configuration.setAllowCredentials(true);
-        configuration.setMaxAge(3600L);
+        configuration.setMaxAge(600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", configuration);

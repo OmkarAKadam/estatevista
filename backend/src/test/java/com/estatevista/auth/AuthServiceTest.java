@@ -57,6 +57,16 @@ class AuthServiceTest {
     }
 
     @Test
+    void rejectsCommonlyBreachedPasswordBeforeSaving() {
+        assertThatThrownBy(() -> authService.register(request(
+                "John", "Doe", "john@example.com", "Password123!", null)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> assertThat(((ApiException) error).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_ERROR));
+        verify(userRepository, never()).saveAndFlush(any(User.class));
+    }
+
+    @Test
     void registersBuyerWithNormalizedEmailAndHashedPassword() {
         Role buyer = roleNamed("BUYER");
         when(roleRepository.findByName("BUYER")).thenReturn(Optional.of(buyer));

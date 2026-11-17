@@ -1,5 +1,8 @@
 package com.estatevista.auth;
 
+import java.util.UUID;
+
+import com.estatevista.audit.AuditEventService;
 import com.estatevista.auth.dto.AuthenticatedUserResponse;
 import com.estatevista.auth.dto.CsrfTokenResponse;
 import com.estatevista.auth.dto.LoginRequest;
@@ -12,6 +15,7 @@ import com.estatevista.common.exception.ApiException;
 import com.estatevista.common.exception.ErrorCode;
 import com.estatevista.common.response.ApiResponse;
 import com.estatevista.common.validation.UnknownFieldGuard;
+import com.estatevista.security.RateLimitService;
 import com.estatevista.user.entity.AccountStatus;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,18 +47,27 @@ public class AuthController {
     private static final String CSRF_HEADER = "X-CSRF-TOKEN";
 
     private final AuthService authService;
+    private final RateLimitService rateLimitService;
+    private final AuditEventService auditEventService;
     private final SecurityContextRepository securityContextRepository =
             new HttpSessionSecurityContextRepository();
 
-    public AuthController(AuthService authService) {
+    public AuthController(
+            AuthService authService,
+            RateLimitService rateLimitService,
+            AuditEventService auditEventService) {
         this.authService = authService;
+        this.rateLimitService = rateLimitService;
+        this.auditEventService = auditEventService;
     }
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<RegisteredUserResponse>> register(
-            @Valid @RequestBody RegisterRequest request) {
+            @Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
         UnknownFieldGuard.reject(request.unknownFields());
+        rateLimitService.acquire(RateLimitService.SCOPE_REGISTRATION, httpRequest.getRemoteAddr());
         RegisteredUserResponse registered = authService.register(request);
+        auditEventService.recordRegistration(registered.id());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .cacheControl(CacheControl.noStore())
                 .body(ApiResponse.success("Account registered successfully", registered));
@@ -77,7 +90,15 @@ public class AuthController {
             HttpServletResponse httpResponse,
             CsrfToken csrfToken) {
         UnknownFieldGuard.reject(request.unknownFields());
-        AuthenticatedUserResponse user = authService.authenticate(request);
+        String rateLimitIdentity = request.getEmail() + "|" + httpRequest.getRemoteAddr();
+        rateLimitService.acquire(RateLimitService.SCOPE_LOGIN, rateLimitIdentity);
+        AuthenticatedUserResponse user;
+        try {
+            user = authService.authenticate(request);
+        } catch (ApiException exception) {
+            auditEventService.recordLoginFailure();
+            throw exception;
+        }
 
         // Rotate any pre-existing anonymous session after successful credential
         // verification. Spring Security's sessionFixation() strategy is not
@@ -96,6 +117,8 @@ public class AuthController {
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, httpRequest, httpResponse);
+        rateLimitService.reset(RateLimitService.SCOPE_LOGIN, rateLimitIdentity);
+        auditEventService.recordLoginSuccess(user.id());
 
         String token = csrfToken == null ? null : csrfToken.getToken();
         ResponseEntity.BodyBuilder response = ResponseEntity.ok()
@@ -124,6 +147,7 @@ public class AuthController {
     public ResponseEntity<ApiResponse<Object>> logout(
             HttpServletRequest request,
             HttpServletResponse response) {
+        UUID actorId = authenticatedActorId();
         SecurityContextHolder.clearContext();
         var session = request.getSession(false);
         if (session != null) {
@@ -135,9 +159,22 @@ public class AuthController {
         cookie.setMaxAge(0);
         cookie.setSecure(request.isSecure());
         response.addCookie(cookie);
+        auditEventService.recordLogout(actorId);
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(ApiResponse.success("Logout successful", null));
+    }
+
+    private static UUID authenticatedActorId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(authentication.getName());
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
     }
 
     /**

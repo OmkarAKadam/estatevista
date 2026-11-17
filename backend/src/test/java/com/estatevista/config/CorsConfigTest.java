@@ -28,11 +28,11 @@ class CorsConfigTest {
         assertThat(api.getAllowedOrigins())
                 .containsExactly("http://localhost:5500", "https://app.example.com");
         assertThat(api.getAllowCredentials()).isTrue();
-        assertThat(api.getMaxAge()).isEqualTo(3600L);
+        assertThat(api.getMaxAge()).isEqualTo(600L);
         assertThat(api.getAllowedMethods())
                 .containsExactlyInAnyOrder("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS");
         assertThat(api.getAllowedHeaders())
-                .contains("Content-Type", "X-CSRF-TOKEN", "Accept", "Origin", "X-Requested-With");
+                .containsExactly("Content-Type", "X-CSRF-TOKEN");
         assertThat(api.getExposedHeaders()).containsExactly("X-CSRF-TOKEN");
         assertThat(actuator).isNotNull();
         assertThat(actuator.getAllowedOrigins())

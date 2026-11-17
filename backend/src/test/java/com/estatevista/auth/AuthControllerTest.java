@@ -3,6 +3,9 @@ package com.estatevista.auth;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -13,12 +16,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.util.UUID;
 
+import com.estatevista.audit.AuditEventService;
 import com.estatevista.auth.dto.RegisteredUserResponse;
 import com.estatevista.common.exception.ApiException;
 import com.estatevista.common.exception.ErrorCode;
 import com.estatevista.config.AppProperties;
 import com.estatevista.config.CorsConfig;
 import com.estatevista.config.SecurityConfig;
+import com.estatevista.security.RateLimitService;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,6 +59,12 @@ class AuthControllerTest {
     @MockitoBean
     private AuthService authService;
 
+    @MockitoBean
+    private RateLimitService rateLimitService;
+
+    @MockitoBean
+    private AuditEventService auditEventService;
+
     @BeforeEach
     void setUp() {
         when(authService.register(any())).thenReturn(REGISTERED);
@@ -80,6 +91,9 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data.passwordHash").doesNotExist())
                 .andExpect(content().string(not(containsString(PASSWORD))))
                 .andExpect(content().string(not(containsString("passwordHash"))));
+
+        verify(rateLimitService).acquire(eq(RateLimitService.SCOPE_REGISTRATION), anyString());
+        verify(auditEventService).recordRegistration(USER_ID);
     }
 
     @Test
