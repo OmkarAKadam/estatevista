@@ -1,9 +1,13 @@
 package com.estatevista.auth;
 
 import java.util.Locale;
+import java.util.UUID;
 
+import com.estatevista.auth.dto.AuthenticatedUserResponse;
+import com.estatevista.auth.dto.LoginRequest;
 import com.estatevista.auth.dto.RegisterRequest;
 import com.estatevista.auth.dto.RegisteredUserResponse;
+import com.estatevista.auth.security.CredentialVerificationService;
 import com.estatevista.auth.validation.PasswordPolicy;
 import com.estatevista.common.exception.ApiException;
 import com.estatevista.common.exception.ErrorCode;
@@ -16,6 +20,8 @@ import com.estatevista.user.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,14 +44,17 @@ public class AuthService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final CredentialVerificationService credentialVerificationService;
 
     public AuthService(
             UserRepository userRepository,
             RoleRepository roleRepository,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            CredentialVerificationService credentialVerificationService) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
+        this.credentialVerificationService = credentialVerificationService;
     }
 
     @Transactional
@@ -93,6 +102,67 @@ public class AuthService {
                 user.getEmail(),
                 buyerRole.getName(),
                 user.getAccountStatus().name());
+    }
+
+    @Transactional(readOnly = true)
+    public AuthenticatedUserResponse authenticate(LoginRequest request) {
+        var verified = credentialVerificationService.verify(request.getEmail(), request.getPassword());
+        if (verified.isEmpty()) {
+            throw invalidCredentials();
+        }
+
+        var account = verified.get();
+        if (account.accountStatus() != AccountStatus.ACTIVE) {
+            throw invalidCredentials();
+        }
+
+        User user = userRepository.findById(account.id())
+                .orElseThrow(AuthService::invalidCredentials);
+        return toAuthenticatedUser(user);
+    }
+
+    @Transactional(readOnly = true)
+    public AuthenticatedUserResponse currentUser(Authentication authentication) {
+        User user = requireAuthenticatedUser(authentication);
+        if (user.getAccountStatus() != AccountStatus.ACTIVE) {
+            throw unauthorized();
+        }
+        return toAuthenticatedUser(user);
+    }
+
+    private User requireAuthenticatedUser(Authentication authentication) {
+        if (authentication == null
+                || !authentication.isAuthenticated()
+                || authentication instanceof AnonymousAuthenticationToken) {
+            throw unauthorized();
+        }
+        UUID userId;
+        try {
+            userId = UUID.fromString(authentication.getName());
+        } catch (IllegalArgumentException exception) {
+            throw unauthorized();
+        }
+        return userRepository.findById(userId).orElseThrow(AuthService::unauthorized);
+    }
+
+    private static AuthenticatedUserResponse toAuthenticatedUser(User user) {
+        String roleName = user.getRole() == null ? null : user.getRole().getName();
+        String status = user.getAccountStatus() == null ? null : user.getAccountStatus().name();
+        return new AuthenticatedUserResponse(
+                user.getId(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getEmail(),
+                roleName,
+                status);
+    }
+
+    private static ApiException invalidCredentials() {
+        return new ApiException(ErrorCode.UNAUTHORIZED, "Invalid email or password");
+    }
+
+    private static ApiException unauthorized() {
+        return new ApiException(ErrorCode.UNAUTHORIZED, "Authentication is required");
     }
 
     static String normalizeEmail(String email) {

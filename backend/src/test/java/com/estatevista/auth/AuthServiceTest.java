@@ -12,6 +12,7 @@ import java.util.UUID;
 
 import com.estatevista.auth.dto.RegisterRequest;
 import com.estatevista.auth.dto.RegisteredUserResponse;
+import com.estatevista.auth.security.CredentialVerificationService;
 import com.estatevista.common.exception.ApiException;
 import com.estatevista.common.exception.ErrorCode;
 import com.estatevista.user.entity.AccountStatus;
@@ -46,9 +47,13 @@ class AuthServiceTest {
 
     private AuthService authService;
 
+    @Mock
+    private CredentialVerificationService credentialVerificationService;
+
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userRepository, roleRepository, passwordEncoder);
+        authService = new AuthService(
+                userRepository, roleRepository, passwordEncoder, credentialVerificationService);
     }
 
     @Test

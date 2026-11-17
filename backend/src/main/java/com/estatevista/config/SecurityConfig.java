@@ -23,23 +23,21 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 /**
  * Security filter chain.
  *
- * <p>The chain is deny-by-default. Stage 3.2 opens exactly two additions:</p>
- * <ul>
- *   <li>{@code POST /api/v1/auth/register} for visitor registration, CSRF-exempt
- *       because no session exists yet, with exact Origin/Referer validation; and</li>
- *   <li>{@code GET|PATCH /api/v1/users/me} for the authenticated principal's own
- *       account. The PATCH keeps the default session-bound CSRF requirement.</li>
- * </ul>
- * <p>Every other request remains denied. Login, logout, the CSRF bootstrap, and
- * the authorization model for business endpoints are later sub-stages.</p>
- *
- * <p>The WebSocket handshake path is still intentionally denied.</p>
+ * <p>The chain is deny-by-default. Stage 3.4 adds session-based authentication
+ * endpoints: CSRF bootstrap and login are publicly reachable (login remains CSRF
+ * protected), the authenticated principal can be inspected at {@code /auth/me},
+ * and logout invalidates the server-side session. Registration remains
+ * CSRF-exempt with exact Origin/Referer validation. The WebSocket handshake path
+ * remains intentionally denied.</p>
  */
 @Configuration
 @EnableWebSecurity
@@ -54,7 +52,14 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityContextRepository securityContextRepository() {
+        return new HttpSessionSecurityContextRepository();
+    }
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            SecurityContextRepository securityContextRepository) throws Exception {
         AuthenticationEntryPoint authenticationEntryPoint = (request, response, exception) ->
                 writeJsonError(request, response, ErrorCode.UNAUTHORIZED, null);
         AccessDeniedHandler accessDeniedHandler = (request, response, exception) ->
@@ -68,17 +73,28 @@ public class SecurityConfig {
         AuthOriginValidationFilter originFilter = new AuthOriginValidationFilter(
                 allowedOrigins, objectMapper, registrationPost);
 
+        CsrfTokenRequestAttributeHandler csrfRequestHandler = new CsrfTokenRequestAttributeHandler();
+        csrfRequestHandler.setCsrfRequestAttributeName(null);
+
         http
                 .cors(Customizer.withDefaults())
-                .csrf(csrf -> csrf.ignoringRequestMatchers(registrationPost))
+                .csrf(csrf -> csrf
+                        .csrfTokenRequestHandler(csrfRequestHandler)
+                        .ignoringRequestMatchers(registrationPost))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(registrationPost).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/auth/me").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/v1/users/me").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/users/me").authenticated()
                         .requestMatchers("/api/v1/health", "/actuator/health", "/error").permitAll()
                         .anyRequest().denyAll())
+                .securityContext(context -> context.securityContextRepository(securityContextRepository))
                 .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                        .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
+                        .sessionFixation().migrateSession())
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
