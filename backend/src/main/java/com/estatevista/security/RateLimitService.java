@@ -5,6 +5,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.PreparedStatement;
 
+import com.estatevista.audit.AuditEventService;
 import com.estatevista.common.exception.ApiException;
 import com.estatevista.common.exception.ErrorCode;
 
@@ -50,10 +51,15 @@ public class RateLimitService {
 
     private final JdbcTemplate jdbcTemplate;
     private final RateLimitProperties properties;
+    private final AuditEventService auditEventService;
 
-    public RateLimitService(JdbcTemplate jdbcTemplate, RateLimitProperties properties) {
+    public RateLimitService(
+            JdbcTemplate jdbcTemplate,
+            RateLimitProperties properties,
+            AuditEventService auditEventService) {
         this.jdbcTemplate = jdbcTemplate;
         this.properties = properties;
+        this.auditEventService = auditEventService;
     }
 
     /**
@@ -77,6 +83,7 @@ public class RateLimitService {
         Long active = jdbcTemplate.queryForObject(COUNT_ACTIVE, Long.class, key, windowSeconds);
         if (active != null && active >= maxAttempts) {
             log.warn("Rate limit rejected an attempt scope={}", scope);
+            auditEventService.recordRateLimitRejected(scope);
             throw new ApiException(
                     ErrorCode.TOO_MANY_REQUESTS,
                     "Too many attempts. Please try again later.");

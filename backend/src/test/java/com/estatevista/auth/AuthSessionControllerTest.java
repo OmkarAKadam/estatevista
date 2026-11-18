@@ -1,15 +1,18 @@
 package com.estatevista.auth;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -37,6 +40,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 @WebMvcTest(controllers = AuthController.class)
 @Import({SecurityConfig.class, CorsConfig.class})
@@ -66,14 +70,40 @@ class AuthSessionControllerTest {
     private AuditEventService auditEventService;
 
     @Test
-    void csrfBootstrapIsPublicAndReturnsToken() throws Exception {
-        mockMvc.perform(get("/api/v1/auth/csrf"))
+    void csrfBootstrapReturnsTokenOnlyInHeader() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/auth/csrf"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
+                .andExpect(header().exists("X-CSRF-TOKEN"))
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.headerName").value("X-CSRF-TOKEN"))
-                .andExpect(jsonPath("$.data.token").isNotEmpty())
-                .andExpect(header().exists("X-CSRF-TOKEN"));
+                .andExpect(jsonPath("$.message").value("CSRF token issued"))
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.token").doesNotExist())
+                .andExpect(jsonPath("$.headerName").doesNotExist())
+                .andExpect(jsonPath("$.data.token").doesNotExist())
+                .andExpect(jsonPath("$.data.headerName").doesNotExist())
+                .andReturn();
+
+        String token = result.getResponse().getHeader("X-CSRF-TOKEN");
+        assertThat(token).isNotBlank();
+        assertThat(result.getResponse().getContentAsString()).doesNotContain(token);
+    }
+
+    @Test
+    void csrfHeaderIsCorsExposedOnlyForAllowedOrigins() throws Exception {
+        mockMvc.perform(options("/api/v1/auth/csrf")
+                        .header(HttpHeaders.ORIGIN, ORIGIN)
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, ORIGIN))
+                .andExpect(header().string(
+                        HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, containsString("X-CSRF-TOKEN")));
+
+        mockMvc.perform(options("/api/v1/auth/csrf")
+                        .header(HttpHeaders.ORIGIN, "https://unapproved.example.com")
+                        .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET"))
+                .andExpect(status().isForbidden())
+                .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));
     }
 
     @Test
@@ -144,6 +174,25 @@ class AuthSessionControllerTest {
 
         verify(rateLimitService).acquire(eq(RateLimitService.SCOPE_LOGIN), anyString());
         verify(auditEventService).recordLoginFailure();
+    }
+
+    @Test
+    void loginWithUntrustedAccountIsAuditedAsFailure() throws Exception {
+        AuthenticatedUserResponse untrusted = new AuthenticatedUserResponse(
+                USER_ID, "Jane", "Doe", "jane@example.com", "UNKNOWN_ROLE", "ACTIVE");
+        when(authService.authenticate(any())).thenReturn(untrusted);
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header(HttpHeaders.ORIGIN, ORIGIN)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validLoginBody()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+
+        verify(auditEventService).recordLoginFailure();
+        verify(auditEventService, never()).recordLoginSuccess(any());
     }
 
     @Test

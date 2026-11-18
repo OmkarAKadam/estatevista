@@ -30,8 +30,12 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import com.estatevista.audit.AuditEventService;
 import com.estatevista.common.response.ApiErrorResponse;
 import com.estatevista.common.response.ApiErrorResponse.FieldErrorDetail;
+
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * Central exception handling for every REST controller.
@@ -49,11 +53,26 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    private final ObjectProvider<AuditEventService> auditEventService;
+
     private static final String GENERIC_FIELD_MESSAGE = "Invalid value";
+
+    /** Keeps standalone handler tests usable when no audit provider is present. */
+    public GlobalExceptionHandler() {
+        this(null);
+    }
+
+    @Autowired
+    public GlobalExceptionHandler(ObjectProvider<AuditEventService> auditEventService) {
+        this.auditEventService = auditEventService;
+    }
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ApiErrorResponse> handleApiException(
             ApiException exception, HttpServletRequest request) {
+        if (exception.getErrorCode() == ErrorCode.FORBIDDEN) {
+            auditAccessDenied(request);
+        }
         if (exception.getErrorCode().status().is5xxServerError()) {
             log.error("API error {} at {} {}",
                     exception.getErrorCode().name(),
@@ -170,6 +189,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleAccessDenied(
             AccessDeniedException exception, HttpServletRequest request) {
         log.warn("Access denied at {} {}", request.getMethod(), request.getRequestURI());
+        auditAccessDenied(request);
         return respond(ErrorCode.FORBIDDEN, null, List.of(), request);
     }
 
@@ -194,6 +214,14 @@ public class GlobalExceptionHandler {
                 ErrorCode.VALIDATION_ERROR.defaultMessage(),
                 details,
                 request);
+    }
+
+    private void auditAccessDenied(HttpServletRequest request) {
+        AuditEventService audit = auditEventService == null
+                ? null : auditEventService.getIfAvailable();
+        if (audit != null) {
+            audit.recordAccessDenied(request);
+        }
     }
 
     private static ResponseEntity<ApiErrorResponse> respond(

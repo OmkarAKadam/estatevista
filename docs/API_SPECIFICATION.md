@@ -110,12 +110,13 @@ Visitors are not stored as user accounts.
 | POST | `/auth/login` | Public | Authenticate user |
 | POST | `/auth/logout` | Authenticated | End current session |
 | GET | `/auth/me` | Authenticated | Retrieve current user |
+| GET | `/auth/csrf` | Public | Issue session-bound CSRF token in `X-CSRF-TOKEN` header |
 | POST | `/auth/forgot-password` | Public | Request password reset |
 | POST | `/auth/reset-password` | Public, valid reset token | Reset password |
 
 Registration is limited to buyer accounts. Agent and administrator accounts are created through authorized administrative workflows.
 
-Authentication uses a server-side session with an opaque host-only `HttpOnly` cookie and a session-bound CSRF token exposed through the CORS-exposed `X-CSRF-TOKEN` response header; no JWT or cookie-based CSRF token is used. The token is returned on the login response and `GET /auth/me`, must be echoed in the `X-CSRF-TOKEN` request header on state-changing requests, and is held in memory by the frontend. The CSRF mechanism is governed by `SECURITY_ARCHITECTURE.md` SD-05, SD-48, and SD-53. `POST /auth/reset-password` accepts a purpose-scoped token: a `PASSWORD_RESET` token (30-minute expiry) or an `ACCOUNT_ACTIVATION` token (72-hour expiry) issued when an administrator creates an agent. This reuses one contract instead of adding a duplicate activation endpoint.
+Authentication uses a server-side session with an opaque host-only `HttpOnly` cookie and a session-bound CSRF token exposed through the CORS-exposed `X-CSRF-TOKEN` response header; no JWT or cookie-based CSRF token is used. The token is returned on the login response, `GET /auth/me`, and the header-only `GET /auth/csrf` bootstrap; it must be echoed in the `X-CSRF-TOKEN` request header on state-changing requests and is held in memory by the frontend. No response body, including the CSRF bootstrap body, contains the token or an alternative token field. The CSRF mechanism is governed by `SECURITY_ARCHITECTURE.md` SD-05, SD-48, and SD-53. `POST /auth/reset-password` accepts a purpose-scoped token: a `PASSWORD_RESET` token (30-minute expiry) or an `ACCOUNT_ACTIVATION` token (72-hour expiry) issued when an administrator creates an agent. This reuses one contract instead of adding a duplicate activation endpoint.
 
 ### 3.3.1 Register Buyer
 
@@ -203,6 +204,33 @@ Success: `200 OK`
 ```
 
 `GET /auth/me` also returns the session-bound CSRF token in the `X-CSRF-TOKEN` response header. The JSON body never contains the token.
+
+### 3.3.4 CSRF Bootstrap
+
+`GET /auth/csrf`
+
+Access: public. This compatibility bootstrap creates or resolves the anonymous server-side session and returns its session-bound token only in the `X-CSRF-TOKEN` response header. It is not an authentication endpoint and does not replace `GET /auth/me` as the authenticated bootstrap.
+
+Success: `200 OK`
+
+Headers:
+
+```http
+X-CSRF-TOKEN: <session-bound token>
+Cache-Control: no-store
+Access-Control-Expose-Headers: X-CSRF-TOKEN
+```
+
+Response body:
+
+```json
+{
+  "success": true,
+  "message": "CSRF token issued"
+}
+```
+
+The body intentionally has no `data`, `token`, or `headerName` field. Clients must read the token from the CORS-exposed `X-CSRF-TOKEN` response header and send it back in the `X-CSRF-TOKEN` request header on `POST`, `PUT`, `PATCH`, and `DELETE` requests. No CSRF cookie or browser-storage mechanism is used. CORS exposes the header only to configured allowed origins; registration keeps its exact Origin/Referer validation.
 
 # 4. User Management APIs
 

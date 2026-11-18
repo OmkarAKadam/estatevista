@@ -11,10 +11,12 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import com.estatevista.audit.AuditEventService;
 import com.estatevista.common.exception.ErrorCode;
 import com.estatevista.common.response.ApiErrorResponse;
 import tools.jackson.databind.ObjectMapper;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.web.util.matcher.RequestMatcher;
@@ -38,14 +40,17 @@ public class AuthOriginValidationFilter extends OncePerRequestFilter {
     private final List<String> allowedOrigins;
     private final ObjectMapper objectMapper;
     private final RequestMatcher matcher;
+    private final ObjectProvider<AuditEventService> auditEventService;
 
     public AuthOriginValidationFilter(
             List<String> allowedOrigins,
             ObjectMapper objectMapper,
-            RequestMatcher matcher) {
+            RequestMatcher matcher,
+            ObjectProvider<AuditEventService> auditEventService) {
         this.allowedOrigins = List.copyOf(allowedOrigins);
         this.objectMapper = objectMapper;
         this.matcher = matcher;
+        this.auditEventService = auditEventService;
     }
 
     @Override
@@ -64,6 +69,12 @@ public class AuthOriginValidationFilter extends OncePerRequestFilter {
                 : originOf(request.getHeader(HttpHeaders.REFERER));
 
         if (candidate == null || !isAllowed(candidate)) {
+            AuditEventService audit = auditEventService == null
+                    ? null
+                    : auditEventService.getIfAvailable();
+            if (audit != null) {
+                audit.recordOriginRejected(request);
+            }
             writeForbidden(request, response);
             return;
         }

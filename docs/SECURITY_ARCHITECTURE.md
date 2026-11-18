@@ -682,7 +682,7 @@ CORS is not an authorization control and does not replace CSRF protection. A dis
 
 #### 8.5.7 Token lifecycle
 
-The following lifecycle is normative for the frontend and backend. "Bootstrap" means `GET /api/v1/auth/me` with `credentials: "include"`.
+The following lifecycle is normative for the frontend and backend. "Bootstrap" means `GET /api/v1/auth/me` with `credentials: "include"`. A public compatibility bootstrap, `GET /api/v1/auth/csrf`, follows the same transport rule: it returns the session-bound token only in the CORS-exposed `X-CSRF-TOKEN` response header with `Cache-Control: no-store`; its JSON body has no token or alternative token field. It does not authenticate the caller, weaken session binding, broaden CSRF exemptions, or replace the authoritative authenticated `/auth/me` bootstrap.
 
 | Event | Backend behaviour | Frontend behaviour |
 |---|---|---|
@@ -1514,7 +1514,7 @@ CSRF is required because the recommended authentication uses an ambient cookie. 
 
 - Enable Spring Security CSRF for all mutating REST requests.
 - Use a session-bound repository: either extend/wrap Spring Security's `HttpSessionCsrfTokenRepository` or implement an equivalent (SD-53) that stores the token in the authenticated `HttpSession` and never writes a cookie. Generate at least 256 bits of randomness rather than relying on the default `UUID` generator. **Do not use `CookieCsrfTokenRepository`** for this design; it implements double-submit and would reintroduce the cookie-tossing weakness described in Section 8.5.2. A thin custom repository or token generator plus a response-header writer is nonetheless required for the 256-bit and delivery requirements (Section 8.5.8).
-- Require the token in the `X-CSRF-TOKEN` request header. The frontend obtains it from the `X-CSRF-TOKEN` response header on `GET /auth/me` or the login response, exposes it through CORS (`Access-Control-Expose-Headers`), and holds it in memory only.
+- Require the token in the `X-CSRF-TOKEN` request header. The frontend obtains it from the `X-CSRF-TOKEN` response header on `GET /auth/me` or the login response, exposes it through CORS (`Access-Control-Expose-Headers`), and holds it in memory only. If the public compatibility `GET /auth/csrf` is used, it likewise returns the token only in the header with `Cache-Control: no-store` and never in its JSON body.
 - Ignore CSRF only for the four unauthenticated authentication POSTs identified in Section 8.5.10 and the WebSocket handshake path; logout and password change are not exempt. Document every exception and its compensating controls.
 - Rotate the token on login, session-ID rotation, privilege change, and password change. The token is destroyed with the session on logout, expiry, deactivation, or suspension.
 - Validate `Origin`/`Referer` on state-changing requests in addition to the token (Section 8.5.9). Reject a missing Origin and Referer on a state-changing browser request.

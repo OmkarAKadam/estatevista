@@ -4,7 +4,6 @@ import java.util.UUID;
 
 import com.estatevista.audit.AuditEventService;
 import com.estatevista.auth.dto.AuthenticatedUserResponse;
-import com.estatevista.auth.dto.CsrfTokenResponse;
 import com.estatevista.auth.dto.LoginRequest;
 import com.estatevista.auth.dto.RegisterRequest;
 import com.estatevista.auth.dto.RegisteredUserResponse;
@@ -73,14 +72,20 @@ public class AuthController {
                 .body(ApiResponse.success("Account registered successfully", registered));
     }
 
+    /**
+     * Compatibility CSRF bootstrap. The session-bound token is transported
+     * exclusively through {@code X-CSRF-TOKEN}; the response envelope carries
+     * no token or alternative token field.
+     */
     @GetMapping("/csrf")
-    public ResponseEntity<ApiResponse<CsrfTokenResponse>> csrf(CsrfToken csrfToken) {
+    public ResponseEntity<ApiResponse<Void>> csrf(CsrfToken csrfToken) {
         String token = csrfToken == null ? null : csrfToken.getToken();
-        String headerName = csrfToken == null ? CSRF_HEADER : csrfToken.getHeaderName();
-        return ResponseEntity.ok()
-                .cacheControl(CacheControl.noStore())
-                .header(CSRF_HEADER, token == null ? "" : token)
-                .body(ApiResponse.success(new CsrfTokenResponse(headerName, token)));
+        ResponseEntity.BodyBuilder response = ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore());
+        if (token != null) {
+            response.header(CSRF_HEADER, token);
+        }
+        return response.body(ApiResponse.<Void>success("CSRF token issued", null));
     }
 
     @PostMapping("/login")
@@ -93,15 +98,17 @@ public class AuthController {
         String rateLimitIdentity = request.getEmail() + "|" + httpRequest.getRemoteAddr();
         rateLimitService.acquire(RateLimitService.SCOPE_LOGIN, rateLimitIdentity);
         AuthenticatedUserResponse user;
+        AuthenticatedAccount account;
         try {
             user = authService.authenticate(request);
+            account = trustedAccount(user);
         } catch (ApiException exception) {
             auditEventService.recordLoginFailure();
             throw exception;
         }
 
-        // Rotate any pre-existing anonymous session after successful credential
-        // verification. Spring Security's sessionFixation() strategy is not
+        // Rotate any pre-existing anonymous session after a fully trusted
+        // authentication. Spring Security's sessionFixation() strategy is not
         // triggered by a controller-managed authentication, so the rotation is
         // applied explicitly here. changeSessionId() preserves session
         // attributes (including the CSRF token) while replacing the identifier.
@@ -109,7 +116,6 @@ public class AuthController {
             httpRequest.changeSessionId();
         }
 
-        AuthenticatedAccount account = trustedAccount(user);
         SessionAuthenticationToken authentication =
                 new SessionAuthenticationToken(account.id().toString(), account.authorities());
 

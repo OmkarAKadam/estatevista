@@ -1,6 +1,10 @@
 package com.estatevista.config;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -72,6 +76,8 @@ class SecurityFilterChainTest {
                 .andExpect(jsonPath("$.error.message").value("Authentication is required"))
                 .andExpect(jsonPath("$.error.details").isArray())
                 .andExpect(jsonPath("$.path").value("/api/v1/probe/read"));
+
+        verifyNoInteractions(auditEventService);
     }
 
     @Test
@@ -81,6 +87,9 @@ class SecurityFilterChainTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"))
                 .andExpect(jsonPath("$.error.message").value("Access is denied"));
+
+        verify(auditEventService, times(1)).recordAccessDenied(any());
+        verify(auditEventService, times(0)).recordCsrfFailure(any());
     }
 
     @Test
@@ -89,6 +98,9 @@ class SecurityFilterChainTest {
                 .andExpect(status().isForbidden())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+
+        verify(auditEventService, times(1)).recordCsrfFailure(any());
+        verify(auditEventService, times(0)).recordAccessDenied(any());
     }
 
     @Test
@@ -130,6 +142,21 @@ class SecurityFilterChainTest {
                         .content("{}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void disallowedRegistrationOriginIsAuditedOnceWithoutChangingTheEnvelope() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .header(HttpHeaders.REFERER, "https://evil.example.com/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"))
+                .andExpect(jsonPath("$.error.message").value("Request origin is not allowed"));
+
+        verify(auditEventService, times(1)).recordOriginRejected(any());
+        verify(auditEventService, times(0)).recordCsrfFailure(any());
+        verify(auditEventService, times(0)).recordAccessDenied(any());
     }
 
     @Test

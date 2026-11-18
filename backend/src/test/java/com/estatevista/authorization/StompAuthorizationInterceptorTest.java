@@ -8,11 +8,13 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.UUID;
 
+import com.estatevista.audit.AuditEventService;
 import com.estatevista.common.exception.ApiException;
 import com.estatevista.common.exception.ErrorCode;
 import com.estatevista.user.entity.AccountStatus;
@@ -21,6 +23,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
@@ -166,6 +169,23 @@ class StompAuthorizationInterceptorTest {
                 .isThrownBy(() -> interceptor.preSend(
                         message(StompCommand.SEND, payload, "/app/chat.send"), channel));
         verify(resources, never()).requireConversationAccess(any(), any());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void deniedSubscriptionIsAuditedOnceWithTrustedActorAndDestination() {
+        AuditEventService audit = mock(AuditEventService.class);
+        ObjectProvider<AuditEventService> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(audit);
+        StompAuthorizationInterceptor audited =
+                new StompAuthorizationInterceptor(accounts, resources, provider);
+
+        assertThatExceptionOfType(AccessDeniedException.class)
+                .isThrownBy(() -> audited.preSend(
+                        message(StompCommand.SUBSCRIBE, "", "/topic/conversations"), channel));
+
+        verify(audit).recordWebSocketAuthFailure(userId.toString(), "/topic/conversations");
+        verifyNoMoreInteractions(audit);
     }
 
     @Test

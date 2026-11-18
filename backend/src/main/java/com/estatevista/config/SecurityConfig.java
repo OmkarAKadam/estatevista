@@ -7,6 +7,7 @@ import java.util.List;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import com.estatevista.audit.AuditEventService;
 import com.estatevista.authorization.AccountAuthorizationService;
 import com.estatevista.authorization.SessionAuthorizationFilter;
 import com.estatevista.common.exception.ErrorCode;
@@ -29,10 +30,12 @@ import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.web.filter.CorsFilter;
 
 /**
  * Security filter chain.
@@ -44,7 +47,9 @@ import org.springframework.security.web.servlet.util.matcher.PathPatternRequestM
  * CSRF-exempt with exact Origin/Referer validation. Stage 3.5 requires an
  * authenticated session for the WebSocket handshake and restricts the management
  * path prefixes by role. Everything not explicitly allowlisted stays denied,
- * including non-health Actuator endpoints and non-GET health probes.</p>
+ * including non-health Actuator endpoints and non-GET health probes. Stage 3.6
+ * corrective audit coverage records CSRF failures and authorization denials in
+ * this handler without changing the generic error response.</p>
  */
 @Configuration
 @EnableWebSecurity
@@ -53,14 +58,17 @@ public class SecurityConfig {
     private final ObjectMapper objectMapper;
     private final AppProperties appProperties;
     private final ObjectProvider<AccountAuthorizationService> accountAuthorizationService;
+    private final ObjectProvider<AuditEventService> auditEventService;
 
     public SecurityConfig(
             ObjectMapper objectMapper,
             AppProperties appProperties,
-            ObjectProvider<AccountAuthorizationService> accountAuthorizationService) {
+            ObjectProvider<AccountAuthorizationService> accountAuthorizationService,
+            ObjectProvider<AuditEventService> auditEventService) {
         this.objectMapper = objectMapper;
         this.appProperties = appProperties;
         this.accountAuthorizationService = accountAuthorizationService;
+        this.auditEventService = auditEventService;
     }
 
     @Bean
@@ -74,8 +82,17 @@ public class SecurityConfig {
             SecurityContextRepository securityContextRepository) throws Exception {
         AuthenticationEntryPoint authenticationEntryPoint = (request, response, exception) ->
                 writeJsonError(request, response, ErrorCode.UNAUTHORIZED, null);
-        AccessDeniedHandler accessDeniedHandler = (request, response, exception) ->
-                writeJsonError(request, response, ErrorCode.FORBIDDEN, null);
+        AccessDeniedHandler accessDeniedHandler = (request, response, exception) -> {
+            AuditEventService audit = auditEventService.getIfAvailable();
+            if (audit != null) {
+                if (exception instanceof CsrfException) {
+                    audit.recordCsrfFailure(request);
+                } else {
+                    audit.recordAccessDenied(request);
+                }
+            }
+            writeJsonError(request, response, ErrorCode.FORBIDDEN, null);
+        };
 
         PathPatternRequestMatcher registrationPost = PathPatternRequestMatcher.pathPattern(
                 HttpMethod.POST, "/api/v1/auth/register");
@@ -83,7 +100,7 @@ public class SecurityConfig {
         List<String> allowedOrigins = AllowedOrigins.requireExplicit(
                 appProperties.cors().allowedOrigins(), "app.cors.allowed-origins");
         AuthOriginValidationFilter originFilter = new AuthOriginValidationFilter(
-                allowedOrigins, objectMapper, registrationPost);
+                allowedOrigins, objectMapper, registrationPost, auditEventService);
 
         CsrfTokenRequestAttributeHandler csrfRequestHandler = new CsrfTokenRequestAttributeHandler();
         csrfRequestHandler.setCsrfRequestAttributeName(null);
@@ -137,7 +154,7 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
-                .addFilterBefore(originFilter, CsrfFilter.class)
+                .addFilterBefore(originFilter, CorsFilter.class)
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler));

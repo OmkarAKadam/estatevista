@@ -190,15 +190,16 @@ class SessionAuthenticationIntegrationTest {
         MvcResult csrfResult = mockMvc.perform(get("/api/v1/auth/csrf"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
+                .andExpect(header().exists("X-CSRF-TOKEN"))
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.headerName").value("X-CSRF-TOKEN"))
-                .andExpect(jsonPath("$.data.token").isNotEmpty())
+                .andExpect(jsonPath("$.data.token").doesNotExist())
+                .andExpect(jsonPath("$.data.headerName").doesNotExist())
                 .andReturn();
 
         Cookie sessionCookie = requireSessionCookie(csrfResult);
-        String token = com.jayway.jsonpath.JsonPath.read(
-                csrfResult.getResponse().getContentAsString(), "$.data.token");
-        assertThat(csrfResult.getResponse().getHeader("X-CSRF-TOKEN")).isEqualTo(token);
+        String token = csrfResult.getResponse().getHeader("X-CSRF-TOKEN");
+        assertThat(token).isNotBlank();
+        assertThat(csrfResult.getResponse().getContentAsString()).doesNotContain(token);
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .cookie(sessionCookie)
@@ -219,8 +220,8 @@ class SessionAuthenticationIntegrationTest {
                 .andReturn();
         Cookie beforeLoginCookie = requireSessionCookie(csrfResult);
         String oldSessionId = beforeLoginCookie.getValue();
-        String token = com.jayway.jsonpath.JsonPath.read(
-                csrfResult.getResponse().getContentAsString(), "$.data.token");
+        String token = csrfResult.getResponse().getHeader("X-CSRF-TOKEN");
+        assertThat(token).isNotBlank();
 
         MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
                         .cookie(beforeLoginCookie)
@@ -229,15 +230,25 @@ class SessionAuthenticationIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(loginBody("fixation@example.com", PASSWORD)))
                 .andExpect(status().isOk())
+                .andExpect(header().exists("X-CSRF-TOKEN"))
                 .andReturn();
 
         Cookie afterLoginCookie = requireSessionCookie(login);
+        String rotatedToken = login.getResponse().getHeader("X-CSRF-TOKEN");
         assertThat(afterLoginCookie.getValue()).isNotEqualTo(oldSessionId);
         assertThat(oldSessionId).isNotBlank();
+        assertThat(rotatedToken).isNotBlank();
+        assertThat(login.getResponse().getContentAsString()).doesNotContain(rotatedToken);
 
         mockMvc.perform(get("/api/v1/auth/me").cookie(afterLoginCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.email").value("fixation@example.com"));
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .cookie(afterLoginCookie)
+                        .header("X-CSRF-TOKEN", rotatedToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
     }
 
     @Test
@@ -246,6 +257,9 @@ class SessionAuthenticationIntegrationTest {
 
         MvcResult login = loginAs("logout@example.com", PASSWORD);
         Cookie sessionCookie = requireSessionCookie(login);
+        String loginCsrfToken = login.getResponse().getHeader("X-CSRF-TOKEN");
+        assertThat(loginCsrfToken).isNotBlank();
+        assertThat(login.getResponse().getContentAsString()).doesNotContain(loginCsrfToken);
 
         mockMvc.perform(post("/api/v1/auth/logout").cookie(sessionCookie))
                 .andExpect(status().isForbidden())
@@ -259,7 +273,7 @@ class SessionAuthenticationIntegrationTest {
 
         MvcResult logout = mockMvc.perform(post("/api/v1/auth/logout")
                         .cookie(sessionCookie)
-                        .with(csrf()))
+                        .header("X-CSRF-TOKEN", loginCsrfToken))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
                 .andExpect(jsonPath("$.success").value(true))
@@ -284,9 +298,16 @@ class SessionAuthenticationIntegrationTest {
     }
 
     private MvcResult loginAs(String email, String password) throws Exception {
+        MvcResult csrfResult = mockMvc.perform(get("/api/v1/auth/csrf"))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie sessionCookie = requireSessionCookie(csrfResult);
+        String csrfToken = csrfResult.getResponse().getHeader("X-CSRF-TOKEN");
+        assertThat(csrfToken).isNotBlank();
         return mockMvc.perform(post("/api/v1/auth/login")
+                        .cookie(sessionCookie)
                         .header(HttpHeaders.ORIGIN, ORIGIN)
-                        .with(csrf())
+                        .header("X-CSRF-TOKEN", csrfToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(loginBody(email, password)))
                 .andExpect(status().isOk())

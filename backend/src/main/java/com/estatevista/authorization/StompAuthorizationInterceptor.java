@@ -7,6 +7,13 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.estatevista.audit.AuditEventService;
+import com.estatevista.common.exception.ApiException;
+
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
@@ -27,10 +34,13 @@ import org.springframework.stereotype.Component;
  *
  * <p>This is an authorization boundary only. It does not implement chat
  * handlers, message persistence, or a frontend chat UI; those belong to Stage 7.
- * Client supplied sender IDs, logins, and roles are never read.</p>
+ * Client supplied sender IDs, logins, and roles are never read. Denials are
+ * recorded as redacted {@code SECURITY_WS_AUTH_FAILURE} audit events.</p>
  */
 @Component
 public final class StompAuthorizationInterceptor implements ChannelInterceptor {
+
+    private static final Logger log = LoggerFactory.getLogger(StompAuthorizationInterceptor.class);
 
     private static final Set<String> ALLOWED_SUBSCRIPTIONS = Set.of(
             "/user/queue/messages",
@@ -42,17 +52,37 @@ public final class StompAuthorizationInterceptor implements ChannelInterceptor {
 
     private final AccountAuthorizationService accounts;
     private final ResourceAuthorizationService resources;
+    private final ObjectProvider<AuditEventService> auditEventService;
 
+    /** Constructor for isolated authorization tests without an audit bean. */
     public StompAuthorizationInterceptor(
             AccountAuthorizationService accounts,
             ResourceAuthorizationService resources) {
+        this(accounts, resources, null);
+    }
+
+    @Autowired
+    public StompAuthorizationInterceptor(
+            AccountAuthorizationService accounts,
+            ResourceAuthorizationService resources,
+            ObjectProvider<AuditEventService> auditEventService) {
         this.accounts = accounts;
         this.resources = resources;
+        this.auditEventService = auditEventService;
     }
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {
         StompHeaderAccessor accessor = StompHeaderAccessor.wrap(message);
+        try {
+            return authorize(message, accessor);
+        } catch (AccessDeniedException | ApiException exception) {
+            auditDenial(accessor);
+            throw exception;
+        }
+    }
+
+    private Message<?> authorize(Message<?> message, StompHeaderAccessor accessor) {
         StompCommand command = accessor.getCommand();
         if (command == null) {
             throw denied();
@@ -89,6 +119,35 @@ public final class StompAuthorizationInterceptor implements ChannelInterceptor {
             }
         }
         return message;
+    }
+
+    private void auditDenial(StompHeaderAccessor accessor) {
+        if (auditEventService == null) {
+            return;
+        }
+        try {
+            AuditEventService audit = auditEventService.getIfAvailable();
+            if (audit != null) {
+                audit.recordWebSocketAuthFailure(
+                        principalName(accessor.getUser()), safeDestination(accessor.getDestination()));
+            }
+        } catch (RuntimeException exception) {
+            // Auditing is best-effort and must not alter the STOMP denial.
+            log.warn("STOMP audit write failed: {}", exception.getClass().getSimpleName());
+        }
+    }
+
+    private static String principalName(Principal principal) {
+        if (principal == null || principal.getName() == null) {
+            return null;
+        }
+        return principal.getName();
+    }
+
+    private static String safeDestination(String destination) {
+        return destination != null && destination.matches("/[A-Za-z0-9/_-]{1,80}")
+                ? destination
+                : "unknown";
     }
 
     private static UUID conversationIdOf(Object payload) {
