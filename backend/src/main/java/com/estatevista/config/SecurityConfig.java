@@ -108,6 +108,7 @@ public class SecurityConfig {
         http
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf
+                        .csrfTokenRepository(new SecureCsrfTokenRepository())
                         .csrfTokenRequestHandler(csrfRequestHandler)
                         .ignoringRequestMatchers(registrationPost))
                 .headers(headers -> headers

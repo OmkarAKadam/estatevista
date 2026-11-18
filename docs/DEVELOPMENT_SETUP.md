@@ -633,7 +633,7 @@ Spring Security **7.1.2**:
 | --- | --- | --- |
 | Session-backed token storage | `HttpSessionCsrfTokenRepository` retained | Compatible |
 | Default header/parameter | `X-CSRF-TOKEN` / `_csrf` retained | Compatible |
-| Token generation | Default is UUID-based (~122 bits) | Approved 256-bit generator still required |
+| Token generation | Default is UUID-based (~122 bits) | Stage 3.6 implements `com.estatevista.config.SecureCsrfTokenRepository` to generate 32 bytes (256 bits) from `java.security.SecureRandom`, encoded as URL-safe Base64 without padding |
 | Lazy token loading | `loadDeferredToken` supported | Compatible |
 | Token masking | `XorCsrfTokenRequestAttributeHandler` is the default and unmasks submitted values | The approved frontend sends the raw session token in `X-CSRF-TOKEN`. Use a plain `CsrfTokenRequestAttributeHandler` (or an equivalent raw-header resolver), or emit the masked value in the response header. Do not pair the default XOR handler with a raw header token |
 | Rotation after authentication | `CsrfAuthenticationStrategy` available | Rotation ordering must be wired and tested |
@@ -645,10 +645,15 @@ Spring Security **7.1.2**:
 **Result:** the approved design remains implementable on Spring Security 7.1.2
 with no blocking API removal, but two framework defaults must not be used
 as-is: `csrf.spa()` (cookie-backed) and the default XOR handler (expects a
-masked value). It is **not** implemented in Stage 1.8. The authentication stage
-must add the 256-bit generator, response-header writer, raw-header-compatible
-request handler, post-rotation ordering, audit event, and the Section 17
-security tests before the design can be marked complete.
+masked value). Stage 3.6 implements the SD-53 baseline on Spring Security 7.1.2
+with `com.estatevista.config.SecureCsrfTokenRepository` (session-backed,
+32-byte `java.security.SecureRandom` token generation, URL-safe Base64 without
+padding, no cookie), a plain `CsrfTokenRequestAttributeHandler` for raw header
+tokens, header-only CSRF delivery on bootstrap/login/me responses, and the
+existing JSON failure/audit handling. Verification evidence is recorded in
+`docs/validation/STAGE_3_6_SD53_FINAL_VERIFICATION_REPORT.md`; the broader
+Section 17 suite remains additional acceptance evidence for the full security
+architecture.
 
 This caveat is also recorded in the `SecurityConfig` Javadoc so it is visible
 to the next stage.
