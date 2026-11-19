@@ -6,10 +6,11 @@ automated test baseline complete and validated locally
 **Last validated:** 2026-11-15 (Windows, PowerShell, local PostgreSQL 18.3)
 
 This document describes the actual, validated development environment for the
-EstateVista V2 backend and frontend shell. It is intentionally limited to
-infrastructure: no authentication workflow, business module, property CRUD,
-chat handling, Cloudinary upload, or production deployment is implemented in
-this stage.
+EstateVista V2 backend and frontend. It covers infrastructure, the completed
+backend authentication and security configuration, and the Stage 3.7 frontend
+authentication integration. Property management, chat handling, Cloudinary
+upload, and production deployment remain outside this document's completed
+scope.
 
 Approved source-of-truth documents:
 
@@ -105,8 +106,12 @@ EstateVista/
 │       └── persistence/           # opt-in PostgreSQL integration tests
 ├── frontend/
 │   ├── dev-server.mjs        # zero-dependency static server, port 5500
+│   ├── login.html            # Stage 3.7 login page
+│   ├── register.html         # Stage 3.7 buyer registration page
 │   ├── assets/js/core/config.js
 │   ├── assets/js/core/api.js
+│   ├── assets/js/auth/       # auth service, state, navigation, page scripts
+│   ├── assets/css/auth.css   # authentication page composition
 │   └── dev/setup-check.html  # development-only connectivity check
 └── docs/
     └── DEVELOPMENT_SETUP.md  # this document
@@ -430,14 +435,34 @@ Defaults:
 
 Runtime API configuration (`frontend/assets/js/core/config.js`):
 
-- Local hostnames (`localhost`, `127.0.0.1`) default to
-  `http://localhost:8080/api/v1`.
+- Local hostnames (`localhost`, `127.0.0.1`) use port `8080` on the same
+  hostname as the page, e.g. `http://localhost:8080/api/v1` or
+  `http://127.0.0.1:8080/api/v1`. Keeping the hostname aligned preserves the
+  `SameSite=Lax` session cookie on credentialed fetches.
 - Non-local deployments must define
   `window.ESTATEVISTA_CONFIG = { apiBaseUrl, webSocketUrl }` before the module
   scripts run.
 - The API client (`api.js`) uses `credentials: "include"` and keeps the CSRF
   token in memory only. It does not use cookies, `localStorage`,
   `sessionStorage`, URLs, or logs for the token.
+
+Stage 3.7 adds the authentication experience:
+
+- `frontend/login.html` and `frontend/register.html`.
+- `frontend/assets/js/auth/` for the auth service, in-memory state,
+  authentication-aware navigation, safe redirects, and page bootstrap.
+- `frontend/assets/css/auth.css` for the authentication page layout.
+- Every page includes `assets/js/auth/auth-init.js`, which asks
+  `GET /api/v1/auth/me` whether a session exists and updates the header.
+- Registration uses `POST /api/v1/auth/register` (CSRF-exempt, exact
+  Origin/Referer required). Login and logout are CSRF protected.
+- Login obtains `GET /api/v1/auth/csrf`, reads `X-CSRF-TOKEN` from the response
+  header, submits credentials with `credentials: "include"`, and verifies the
+  rotated session through `GET /api/v1/auth/me`.
+- HTML, CSS, and Vanilla ES modules only; no framework and no build step.
+
+Full contract, flows, and the manual verification checklist are documented in
+[`frontend/docs/AUTHENTICATION.md`](../frontend/docs/AUTHENTICATION.md).
 
 The dev server rejects path traversal and returns `404` for missing files. It
 is not a production server.

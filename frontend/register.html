@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create your account — EstateVista</title>
+  <meta name="description" content="Create a buyer account on EstateVista.">
+  <link rel="icon" href="assets/images/brand/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Inter:wght@400..700&amp;display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <link rel="stylesheet" href="assets/css/theme.css">
+  <link rel="stylesheet" href="assets/css/components.css">
+  <link rel="stylesheet" href="assets/css/auth.css">
+</head>
+<body>
+  <a class="ev-skip-link" href="#main">Skip to main content</a>
+
+  <header class="site-header" data-site-header>
+    <nav class="navbar navbar-expand-lg site-nav" aria-label="Primary">
+      <div class="container ev-container">
+        <a class="site-brand" href="index.html">
+          <img class="site-brand__mark" src="assets/images/brand/favicon.svg" alt="" width="36" height="36" aria-hidden="true">
+          <span class="site-brand__name">EstateVista</span>
+        </a>
+
+        <button class="navbar-toggler site-nav__toggle" type="button"
+                data-bs-toggle="collapse" data-bs-target="#primaryNav"
+                aria-controls="primaryNav" aria-expanded="false"
+                aria-label="Open navigation menu">
+          <span class="site-nav__bar" aria-hidden="true"></span>
+        </button>
+
+        <div class="collapse navbar-collapse site-nav__panel" id="primaryNav">
+          <ul class="navbar-nav site-nav__list ms-lg-auto">
+            <li class="nav-item">
+              <a class="nav-link site-nav__link" href="index.html" data-nav-link>Home</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link site-nav__link" href="properties.html" data-nav-link>Properties</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link site-nav__link" href="about.html" data-nav-link>About us</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link site-nav__link" href="contact.html" data-nav-link>Contact us</a>
+            </li>
+          </ul>
+          <div class="site-auth" data-auth-nav data-auth-login-href="login.html" data-auth-register-href="register.html" data-auth-home-href="index.html">
+            <a class="site-auth__link" href="login.html">Log in</a>
+            <a class="btn btn-primary btn-sm site-auth__cta" href="register.html">Create account</a>
+          </div>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <section class="auth-page">
+      <div class="container ev-container">
+        <div class="auth-shell">
+          <div class="auth-intro">
+            <p class="ev-eyebrow">Join EstateVista</p>
+            <h1 class="auth-intro__title">Create a buyer account.</h1>
+            <p class="ev-lede auth-intro__lede">Registration creates a buyer account. Agent and administrator accounts are managed separately by EstateVista.</p>
+            <ul class="auth-intro__list">
+              <li>One account for your EstateVista activity.</li>
+              <li>Your password is sent only to the EstateVista server.</li>
+              <li>Public property pages remain open to everyone.</li>
+            </ul>
+          </div>
+
+          <div class="auth-card">
+            <h2 class="auth-card__title">Create your account</h2>
+            <p class="auth-card__intro">All fields except phone number are required.</p>
+
+            <div class="auth-alert" id="registerAlert" role="alert" tabindex="-1" hidden></div>
+
+            <form class="auth-form" id="registerForm" novalidate aria-busy="false">
+              <div class="auth-field">
+                <label class="form-label" for="registerFirstName">First name</label>
+                <input class="form-control" type="text" id="registerFirstName" name="firstName"
+                       autocomplete="given-name" maxlength="100" required
+                       aria-describedby="registerFirstName-error">
+                <p class="auth-field__error" id="registerFirstName-error" data-field-error data-error-for="registerFirstName" hidden></p>
+              </div>
+
+              <div class="auth-field">
+                <label class="form-label" for="registerLastName">Last name</label>
+                <input class="form-control" type="text" id="registerLastName" name="lastName"
+                       autocomplete="family-name" maxlength="100" required
+                       aria-describedby="registerLastName-error">
+                <p class="auth-field__error" id="registerLastName-error" data-field-error data-error-for="registerLastName" hidden></p>
+              </div>
+
+              <div class="auth-field">
+                <label class="form-label" for="registerEmail">Email address</label>
+                <input class="form-control" type="email" id="registerEmail" name="email"
+                       autocomplete="email" inputmode="email" spellcheck="false"
+                       maxlength="255" required aria-describedby="registerEmail-error">
+                <p class="auth-field__error" id="registerEmail-error" data-field-error data-error-for="registerEmail" hidden></p>
+              </div>
+
+              <div class="auth-field">
+                <label class="form-label" for="registerPhone">Phone number (optional)</label>
+                <input class="form-control" type="tel" id="registerPhone" name="phone"
+                       autocomplete="tel" inputmode="tel" maxlength="20"
+                       aria-describedby="registerPhone-error">
+                <p class="auth-field__error" id="registerPhone-error" data-field-error data-error-for="registerPhone" hidden></p>
+              </div>
+
+              <div class="auth-field">
+                <label class="form-label" for="registerPassword">Password</label>
+                <input class="form-control" type="password" id="registerPassword" name="password"
+                       autocomplete="new-password" minlength="10" maxlength="64" required
+                       aria-describedby="registerPassword-hint registerPassword-error">
+                <p class="auth-field__hint" id="registerPassword-hint">Use 10 to 64 characters. Avoid your name, email address, or the site name.</p>
+                <p class="auth-field__error" id="registerPassword-error" data-field-error data-error-for="registerPassword" hidden></p>
+              </div>
+
+              <div class="auth-field">
+                <label class="form-label" for="registerConfirmPassword">Confirm password</label>
+                <input class="form-control" type="password" id="registerConfirmPassword" name="confirmPassword"
+                       autocomplete="new-password" maxlength="64" required
+                       aria-describedby="registerConfirmPassword-error">
+                <p class="auth-field__error" id="registerConfirmPassword-error" data-field-error data-error-for="registerConfirmPassword" hidden></p>
+              </div>
+
+              <div class="auth-actions">
+                <button class="btn btn-primary" type="submit" id="registerSubmit">Create account</button>
+              </div>
+            </form>
+
+            <div class="auth-success" id="registerSuccess" tabindex="-1" hidden>
+              <h2>Account created</h2>
+              <p>Your buyer account is ready. Log in with the email address and password you just chose.</p>
+              <a class="btn btn-primary" href="login.html?registered=1" id="registerLoginLink">Continue to log in</a>
+            </div>
+
+            <p class="auth-switch">
+              Already have an account?
+              <a href="login.html">Log in</a>
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container ev-container">
+      <div class="row gy-5">
+        <div class="col-lg-4">
+          <a class="site-footer__brand" href="index.html">
+            <img src="assets/images/brand/favicon.svg" alt="" width="32" height="32" aria-hidden="true">
+            <span class="site-footer__brand-name">EstateVista</span>
+          </a>
+          <p class="site-footer__about">A fictional property discovery project exploring how residential listings can be presented with clarity, restraint and good photography.</p>
+          <p class="site-footer__note">Demonstration site. No listing, price, person or contact detail on this site is real.</p>
+        </div>
+
+        <div class="col-6 col-lg-2">
+          <h2 class="site-footer__heading">Explore</h2>
+          <ul class="site-footer__links">
+            <li><a href="index.html">Home</a></li>
+            <li><a href="properties.html">Properties</a></li>
+            <li><a href="about.html">About us</a></li>
+            <li><a href="contact.html">Contact us</a></li>
+          </ul>
+        </div>
+
+        <div class="col-6 col-lg-3">
+          <h2 class="site-footer__heading">Discover</h2>
+          <ul class="site-footer__links">
+            <li><a href="properties.html?type=apartment">Apartments</a></li>
+            <li><a href="properties.html?type=villa">Villas</a></li>
+            <li><a href="properties.html?type=rowhouse">Row houses</a></li>
+            <li><a href="properties.html">All properties</a></li>
+          </ul>
+        </div>
+
+        <div class="col-lg-3">
+          <h2 class="site-footer__heading">Contact</h2>
+          <address class="site-footer__contact">
+            14 Meridian Court<br>
+            Indiranagar, Bengaluru 560038<br>
+            <a href="mailto:hello@estatevista.example">hello@estatevista.example</a><br>
+            <a href="tel:+918045671200">+91 80 4567 1200</a>
+          </address>
+        </div>
+      </div>
+
+      <div class="site-footer__bottom">
+        <p>© <span data-current-year>2026</span> EstateVista. Fictional content, built for demonstration.</p>
+        <p>HTML · CSS · vanilla JavaScript · Bootstrap 5</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous" defer></script>
+  <script src="assets/js/main.js" defer></script>
+  <script type="module" src="assets/js/auth/auth-init.js"></script>
+  <script type="module" src="assets/js/auth/register-page.js"></script>
+</body>
+</html>

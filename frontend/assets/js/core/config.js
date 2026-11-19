@@ -15,7 +15,7 @@
  */
 
 const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1"]);
-const LOCAL_API_BASE_URL = "http://localhost:8080/api/v1";
+const LOCAL_API_PORT = "8080";
 const WEBSOCKET_PATH = "/ws";
 
 function runtimeConfig() {
@@ -26,6 +26,15 @@ function trimTrailingSlash(value) {
   return value.replace(/\/+$/, "");
 }
 
+/**
+ * Keep the local API on the same hostname as the page. Using `localhost` for
+ * the page and `127.0.0.1` for the API makes the session cookie cross-site, and
+ * a `SameSite=Lax` cookie is then not sent on credentialed fetches.
+ */
+function localApiBaseUrl() {
+  return `http://${window.location.hostname}:${LOCAL_API_PORT}/api/v1`;
+}
+
 export function getApiBaseUrl() {
   const configured = runtimeConfig().apiBaseUrl;
   if (configured) {
@@ -33,7 +42,7 @@ export function getApiBaseUrl() {
   }
 
   if (LOCAL_HOSTNAMES.has(window.location.hostname)) {
-    return LOCAL_API_BASE_URL;
+    return localApiBaseUrl();
   }
 
   throw new Error(

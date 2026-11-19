@@ -1,0 +1,209 @@
+/* =============================================================================
+   EstateVista — auth.css
+   Authentication page composition. Shared tokens and components remain in
+   theme.css and components.css.
+   ============================================================================= */
+
+.auth-page {
+  padding-block: clamp(32px, 5vw, 72px);
+}
+
+.auth-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--ev-space-7);
+  align-items: start;
+  max-width: 1040px;
+  margin-inline: auto;
+}
+
+@media (min-width: 992px) {
+  .auth-shell {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: var(--ev-space-8);
+    align-items: center;
+  }
+}
+
+.auth-intro__title {
+  margin-bottom: var(--ev-space-4);
+}
+
+.auth-intro__lede {
+  margin-bottom: var(--ev-space-5);
+}
+
+.auth-intro__list {
+  display: grid;
+  gap: var(--ev-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.auth-intro__list li {
+  position: relative;
+  padding-left: var(--ev-space-5);
+  color: var(--ev-color-text-muted);
+  font-size: var(--ev-text-sm);
+  line-height: var(--ev-leading-snug);
+}
+
+.auth-intro__list li::before {
+  content: "";
+  position: absolute;
+  top: 0.55em;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--ev-radius-pill);
+  background-color: var(--ev-terracotta-500);
+}
+
+.auth-card {
+  padding: clamp(24px, 4vw, 40px);
+  background-color: var(--ev-color-surface);
+  border: 1px solid var(--ev-color-border);
+  border-radius: var(--ev-radius-lg);
+  box-shadow: var(--ev-shadow-sm);
+}
+
+.auth-card__title {
+  margin-bottom: var(--ev-space-2);
+  font-size: var(--ev-text-3xl);
+}
+
+.auth-card__intro {
+  margin-bottom: var(--ev-space-5);
+  color: var(--ev-color-text-muted);
+  font-size: var(--ev-text-sm);
+}
+
+.auth-form {
+  display: grid;
+  gap: var(--ev-space-4);
+}
+
+.auth-form[hidden],
+.auth-success[hidden] {
+  display: none;
+}
+
+.auth-field {
+  display: grid;
+  gap: var(--ev-space-2);
+}
+
+.auth-field .form-label {
+  margin-bottom: 0;
+}
+
+.auth-field__hint {
+  margin: 0;
+  color: var(--ev-color-text-muted);
+  font-size: var(--ev-text-xs);
+  line-height: var(--ev-leading-snug);
+}
+
+.auth-field__error {
+  margin: 0;
+  color: var(--ev-terracotta-700);
+  font-size: var(--ev-text-xs);
+  font-weight: var(--ev-weight-medium);
+  line-height: var(--ev-leading-snug);
+}
+
+.form-control[aria-invalid="true"] {
+  border-color: var(--ev-terracotta-700);
+}
+
+.form-control[aria-invalid="true"]:focus {
+  border-color: var(--ev-terracotta-700);
+  box-shadow: 0 0 0 3px rgba(164, 74, 42, 0.18);
+}
+
+.auth-actions {
+  display: grid;
+  gap: var(--ev-space-3);
+  margin-top: var(--ev-space-2);
+}
+
+.auth-actions .btn {
+  width: 100%;
+}
+
+.auth-switch {
+  margin: var(--ev-space-5) 0 0;
+  padding-top: var(--ev-space-4);
+  border-top: 1px solid var(--ev-color-border);
+  color: var(--ev-color-text-muted);
+  font-size: var(--ev-text-sm);
+  text-align: center;
+}
+
+.auth-switch a {
+  font-weight: var(--ev-weight-semibold);
+}
+
+.auth-alert {
+  margin-bottom: var(--ev-space-4);
+  padding: var(--ev-space-3) var(--ev-space-4);
+  border: 1px solid transparent;
+  border-left-width: 3px;
+  border-radius: var(--ev-radius-sm);
+  font-size: var(--ev-text-sm);
+  line-height: var(--ev-leading-snug);
+}
+
+.auth-alert[hidden] {
+  display: none;
+}
+
+.auth-alert--error {
+  border-color: rgba(164, 74, 42, 0.25);
+  border-left-color: var(--ev-terracotta-700);
+  background-color: rgba(192, 91, 54, 0.08);
+  color: var(--ev-terracotta-700);
+}
+
+.auth-alert--success {
+  border-color: rgba(47, 111, 79, 0.25);
+  border-left-color: var(--ev-status-available);
+  background-color: rgba(47, 111, 79, 0.09);
+  color: var(--ev-forest-700);
+}
+
+.auth-alert--info {
+  border-color: var(--ev-color-border);
+  border-left-color: var(--ev-sage-300);
+  background-color: var(--ev-sand-100);
+  color: var(--ev-color-text);
+}
+
+.auth-success {
+  padding: var(--ev-space-5);
+  border: 1px solid rgba(47, 111, 79, 0.28);
+  border-radius: var(--ev-radius-md);
+  background-color: rgba(47, 111, 79, 0.07);
+}
+
+.auth-success h2 {
+  margin-bottom: var(--ev-space-3);
+  font-size: var(--ev-text-2xl);
+}
+
+.auth-success p {
+  color: var(--ev-color-text-muted);
+  font-size: var(--ev-text-sm);
+}
+
+.auth-success .btn {
+  margin-top: var(--ev-space-3);
+}
+
+@media (max-width: 575.98px) {
+  .auth-card {
+    padding: var(--ev-space-5);
+    border-radius: var(--ev-radius-md);
+  }
+}
