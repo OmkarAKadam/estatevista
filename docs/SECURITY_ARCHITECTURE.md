@@ -1197,7 +1197,7 @@ The endpoint list is the approved API Specification. This table does not invent 
 | GET | `/properties/{propertyId}/related` | Public | Eligible public records | `404` |
 | PUT | `/properties/{propertyId}` | Assigned Agent / Admin | Current `primary_agent_id`; admin any | `401`, `403`, `404` |
 | PATCH | `/properties/{propertyId}` | Assigned Agent / Admin | Current assignment; field allowlist | `400`, `401`, `403`, `404` |
-| PATCH | `/properties/{propertyId}/status` | Admin / authorized Agent | Current assignment; allowed transitions; no admin-only statuses for agents | `400`, `401`, `403`, `404`, `409` |
+| PATCH | `/properties/{propertyId}/status` | Admin / authorized Agent | Current assignment; one authoritative transition table: agents may publish, unpublish, republish, and record matching `SOLD`/`RENTED` outcomes for assigned listings; reopening `SOLD`/`RENTED` and every transition to `ARCHIVED` remain `ADMIN`-only (D-06 reconciliation). This clarifies the former “no admin-only statuses for agents” wording without changing a role gate or endpoint. | `400`, `401`, `403`, `404`, `409` |
 | DELETE | `/properties/{propertyId}` | Admin | Logical archive; preserves history | `401`, `403`, `404`, `409` |
 | GET | `/admin/properties` | Admin | Platform properties; includes archived only if approved | `401`, `403` |
 | PATCH | `/admin/properties/{propertyId}/assignment` | Admin | Validate active `AGENT`; one primary; audit | `400`, `401`, `403`, `404`, `409` |
@@ -1206,6 +1206,8 @@ The endpoint list is the approved API Specification. This table does not invent 
 | GET | `/amenities` | Public | Public lookup | — |
 
 For every public property endpoint above, **eligible** means `properties.status = 'PUBLISHED'` and the property is not otherwise withdrawn (C-10/D-08). `DRAFT`, `UNAVAILABLE`, `SOLD`, `RENTED`, and `ARCHIVED` records are excluded from discovery, featured, recent, related, and direct public detail. The filter is applied in the query, not only in the presenter, so pagination totals and related-property selection cannot leak hidden records. Authenticated historical access is governed by the ownership rules in Sections 10.4.5–10.4.7 and the retention rules in Section 14.8.
+
+**D-06 wording reconciliation (Stage 4.1).** The former condition “no admin-only statuses for agents” meant that no status value is reserved exclusively for administrators; it did not mean that every transition is available to an agent. The authoritative lifecycle table in `PROPERTY_DOMAIN_DESIGN.md` §4.3 reserves reopening completed `SOLD`/`RENTED` listings and all archival for `ADMIN`, while assigned agents retain the ordinary publish, unpublish, republish, and matching-outcome transitions. No endpoint, role gate, status value, or public-visibility rule is changed by this clarification.
 
 #### 10.4.4 Property images
 
