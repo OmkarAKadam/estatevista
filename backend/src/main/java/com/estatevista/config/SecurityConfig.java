@@ -152,6 +152,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/properties/{propertyId}").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/v1/properties/{propertyId}").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/properties/{propertyId}").hasRole("ADMIN")
+                        // Stage 4.4: public, read-only reference-data lookups.
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/v1/property-categories",
+                                "/api/v1/property-subtypes",
+                                "/api/v1/amenities").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/health", "/actuator/health").permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().denyAll())

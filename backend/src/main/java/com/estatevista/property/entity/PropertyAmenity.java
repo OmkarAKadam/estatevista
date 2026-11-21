@@ -13,8 +13,9 @@ import jakarta.persistence.Table;
  * DATABASE_DESIGN.md §8.2).
  *
  * <p>The composite primary key prevents duplicate amenities on one property.
- * This is a dependent relationship with no independent history, so the database
- * allows cascading removal when its property or amenity is removed (§17.1).</p>
+ * The database cascades removal from {@code properties} but uses
+ * {@code ON DELETE RESTRICT} from {@code amenities} (V7), so an amenity with
+ * existing links cannot be deleted without first removing those links.</p>
  */
 @Entity
 @Table(name = "property_amenities")

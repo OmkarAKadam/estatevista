@@ -207,8 +207,9 @@ class BusinessSchemaIntegrationTest {
                 Boolean.class);
 
         assertThat(versions).containsExactly(
-                "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15");
-        assertThat(successes).hasSize(15).containsOnly(true);
+                "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15",
+                "16");
+        assertThat(successes).hasSize(16).containsOnly(true);
     }
 
     @Test

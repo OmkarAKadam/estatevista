@@ -5,16 +5,21 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.estatevista.audit.AuditEventService;
 import com.estatevista.auth.AuthService;
 import com.estatevista.property.PropertyService;
+import com.estatevista.property.dto.ReferenceDataResponse;
 import com.estatevista.security.RateLimitService;
 import com.estatevista.user.UserService;
 
@@ -296,6 +302,53 @@ class SecurityFilterChainTest {
 
         verify(auditEventService, times(1)).recordCsrfFailure(any());
         verify(auditEventService, times(1)).recordAccessDenied(any());
+    }
+
+    @Test
+    void referenceDataLookupsAreExplicitlyPublicAndReadOnly() throws Exception {
+        when(propertyService.getCategories()).thenReturn(List.<ReferenceDataResponse>of());
+        when(propertyService.getSubtypes(null)).thenReturn(List.<ReferenceDataResponse>of());
+        when(propertyService.getAmenities()).thenReturn(List.<ReferenceDataResponse>of());
+
+        for (String path : List.of(
+                "/api/v1/property-categories",
+                "/api/v1/property-subtypes",
+                "/api/v1/amenities")) {
+            mockMvc.perform(get(path))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success").value(true))
+                    .andExpect(jsonPath("$.data").isArray())
+                    .andExpect(jsonPath("$.meta").doesNotExist());
+        }
+
+        verify(propertyService).getCategories();
+        verify(propertyService).getSubtypes(null);
+        verify(propertyService).getAmenities();
+        verifyNoInteractions(auditEventService);
+    }
+
+    @Test
+    void referenceDataPathsRejectWriteMethodsUnderDenyByDefault() throws Exception {
+        for (String path : List.of(
+                "/api/v1/property-categories",
+                "/api/v1/property-subtypes",
+                "/api/v1/amenities")) {
+            mockMvc.perform(post(path).with(csrf()))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+            mockMvc.perform(put(path)
+                            .with(user("11111111-1111-1111-1111-111111111111").roles("ADMIN"))
+                            .with(csrf()))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+            mockMvc.perform(delete(path)
+                            .with(user("11111111-1111-1111-1111-111111111111").roles("ADMIN"))
+                            .with(csrf()))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+        }
+
+        verifyNoInteractions(propertyService);
     }
 
     @RestController

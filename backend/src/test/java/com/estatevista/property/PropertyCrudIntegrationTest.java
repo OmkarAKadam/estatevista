@@ -837,7 +837,7 @@ class PropertyCrudIntegrationTest {
     }
 
     @Test
-    void errorEnvelopesAndDeferredRoutesAreConsistent() throws Exception {
+    void errorEnvelopesAndUnmappedRoutesAreConsistent() throws Exception {
         Fixture fixture = seedFixture();
         Session admin = login(fixture.admin().getEmail());
 
@@ -858,8 +858,12 @@ class PropertyCrudIntegrationTest {
         mockMvc.perform(get("/api/v1/properties/featured").cookie(admin.cookie()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
-        mockMvc.perform(get("/api/v1/property-categories").cookie(admin.cookie()))
-                .andExpect(status().isForbidden());
+        // Stage 4.4: the category lookup is public and read-only.
+        mockMvc.perform(get("/api/v1/property-categories"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.meta").doesNotExist());
         mockMvc.perform(patch("/api/v1/properties/{id}/status", UUID.randomUUID())
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())

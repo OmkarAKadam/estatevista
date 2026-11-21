@@ -32,6 +32,7 @@ import com.estatevista.property.dto.PropertyLocationResponse;
 import com.estatevista.property.dto.PropertySummaryResponse;
 import com.estatevista.property.dto.PropertyUpdateRequest;
 import com.estatevista.property.dto.PublicAgentResponse;
+import com.estatevista.property.dto.ReferenceDataResponse;
 import com.estatevista.property.dto.ResidentialDetailsRequest;
 import com.estatevista.property.entity.Amenity;
 import com.estatevista.property.entity.ListingType;
@@ -84,6 +85,7 @@ public class PropertyService {
     private static final int MANAGEMENT_DEFAULT_SIZE = 20;
     private static final int MAX_SLUG_ATTEMPTS = 5;
     private static final int MAX_SLUG_LENGTH = 220;
+    private static final int MAX_AMENITY_IDS = 20;
     private static final String CATEGORY_RESIDENTIAL = "RESIDENTIAL";
     private static final String CATEGORY_COMMERCIAL = "COMMERCIAL";
     private static final String ROLE_AGENT = "AGENT";
@@ -193,6 +195,7 @@ public class PropertyService {
             requireFullUpdateFields(request);
         }
         validateUpdateRequest(request, property, categoryName);
+        removeIncompatibleDetailRows(property.getId(), categoryName);
 
         if (request.hasField("title")) {
             property.setTitle(trimRequired(request.getTitle()));
@@ -225,7 +228,8 @@ public class PropertyService {
                     request.getCommercialDetails() != null,
                     fullReplacement);
             saveCategoryDetails(property, categoryName,
-                    request.getResidentialDetails(), request.getCommercialDetails(), false);
+                    request.getResidentialDetails(), request.getCommercialDetails(),
+                    fullReplacement);
         }
 
         List<Amenity> amenities;
@@ -292,6 +296,45 @@ public class PropertyService {
 
         audit.recordPropertyArchived(property.getId(), actor.id());
         return toDetail(property, loadAmenities(property));
+    }
+
+    // ------------------------------------------------------------------
+    // Public reference-data lookups (Stage 4.4)
+    // ------------------------------------------------------------------
+
+    /** Public, read-only category catalog. Ordering is name then id. */
+    public List<ReferenceDataResponse> getCategories() {
+        return categoryRepository.findAll(Sort.by("name", "id")).stream()
+                .map(ReferenceDataResponse::fromCategory)
+                .toList();
+    }
+
+    /**
+     * Public, read-only subtype catalog. An absent filter returns all subtypes;
+     * a supplied filter must resolve to an existing category or the request is a
+     * client error, as required by PROPERTY_API_DESIGN.md §4.15.
+     */
+    public List<ReferenceDataResponse> getSubtypes(UUID categoryId) {
+        Sort order = Sort.by("name", "id");
+        List<PropertySubtype> subtypes;
+        if (categoryId == null) {
+            subtypes = subtypeRepository.findAll(order);
+        } else {
+            if (!categoryRepository.existsById(categoryId)) {
+                throw validation("categoryId", "must reference an existing property category");
+            }
+            subtypes = subtypeRepository.findByCategory_Id(categoryId, order);
+        }
+        return subtypes.stream()
+                .map(ReferenceDataResponse::fromSubtype)
+                .toList();
+    }
+
+    /** Public, read-only amenity catalog. Ordering is name then id. */
+    public List<ReferenceDataResponse> getAmenities() {
+        return amenityRepository.findAll(Sort.by("name", "id")).stream()
+                .map(ReferenceDataResponse::fromAmenity)
+                .toList();
     }
 
     // ------------------------------------------------------------------
@@ -568,10 +611,13 @@ public class PropertyService {
 
     private PropertyDetailResponse toDetail(Property property, List<Amenity> amenities) {
         UUID id = property.getId();
-        PropertyResidentialDetails residential =
-                residentialDetailsRepository.findById(id).orElse(null);
-        PropertyCommercialDetails commercial =
-                commercialDetailsRepository.findById(id).orElse(null);
+        String categoryName = property.getCategory().getName();
+        PropertyResidentialDetails residential = CATEGORY_RESIDENTIAL.equals(categoryName)
+                ? residentialDetailsRepository.findById(id).orElse(null)
+                : null;
+        PropertyCommercialDetails commercial = CATEGORY_COMMERCIAL.equals(categoryName)
+                ? commercialDetailsRepository.findById(id).orElse(null)
+                : null;
         String primaryImageUrl = imageRepository
                 .findByProperty_IdInAndIsPrimaryTrue(List.of(id)).stream()
                 .findFirst()
@@ -663,9 +709,21 @@ public class PropertyService {
     }
 
     private void replaceAmenities(Property property, List<Amenity> amenities) {
-        propertyAmenityRepository.deleteAll(
-                propertyAmenityRepository.findByProperty_Id(property.getId()));
+        propertyAmenityRepository.deleteByPropertyId(property.getId());
         saveAmenities(property, amenities);
+    }
+
+    /**
+     * Keeps the approved "exactly one detail row matching the category" invariant
+     * even if a property was previously corrupted by a direct database write.
+     * Category itself is not mutable through PATCH/PUT.
+     */
+    private void removeIncompatibleDetailRows(UUID propertyId, String categoryName) {
+        if (CATEGORY_RESIDENTIAL.equals(categoryName)) {
+            commercialDetailsRepository.deleteAllById(List.of(propertyId));
+        } else if (CATEGORY_COMMERCIAL.equals(categoryName)) {
+            residentialDetailsRepository.deleteAllById(List.of(propertyId));
+        }
     }
 
     private void saveCategoryDetails(
@@ -928,6 +986,9 @@ public class PropertyService {
         }
         if (amenityIds.stream().anyMatch(Objects::isNull)) {
             errors.add(fieldError("amenityIds", "must not contain null values"));
+        }
+        if (amenityIds.size() > MAX_AMENITY_IDS) {
+            errors.add(fieldError("amenityIds", "must contain at most " + MAX_AMENITY_IDS + " IDs"));
         }
     }
 

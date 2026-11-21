@@ -12,6 +12,7 @@ import com.estatevista.property.dto.PagedResponse;
 import com.estatevista.property.dto.PropertyAssignmentRequest;
 import com.estatevista.property.dto.PropertyDetailResponse;
 import com.estatevista.property.dto.PropertySummaryResponse;
+import com.estatevista.property.dto.ReferenceDataResponse;
 import com.estatevista.property.dto.PropertyUpdateRequest;
 
 import jakarta.validation.Valid;
@@ -30,11 +31,11 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 /**
- * Stage 4.2 property CRUD and discovery endpoints.
+ * Property CRUD, discovery, and Stage 4.4 reference-data lookup endpoints.
  *
  * <p>Only the approved routes are mapped here. Explicitly deferred routes
- * (featured, status changes, reference lookups, and images) remain unmapped and
- * denied by the security filter chain.</p>
+ * (featured, status changes, and images) remain unmapped and denied by the
+ * security filter chain.</p>
  */
 @RestController
 public class PropertyController {
@@ -164,6 +165,22 @@ public class PropertyController {
         UnknownFieldGuard.reject(request.unknownFields());
         return noStore(ApiResponse.success(
                 service.reassign(propertyId, authentication, request)));
+    }
+
+    @GetMapping("/api/v1/property-categories")
+    public ResponseEntity<ApiResponse<List<ReferenceDataResponse>>> categories() {
+        return noStore(ApiResponse.success(service.getCategories()));
+    }
+
+    @GetMapping("/api/v1/property-subtypes")
+    public ResponseEntity<ApiResponse<List<ReferenceDataResponse>>> subtypes(
+            @RequestParam(required = false) UUID categoryId) {
+        return noStore(ApiResponse.success(service.getSubtypes(categoryId)));
+    }
+
+    @GetMapping("/api/v1/amenities")
+    public ResponseEntity<ApiResponse<List<ReferenceDataResponse>>> amenities() {
+        return noStore(ApiResponse.success(service.getAmenities()));
     }
 
     private static void rejectUnknownFields(CreatePropertyRequest request) {
