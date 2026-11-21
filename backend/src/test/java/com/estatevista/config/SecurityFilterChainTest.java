@@ -33,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.estatevista.audit.AuditEventService;
 import com.estatevista.auth.AuthService;
+import com.estatevista.property.PropertyService;
 import com.estatevista.security.RateLimitService;
 import com.estatevista.user.UserService;
 
@@ -65,6 +66,9 @@ class SecurityFilterChainTest {
 
     @MockitoBean
     private AuditEventService auditEventService;
+
+    @MockitoBean
+    private PropertyService propertyService;
 
     @Test
     void unauthenticatedRequestReturnsUnauthorizedEnvelope() throws Exception {

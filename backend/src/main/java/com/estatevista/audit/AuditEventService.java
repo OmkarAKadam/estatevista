@@ -48,6 +48,9 @@ public class AuditEventService {
     public static final String ACTION_CSRF_FAILURE = "SECURITY_CSRF_FAILURE";
     public static final String ACTION_ACCESS_DENIED = "SECURITY_ACCESS_DENIED";
     public static final String ACTION_WS_AUTH_FAILURE = "SECURITY_WS_AUTH_FAILURE";
+    public static final String ACTION_PROPERTY_CREATE = "PROPERTY_CREATE";
+    public static final String ACTION_PROPERTY_UPDATE = "PROPERTY_UPDATE";
+    public static final String ACTION_PROPERTY_ARCHIVE = "PROPERTY_ARCHIVE";
 
     private static final Logger log = LoggerFactory.getLogger(AuditEventService.class);
     private static final String AUDITED_ATTRIBUTE_PREFIX =
@@ -84,6 +87,24 @@ public class AuditEventService {
 
     public void recordLogout(UUID userId) {
         write(ACTION_LOGOUT, "USER", userId, userId, "{\"outcome\":\"LOGOUT\"}", null);
+    }
+
+    /** Records a successful property creation using only server-owned identifiers. */
+    public void recordPropertyCreated(UUID propertyId, UUID actorId) {
+        write(ACTION_PROPERTY_CREATE, "PROPERTY", propertyId, actorId,
+                "{\"outcome\":\"SUCCESS\",\"status\":\"DRAFT\"}", null);
+    }
+
+    /** Records a successful managed property update. */
+    public void recordPropertyUpdated(UUID propertyId, UUID actorId) {
+        write(ACTION_PROPERTY_UPDATE, "PROPERTY", propertyId, actorId,
+                "{\"outcome\":\"SUCCESS\"}", null);
+    }
+
+    /** Records a successful logical archive (never a physical deletion). */
+    public void recordPropertyArchived(UUID propertyId, UUID actorId) {
+        write(ACTION_PROPERTY_ARCHIVE, "PROPERTY", propertyId, actorId,
+                "{\"outcome\":\"SUCCESS\",\"status\":\"ARCHIVED\"}", null);
     }
 
     /**

@@ -133,6 +133,21 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, appProperties.websocket().endpoint()).authenticated()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/agents/me/**").hasRole("AGENT")
+                        // Stage 4.2: explicit property routes. Unlisted property
+                        // subpaths remain denied by anyRequest().denyAll().
+                        .requestMatchers(HttpMethod.POST, "/api/v1/properties").hasRole("ADMIN")
+                        // Deferred routes must not be mistaken for a UUID path variable.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/properties/featured").denyAll()
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/v1/properties",
+                                "/api/v1/properties/recent",
+                                "/api/v1/properties/{propertyId}",
+                                "/api/v1/properties/{propertyId}/related").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/properties").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/agents/me/properties").hasRole("AGENT")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/properties/{propertyId}").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/properties/{propertyId}").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/properties/{propertyId}").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/v1/health", "/actuator/health").permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().denyAll())
