@@ -51,6 +51,7 @@ public class AuditEventService {
     public static final String ACTION_PROPERTY_CREATE = "PROPERTY_CREATE";
     public static final String ACTION_PROPERTY_UPDATE = "PROPERTY_UPDATE";
     public static final String ACTION_PROPERTY_ARCHIVE = "PROPERTY_ARCHIVE";
+    public static final String ACTION_PROPERTY_ASSIGNMENT = "PROPERTY_ASSIGNMENT";
 
     private static final Logger log = LoggerFactory.getLogger(AuditEventService.class);
     private static final String AUDITED_ATTRIBUTE_PREFIX =
@@ -105,6 +106,20 @@ public class AuditEventService {
     public void recordPropertyArchived(UUID propertyId, UUID actorId) {
         write(ACTION_PROPERTY_ARCHIVE, "PROPERTY", propertyId, actorId,
                 "{\"outcome\":\"SUCCESS\",\"status\":\"ARCHIVED\"}", null);
+    }
+
+    /**
+     * Records a successful administrator reassignment using only server-owned
+     * identifiers. No private or credential data is included in the snapshots.
+     */
+    public void recordPropertyAssignment(
+            UUID propertyId, UUID actorId, UUID previousAgentId, UUID newAgentId) {
+        String before = "{\"outcome\":\"SUCCESS\",\"primaryAgentId\":"
+                + jsonUuid(previousAgentId) + "}";
+        String after = "{\"outcome\":\"SUCCESS\",\"primaryAgentId\":"
+                + jsonUuid(newAgentId) + "}";
+        write(ACTION_PROPERTY_ASSIGNMENT, "PROPERTY", propertyId, actorId,
+                before, after, null);
     }
 
     /**
@@ -167,6 +182,17 @@ public class AuditEventService {
             UUID actorId,
             String afterData,
             HttpServletRequest request) {
+        write(action, entityType, entityId, actorId, null, afterData, request);
+    }
+
+    private void write(
+            String action,
+            String entityType,
+            UUID entityId,
+            UUID actorId,
+            String beforeData,
+            String afterData,
+            HttpServletRequest request) {
         try {
             transactionTemplate.executeWithoutResult(status -> {
                 HttpServletRequest effectiveRequest =
@@ -175,6 +201,7 @@ public class AuditEventService {
                 entry.setAction(action);
                 entry.setEntityType(entityType);
                 entry.setEntityId(entityId);
+                entry.setBeforeData(beforeData);
                 entry.setAfterData(afterData);
                 entry.setRequestId(requestId(effectiveRequest));
                 entry.setIpAddress(clientAddress(effectiveRequest));
@@ -191,6 +218,10 @@ public class AuditEventService {
             log.warn("Audit write failed action={} requestId={} error={}",
                     action, requestIdForLog(request), exception.getClass().getSimpleName());
         }
+    }
+
+    private static String jsonUuid(UUID value) {
+        return value == null ? "null" : "\"" + value + "\"";
     }
 
     private static boolean markAudited(HttpServletRequest request, String event) {

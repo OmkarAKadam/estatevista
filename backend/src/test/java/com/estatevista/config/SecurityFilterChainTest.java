@@ -255,6 +255,49 @@ class SecurityFilterChainTest {
                 .andExpect(header().doesNotExist(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN));
     }
 
+    @Test
+    void assignmentRouteUsesAdminMatcherAndRequiresCsrf() throws Exception {
+        String admin = "11111111-1111-1111-1111-111111111111";
+        String agent = "22222222-2222-2222-2222-222222222222";
+        String body = "{\"primaryAgentId\":\"" + agent + "\"}";
+
+        mockMvc.perform(patch("/api/v1/admin/properties/{propertyId}/assignment",
+                        "33333333-3333-3333-3333-333333333333")
+                        .with(user(admin).roles("ADMIN"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/api/v1/admin/properties/{propertyId}/assignment",
+                        "33333333-3333-3333-3333-333333333333")
+                        .with(user(agent).roles("AGENT"))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+
+        mockMvc.perform(patch("/api/v1/admin/properties/{propertyId}/assignment",
+                        "33333333-3333-3333-3333-333333333333")
+                        .with(user(admin).roles("ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+
+        mockMvc.perform(patch("/api/v1/admin/properties/{propertyId}/assignment",
+                        "33333333-3333-3333-3333-333333333333")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+
+        verify(auditEventService, times(1)).recordCsrfFailure(any());
+        verify(auditEventService, times(1)).recordAccessDenied(any());
+    }
+
     @RestController
     @RequestMapping("/api/v1/probe")
     static class ProbeController {

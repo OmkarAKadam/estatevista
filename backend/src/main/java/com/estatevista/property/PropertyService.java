@@ -25,6 +25,7 @@ import com.estatevista.property.dto.AmenityResponse;
 import com.estatevista.property.dto.CommercialDetailsRequest;
 import com.estatevista.property.dto.CreatePropertyRequest;
 import com.estatevista.property.dto.PagedResponse;
+import com.estatevista.property.dto.PropertyAssignmentRequest;
 import com.estatevista.property.dto.PropertyDetailResponse;
 import com.estatevista.property.dto.PropertyLocationRequest;
 import com.estatevista.property.dto.PropertyLocationResponse;
@@ -185,7 +186,7 @@ public class PropertyService {
         AuthenticatedAccount actor = accounts.requireActive(authentication);
         Property property = requireProperty(propertyId);
         resources.requirePropertyManagement(actor, propertyId);
-        rejectArchived(property);
+        rejectArchived(actor, property);
 
         String categoryName = property.getCategory().getName();
         if (fullReplacement) {
@@ -240,6 +241,39 @@ public class PropertyService {
 
         audit.recordPropertyUpdated(property.getId(), actor.id());
         return toDetail(property, amenities);
+    }
+
+    /**
+     * Applies the approved administrator-only primary-agent reassignment. The
+     * actor is resolved from the session principal; the request supplies only a
+     * privileged target, never identity, role, ownership, or audit metadata.
+     */
+    @Transactional
+    public PropertyDetailResponse reassign(
+            UUID propertyId, Authentication authentication,
+            PropertyAssignmentRequest request) {
+        AuthenticatedAccount actor = accounts.requireActive(authentication);
+        resources.requireAdmin(actor);
+        Property property = requireProperty(propertyId);
+        resources.requirePropertyManagement(actor, propertyId);
+        if (request == null || request.getPrimaryAgentId() == null) {
+            throw validation("primaryAgentId", "is required");
+        }
+
+        User agent = requireActiveAgent(request.getPrimaryAgentId());
+        UUID previousAgentId = property.getPrimaryAgent() == null
+                ? null
+                : property.getPrimaryAgent().getId();
+        if (Objects.equals(previousAgentId, agent.getId())) {
+            throw conflict("Property is already assigned to this agent");
+        }
+
+        property.setPrimaryAgent(agent);
+        property.setUpdatedBy(referenceUser(actor.id()));
+        propertyRepository.saveAndFlush(property);
+
+        audit.recordPropertyAssignment(property.getId(), actor.id(), previousAgentId, agent.getId());
+        return toDetail(property, loadAmenities(property));
     }
 
     @Transactional
@@ -941,10 +975,15 @@ public class PropertyService {
                 && accountId.equals(property.getPrimaryAgent().getId());
     }
 
-    private static void rejectArchived(Property property) {
-        if (property.getStatus() == PropertyStatus.ARCHIVED) {
-            throw conflict("Archived properties cannot be modified");
+    private static void rejectArchived(AuthenticatedAccount actor, Property property) {
+        if (property.getStatus() != PropertyStatus.ARCHIVED) {
+            return;
         }
+        if (actor.role() == PlatformRole.AGENT) {
+            throw new ApiException(ErrorCode.FORBIDDEN,
+                    "Archived properties cannot be modified by agents");
+        }
+        throw conflict("Archived properties cannot be modified");
     }
 
     private Property requireProperty(UUID propertyId) {

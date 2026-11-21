@@ -131,6 +131,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/users/me").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/users/me").authenticated()
                         .requestMatchers(HttpMethod.GET, appProperties.websocket().endpoint()).authenticated()
+                        // Stage 4.3: method-specific assignment route must be
+                        // evaluated before the broader admin prefix matcher.
+                        .requestMatchers(HttpMethod.PATCH,
+                                "/api/v1/admin/properties/{propertyId}/assignment").hasRole("ADMIN")
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/agents/me/**").hasRole("AGENT")
                         // Stage 4.2: explicit property routes. Unlisted property

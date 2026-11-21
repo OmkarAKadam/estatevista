@@ -9,6 +9,7 @@ import com.estatevista.common.response.ApiResponse;
 import com.estatevista.common.validation.UnknownFieldGuard;
 import com.estatevista.property.dto.CreatePropertyRequest;
 import com.estatevista.property.dto.PagedResponse;
+import com.estatevista.property.dto.PropertyAssignmentRequest;
 import com.estatevista.property.dto.PropertyDetailResponse;
 import com.estatevista.property.dto.PropertySummaryResponse;
 import com.estatevista.property.dto.PropertyUpdateRequest;
@@ -31,9 +32,9 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 /**
  * Stage 4.2 property CRUD and discovery endpoints.
  *
- * <p>Only the ten approved routes are mapped here. Explicitly deferred routes
- * (featured, status changes, admin assignment, reference lookups, and images)
- * remain unmapped and denied by the security filter chain.</p>
+ * <p>Only the approved routes are mapped here. Explicitly deferred routes
+ * (featured, status changes, reference lookups, and images) remain unmapped and
+ * denied by the security filter chain.</p>
  */
 @RestController
 public class PropertyController {
@@ -153,6 +154,16 @@ public class PropertyController {
             @PathVariable UUID propertyId, Authentication authentication) {
         return noStore(ApiResponse.success(
                 service.archive(propertyId, authentication)));
+    }
+
+    @PatchMapping("/api/v1/admin/properties/{propertyId}/assignment")
+    public ResponseEntity<ApiResponse<PropertyDetailResponse>> reassign(
+            @PathVariable UUID propertyId,
+            Authentication authentication,
+            @Valid @RequestBody PropertyAssignmentRequest request) {
+        UnknownFieldGuard.reject(request.unknownFields());
+        return noStore(ApiResponse.success(
+                service.reassign(propertyId, authentication, request)));
     }
 
     private static void rejectUnknownFields(CreatePropertyRequest request) {
