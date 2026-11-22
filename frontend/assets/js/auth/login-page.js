@@ -27,6 +27,7 @@ const passwordInput = document.getElementById("loginPassword");
 const submitButton = document.getElementById("loginSubmit");
 const alertElement = document.getElementById("loginAlert");
 const registeredNotice = document.getElementById("registeredNotice");
+const sessionNotice = document.getElementById("sessionNotice");
 
 const params = new URLSearchParams(window.location.search);
 const nextTarget = params.get("next");
@@ -47,6 +48,17 @@ if (params.get("registered") === "1" && registeredNotice) {
     "success"
   );
   params.delete("registered");
+  const query = params.toString();
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`
+  );
+}
+
+if (params.get("expired") === "1" && sessionNotice) {
+  showAlert(sessionNotice, "Your session expired. Sign in again to continue.", "info");
+  params.delete("expired");
   const query = params.toString();
   window.history.replaceState(
     null,

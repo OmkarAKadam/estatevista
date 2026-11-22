@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Manage images for an EstateVista property listing.">
+  <title>Property Images | EstateVista Agent</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <link rel="stylesheet" href="/assets/css/theme.css">
+  <link rel="stylesheet" href="/assets/css/components.css">
+  <link rel="stylesheet" href="/assets/css/property-management.css">
+</head>
+<body class="mgmt-shell" data-management-page data-management-mode="images" data-management-role="AGENT">
+  <a class="visually-hidden-focusable mgmt-skip" href="#management-content">Skip to management content</a>
+  <div class="mgmt-scrim" data-dash-scrim hidden></div>
+  <aside class="dash-sidebar" id="dash-sidebar" data-dash-sidebar aria-label="Management navigation"></aside>
+
+  <div class="mgmt-main">
+    <header class="dash-topbar">
+      <button class="dash-topbar__menu" type="button" data-dash-menu-toggle aria-controls="dash-sidebar" aria-expanded="false">
+        <span class="dash-topbar__menu-bars" aria-hidden="true"></span>
+        <span class="visually-hidden">Toggle navigation</span>
+      </button>
+      <h1 class="dash-topbar__title" data-dash-title>Property Images</h1>
+      <span class="dash-topbar__spacer"></span>
+      <span class="dash-topbar__role" data-dash-role></span>
+      <div class="site-auth" data-auth-nav data-auth-home-href="/index.html" data-auth-login-href="/login.html"></div>
+    </header>
+
+    <main class="mgmt-content" id="management-content" data-management-content tabindex="-1" hidden>
+      <nav class="mgmt-breadcrumb" aria-label="Breadcrumb">
+        <ul>
+          <li><a href="/index.html">Home</a></li>
+          <li><a href="/dashboard/agent/properties.html">Properties</a></li>
+          <li aria-current="page">Images</li>
+        </ul>
+      </nav>
+
+      <div class="mgmt-page-head">
+        <div>
+          <h2 data-image-title>Manage images</h2>
+          <p data-image-count>Loading image metadata…</p>
+        </div>
+        <div class="mgmt-page-head__actions">
+          <a class="btn btn-outline-secondary" data-back-to-edit href="/dashboard/agent/property-edit.html">Back to property</a>
+          <a class="btn btn-outline-secondary" href="/dashboard/agent/properties.html">All properties</a>
+        </div>
+      </div>
+
+      <div class="mgmt-alert" data-image-error role="alert" hidden></div>
+      <div class="mgmt-notice" data-image-notice hidden><p data-image-notice-text></p></div>
+
+      <section class="ev-panel" data-upload-panel aria-labelledby="imageUploadHeading">
+        <div class="ev-panel__head">
+          <h2 id="imageUploadHeading">Upload an image</h2>
+          <span class="text-muted small">Maximum 10 images</span>
+        </div>
+        <form class="mgmt-upload" data-upload-form novalidate>
+          <div>
+            <h3 class="mgmt-upload__title">Choose a property photo</h3>
+            <p class="mgmt-upload__help">JPEG, PNG, or WebP. Up to 5 MB, 200–6000 px per side, and 40 megapixels.</p>
+          </div>
+          <div class="mgmt-field">
+            <label for="imageFile">Image file</label>
+            <input class="form-control" id="imageFile" name="file" type="file" accept="image/jpeg,image/png,image/webp" required>
+            <p class="mgmt-field__error" data-image-file-error hidden></p>
+          </div>
+          <div class="mgmt-inline-fields">
+            <div class="mgmt-field">
+              <label for="imageAlt">Alt text</label>
+              <input class="form-control" id="imageAlt" name="altText" type="text" maxlength="255" placeholder="Describe the image">
+            </div>
+            <div class="mgmt-field">
+              <span class="mgmt-field__label">Options</span>
+              <div class="mgmt-choice">
+                <input class="form-check-input" id="imagePrimary" name="isPrimary" type="checkbox" value="true">
+                <label for="imagePrimary">Set as primary image</label>
+              </div>
+            </div>
+          </div>
+          <div class="mgmt-form__actions">
+            <button class="btn btn-primary" type="submit" data-image-submit>Upload image</button>
+          </div>
+          <p class="mgmt-file-progress" data-image-progress role="status" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="ev-panel" aria-labelledby="imageListHeading">
+        <div class="ev-panel__head">
+          <h2 id="imageListHeading">Image gallery</h2>
+          <span class="text-muted small">Order and primary state are saved on the server.</span>
+        </div>
+        <div class="mgmt-image-grid" data-image-grid></div>
+        <div class="ev-empty" data-image-empty hidden>
+          <h3>No images yet</h3>
+          <p>Upload at least one image before publishing this property.</p>
+        </div>
+      </section>
+    </main>
+
+    <div class="mgmt-denied" data-access-denied role="alert" tabindex="-1" hidden></div>
+    <div class="ev-toast-region" data-toast-region aria-live="polite" aria-atomic="false"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+  <script src="/assets/js/main.js"></script>
+  <script src="/assets/js/auth/auth-init.js"></script>
+  <script type="module" src="/assets/js/management/property-images-page.js"></script>
+</body>
+</html>
