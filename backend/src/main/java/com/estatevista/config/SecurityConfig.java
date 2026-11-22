@@ -149,6 +149,8 @@ public class SecurityConfig {
                                 "/api/v1/properties/{propertyId}/related").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/admin/properties").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/v1/agents/me/properties").hasRole("AGENT")
+                        .requestMatchers(HttpMethod.PATCH,
+                                "/api/v1/properties/{propertyId}/status").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/properties/{propertyId}").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/v1/properties/{propertyId}").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/properties/{propertyId}").hasRole("ADMIN")

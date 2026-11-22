@@ -11,6 +11,7 @@ import com.estatevista.property.dto.CreatePropertyRequest;
 import com.estatevista.property.dto.PagedResponse;
 import com.estatevista.property.dto.PropertyAssignmentRequest;
 import com.estatevista.property.dto.PropertyDetailResponse;
+import com.estatevista.property.dto.PropertyStatusChangeRequest;
 import com.estatevista.property.dto.PropertySummaryResponse;
 import com.estatevista.property.dto.ReferenceDataResponse;
 import com.estatevista.property.dto.PropertyUpdateRequest;
@@ -34,8 +35,8 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
  * Property CRUD, discovery, and Stage 4.4 reference-data lookup endpoints.
  *
  * <p>Only the approved routes are mapped here. Explicitly deferred routes
- * (featured, status changes, and images) remain unmapped and denied by the
- * security filter chain.</p>
+ * (for example, featured listings) remain unmapped and denied by the security
+ * filter chain.</p>
  */
 @RestController
 public class PropertyController {
@@ -148,6 +149,16 @@ public class PropertyController {
         rejectUnknownFields(request);
         return noStore(ApiResponse.success(
                 service.update(propertyId, authentication, request, true)));
+    }
+
+    @PatchMapping("/api/v1/properties/{propertyId}/status")
+    public ResponseEntity<ApiResponse<PropertyDetailResponse>> changeStatus(
+            @PathVariable UUID propertyId,
+            Authentication authentication,
+            @Valid @RequestBody PropertyStatusChangeRequest request) {
+        UnknownFieldGuard.reject(request.unknownFields());
+        return noStore(ApiResponse.success(
+                service.changeStatus(propertyId, authentication, request)));
     }
 
     @DeleteMapping("/api/v1/properties/{propertyId}")

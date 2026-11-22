@@ -50,6 +50,7 @@ public class AuditEventService {
     public static final String ACTION_WS_AUTH_FAILURE = "SECURITY_WS_AUTH_FAILURE";
     public static final String ACTION_PROPERTY_CREATE = "PROPERTY_CREATE";
     public static final String ACTION_PROPERTY_UPDATE = "PROPERTY_UPDATE";
+    public static final String ACTION_PROPERTY_STATUS_CHANGED = "PROPERTY_STATUS_CHANGED";
     public static final String ACTION_PROPERTY_ARCHIVE = "PROPERTY_ARCHIVE";
     public static final String ACTION_PROPERTY_ASSIGNMENT = "PROPERTY_ASSIGNMENT";
     public static final String ACTION_IMAGE_UPLOAD = "PROPERTY_IMAGE_UPLOAD";
@@ -105,6 +106,23 @@ public class AuditEventService {
     public void recordPropertyUpdated(UUID propertyId, UUID actorId) {
         write(ACTION_PROPERTY_UPDATE, "PROPERTY", propertyId, actorId,
                 "{\"outcome\":\"SUCCESS\"}", null);
+    }
+
+    /**
+     * Records an accepted or rejected property lifecycle attempt. Only server-side
+     * status names, a coarse result code, and safe identifiers are persisted.
+     */
+    public void recordPropertyStatusChange(
+            UUID propertyId, UUID actorId, String fromStatus, String toStatus,
+            String result, boolean accepted) {
+        String outcome = accepted ? "SUCCESS" : "REJECTED";
+        String before = "{\"outcome\":" + jsonToken(outcome)
+                + ",\"fromStatus\":" + jsonToken(fromStatus) + "}";
+        String after = "{\"outcome\":" + jsonToken(outcome)
+                + ",\"toStatus\":" + jsonToken(toStatus)
+                + ",\"result\":" + jsonToken(result) + "}";
+        write(ACTION_PROPERTY_STATUS_CHANGED, "PROPERTY", propertyId, actorId,
+                before, after, null);
     }
 
     /** Records a successful logical archive (never a physical deletion). */

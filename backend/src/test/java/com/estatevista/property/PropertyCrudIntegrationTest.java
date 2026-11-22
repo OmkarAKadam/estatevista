@@ -864,12 +864,14 @@ class PropertyCrudIntegrationTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.meta").doesNotExist());
+        // Stage 4.6: the status route is mapped, so a missing property is a 404.
         mockMvc.perform(patch("/api/v1/properties/{id}/status", UUID.randomUUID())
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"PUBLISHED\"}"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
         // Stage 4.5: image metadata reads are a public route; a nonexistent
         // property now resolves to a generic 404, not a denied deferred route.
         mockMvc.perform(get("/api/v1/properties/{id}/images", UUID.randomUUID())

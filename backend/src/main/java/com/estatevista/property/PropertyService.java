@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -29,6 +30,7 @@ import com.estatevista.property.dto.PropertyAssignmentRequest;
 import com.estatevista.property.dto.PropertyDetailResponse;
 import com.estatevista.property.dto.PropertyLocationRequest;
 import com.estatevista.property.dto.PropertyLocationResponse;
+import com.estatevista.property.dto.PropertyStatusChangeRequest;
 import com.estatevista.property.dto.PropertySummaryResponse;
 import com.estatevista.property.dto.PropertyUpdateRequest;
 import com.estatevista.property.dto.PublicAgentResponse;
@@ -39,6 +41,7 @@ import com.estatevista.property.entity.ListingType;
 import com.estatevista.property.entity.Property;
 import com.estatevista.property.entity.PropertyAmenity;
 import com.estatevista.property.entity.PropertyAmenityId;
+import com.estatevista.property.entity.PropertyCategory;
 import com.estatevista.property.entity.PropertyCommercialDetails;
 import com.estatevista.property.entity.PropertyImage;
 import com.estatevista.property.entity.PropertyResidentialDetails;
@@ -89,6 +92,14 @@ public class PropertyService {
     private static final String CATEGORY_RESIDENTIAL = "RESIDENTIAL";
     private static final String CATEGORY_COMMERCIAL = "COMMERCIAL";
     private static final String ROLE_AGENT = "AGENT";
+    private static final Map<PropertyStatus, Set<PropertyStatus>> ALLOWED_TRANSITIONS = Map.of(
+            PropertyStatus.DRAFT, Set.of(PropertyStatus.PUBLISHED),
+            PropertyStatus.PUBLISHED, Set.of(
+                    PropertyStatus.UNAVAILABLE, PropertyStatus.SOLD, PropertyStatus.RENTED),
+            PropertyStatus.UNAVAILABLE, Set.of(PropertyStatus.PUBLISHED),
+            PropertyStatus.SOLD, Set.of(PropertyStatus.PUBLISHED),
+            PropertyStatus.RENTED, Set.of(PropertyStatus.PUBLISHED),
+            PropertyStatus.ARCHIVED, Set.of());
 
     private final PropertyRepository propertyRepository;
     private final PropertyCategoryRepository categoryRepository;
@@ -245,6 +256,42 @@ public class PropertyService {
 
         audit.recordPropertyUpdated(property.getId(), actor.id());
         return toDetail(property, amenities);
+    }
+
+    /**
+     * Applies the single authoritative lifecycle matrix from
+     * {@code PROPERTY_DOMAIN_DESIGN.md} §4.3. The property row is locked for the
+     * whole decision so two concurrent transitions cannot both observe the same
+     * source status. Every service-level decision, accepted or rejected, is
+     * audited with the server-side status values and actor.
+     */
+    @Transactional
+    public PropertyDetailResponse changeStatus(
+            UUID propertyId, Authentication authentication,
+            PropertyStatusChangeRequest request) {
+        AuthenticatedAccount actor = accounts.requireActive(authentication);
+        Property property = propertyRepository.findByIdForUpdate(propertyId)
+                .orElseThrow(PropertyService::notFound);
+        PropertyStatus from = property.getStatus();
+        PropertyStatus target = null;
+        try {
+            target = parseLifecycleStatus(request);
+            resources.requirePropertyManagement(actor, propertyId);
+            validateTransition(property, target, actor);
+            if (target == PropertyStatus.PUBLISHED) {
+                requirePublicationPrerequisites(property);
+            }
+            applyLifecycleStatus(property, target, actor);
+            propertyRepository.saveAndFlush(property);
+
+            audit.recordPropertyStatusChange(property.getId(), actor.id(),
+                    auditStatus(from), auditStatus(target), "ACCEPTED", true);
+            return toDetail(property, loadAmenities(property));
+        } catch (ApiException exception) {
+            audit.recordPropertyStatusChange(property.getId(), actor.id(),
+                    auditStatus(from), auditStatus(target), auditResult(exception), false);
+            throw exception;
+        }
     }
 
     /**
@@ -1034,6 +1081,139 @@ public class PropertyService {
     private static boolean isAssigned(Property property, UUID accountId) {
         return property.getPrimaryAgent() != null
                 && accountId.equals(property.getPrimaryAgent().getId());
+    }
+
+    private static PropertyStatus parseLifecycleStatus(PropertyStatusChangeRequest request) {
+        if (request == null || request.getStatus() == null || request.getStatus().isBlank()) {
+            throw validation("status", "is required");
+        }
+        String raw = request.getStatus().trim();
+        PropertyStatus target;
+        try {
+            target = PropertyStatus.valueOf(raw);
+        } catch (IllegalArgumentException exception) {
+            throw validation("status", "must be a supported property status");
+        }
+        if (target == PropertyStatus.ARCHIVED) {
+            throw validation("status", "use the archive endpoint instead");
+        }
+        return target;
+    }
+
+    private static void validateTransition(
+            Property property, PropertyStatus target, AuthenticatedAccount actor) {
+        PropertyStatus from = property.getStatus();
+        if (from == PropertyStatus.ARCHIVED) {
+            throw conflict("Archived properties cannot change status");
+        }
+        if (from == target) {
+            throw conflict("Property is already in the requested status");
+        }
+        boolean reopeningCompleted = (from == PropertyStatus.SOLD || from == PropertyStatus.RENTED)
+                && target == PropertyStatus.PUBLISHED;
+        if (reopeningCompleted && actor.role() != PlatformRole.ADMIN) {
+            throw new ApiException(ErrorCode.FORBIDDEN,
+                    "Only an administrator may reopen a completed listing");
+        }
+        if (!ALLOWED_TRANSITIONS.getOrDefault(from, Set.of()).contains(target)) {
+            throw conflict("Illegal property status transition");
+        }
+        if (target == PropertyStatus.SOLD && property.getListingType() != ListingType.SALE) {
+            throw validation("status", "SOLD requires a SALE listing");
+        }
+        if (target == PropertyStatus.RENTED && property.getListingType() != ListingType.RENT) {
+            throw validation("status", "RENTED requires a RENT listing");
+        }
+    }
+
+    private void requirePublicationPrerequisites(Property property) {
+        List<FieldErrorDetail> errors = new ArrayList<>();
+        validateText(property.getTitle(), "title", 200, errors);
+        validateText(property.getDescription(), "description", 10000, errors);
+        if (property.getListingType() != ListingType.SALE
+                && property.getListingType() != ListingType.RENT) {
+            errors.add(fieldError("listingType", "must be SALE or RENT"));
+        }
+        if (property.getPrice() == null || property.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
+            errors.add(fieldError("price", "must be greater than zero"));
+        }
+        validateCurrency(property.getCurrencyCode(), errors);
+        validateText(property.getCity(), "city", 100, errors);
+        validateText(property.getState(), "state", 100, errors);
+        validateText(property.getCountry(), "country", 100, errors);
+        validateCoordinatePair(property.getLatitude(), property.getLongitude(), errors);
+
+        PropertyCategory category = property.getCategory();
+        PropertySubtype subtype = property.getSubtype();
+        boolean pairValid = category != null && subtype != null
+                && subtypeRepository.findByIdAndCategory_Id(subtype.getId(), category.getId())
+                        .isPresent();
+        if (!pairValid) {
+            errors.add(fieldError("subtypeId", "must belong to the selected category"));
+        }
+        String categoryName = category == null ? null : category.getName();
+        if (CATEGORY_RESIDENTIAL.equals(categoryName)) {
+            if (!residentialDetailsRepository.existsById(property.getId())
+                    || commercialDetailsRepository.existsById(property.getId())) {
+                errors.add(fieldError("residentialDetails",
+                        "exactly one matching RESIDENTIAL detail row is required"));
+            }
+        } else if (CATEGORY_COMMERCIAL.equals(categoryName)) {
+            if (!commercialDetailsRepository.existsById(property.getId())
+                    || residentialDetailsRepository.existsById(property.getId())) {
+                errors.add(fieldError("commercialDetails",
+                        "exactly one matching COMMERCIAL detail row is required"));
+            }
+        } else {
+            errors.add(fieldError("categoryId", "is not a supported property category"));
+        }
+
+        User agent = property.getPrimaryAgent();
+        boolean activeAgent = agent != null && agent.getRole() != null
+                && ROLE_AGENT.equals(agent.getRole().getName())
+                && agent.getAccountStatus() == AccountStatus.ACTIVE;
+        if (!activeAgent) {
+            errors.add(fieldError("primaryAgentId", "must reference an ACTIVE AGENT"));
+        }
+
+        int imageCount = imageRepository.countByProperty_Id(property.getId());
+        int primaryCount = imageRepository.findByProperty_IdAndIsPrimaryTrue(property.getId()).size();
+        if (imageCount == 0) {
+            errors.add(fieldError("images", "at least one image is required"));
+        }
+        if (primaryCount != 1) {
+            errors.add(fieldError("images", "exactly one primary image is required"));
+        }
+        if (!errors.isEmpty()) {
+            throw new ApiException(
+                    ErrorCode.UNPROCESSABLE_ENTITY,
+                    "Property publication prerequisites are not satisfied",
+                    errors);
+        }
+    }
+
+    private void applyLifecycleStatus(
+            Property property, PropertyStatus target, AuthenticatedAccount actor) {
+        if (target == PropertyStatus.PUBLISHED) {
+            property.setPublishedAt(Instant.now());
+        }
+        property.setStatus(target);
+        property.setUpdatedBy(referenceUser(actor.id()));
+    }
+
+    private static String auditStatus(PropertyStatus status) {
+        return status == null ? "UNKNOWN" : status.name();
+    }
+
+    private static String auditResult(ApiException exception) {
+        return switch (exception.getErrorCode()) {
+            case FORBIDDEN -> "FORBIDDEN";
+            case CONFLICT -> "CONFLICT";
+            case VALIDATION_ERROR -> "VALIDATION_ERROR";
+            case UNPROCESSABLE_ENTITY -> "UNPROCESSABLE_ENTITY";
+            case NOT_FOUND -> "NOT_FOUND";
+            default -> "REJECTED";
+        };
     }
 
     private static void rejectArchived(AuthenticatedAccount actor, Property property) {
