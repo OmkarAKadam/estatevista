@@ -152,6 +152,20 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/properties/{propertyId}").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/v1/properties/{propertyId}").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/properties/{propertyId}").hasRole("ADMIN")
+                        // Stage 4.5: image metadata reads are public only for
+                        // published properties; mutations require a session and
+                        // are authorized again in the service layer.
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/v1/properties/{propertyId}/images").permitAll()
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/v1/properties/{propertyId}/images").authenticated()
+                        .requestMatchers(HttpMethod.PATCH,
+                                "/api/v1/properties/{propertyId}/images/{imageId}",
+                                "/api/v1/properties/{propertyId}/images/{imageId}/primary")
+                                .authenticated()
+                        .requestMatchers(HttpMethod.DELETE,
+                                "/api/v1/properties/{propertyId}/images/{imageId}")
+                                .authenticated()
                         // Stage 4.4: public, read-only reference-data lookups.
                         .requestMatchers(HttpMethod.GET,
                                 "/api/v1/property-categories",

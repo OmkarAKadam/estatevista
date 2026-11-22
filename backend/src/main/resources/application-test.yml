@@ -13,6 +13,12 @@ spring:
     url: ${TEST_DB_URL:jdbc:postgresql://localhost:5432/estatevista_test}
     username: ${TEST_DB_USERNAME:estatevista}
     password: ${TEST_DB_PASSWORD:}
+    hikari:
+      # The disposable cluster allows 50 connections and the suite caches
+      # several Spring contexts. Keep each pool small so one extra context
+      # cannot exhaust the cluster.
+      maximum-pool-size: 2
+      minimum-idle: 0
   jpa:
     show-sql: false
     hibernate:
@@ -29,6 +35,13 @@ app:
     registration:
       max-attempts: 1000
       window-seconds: 60
+    image-upload:
+      max-attempts: 1000
+      window-seconds: 3600
+  storage:
+    cloudinary:
+      # Automated tests always use the injected fake adapter.
+      enabled: false
 
 management:
   endpoint:

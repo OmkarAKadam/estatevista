@@ -40,6 +40,7 @@ import com.estatevista.audit.AuditEventService;
 import com.estatevista.auth.AuthService;
 import com.estatevista.property.PropertyService;
 import com.estatevista.property.dto.ReferenceDataResponse;
+import com.estatevista.property.image.PropertyImageService;
 import com.estatevista.security.RateLimitService;
 import com.estatevista.user.UserService;
 
@@ -75,6 +76,9 @@ class SecurityFilterChainTest {
 
     @MockitoBean
     private PropertyService propertyService;
+
+    @MockitoBean
+    private PropertyImageService propertyImageService;
 
     @Test
     void unauthenticatedRequestReturnsUnauthorizedEnvelope() throws Exception {

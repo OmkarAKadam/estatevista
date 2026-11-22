@@ -31,6 +31,7 @@ public class RateLimitService {
 
     public static final String SCOPE_LOGIN = "login";
     public static final String SCOPE_REGISTRATION = "registration";
+    public static final String SCOPE_IMAGE_UPLOAD = "image_upload";
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitService.class);
 
@@ -66,7 +67,8 @@ public class RateLimitService {
      * Registers one attempt and rejects the caller when the configured threshold
      * has already been reached inside the active window.
      *
-     * @param scope one of {@link #SCOPE_LOGIN} or {@link #SCOPE_REGISTRATION}
+     * @param scope one of {@link #SCOPE_LOGIN}, {@link #SCOPE_REGISTRATION}, or
+     *              {@link #SCOPE_IMAGE_UPLOAD}
      * @param identity normalized email/client identity; never logged or stored raw
      */
     @Transactional
@@ -116,15 +118,23 @@ public class RateLimitService {
     }
 
     private int threshold(String scope) {
-        return SCOPE_REGISTRATION.equals(scope)
-                ? Math.max(1, properties.getRegistration().getMaxAttempts())
-                : Math.max(1, properties.getLogin().getMaxAttempts());
+        if (SCOPE_REGISTRATION.equals(scope)) {
+            return Math.max(1, properties.getRegistration().getMaxAttempts());
+        }
+        if (SCOPE_IMAGE_UPLOAD.equals(scope)) {
+            return Math.max(1, properties.getImageUpload().getMaxAttempts());
+        }
+        return Math.max(1, properties.getLogin().getMaxAttempts());
     }
 
     private int window(String scope) {
-        return SCOPE_REGISTRATION.equals(scope)
-                ? Math.max(1, properties.getRegistration().getWindowSeconds())
-                : Math.max(1, properties.getLogin().getWindowSeconds());
+        if (SCOPE_REGISTRATION.equals(scope)) {
+            return Math.max(1, properties.getRegistration().getWindowSeconds());
+        }
+        if (SCOPE_IMAGE_UPLOAD.equals(scope)) {
+            return Math.max(1, properties.getImageUpload().getWindowSeconds());
+        }
+        return Math.max(1, properties.getLogin().getWindowSeconds());
     }
 
     private static String key(String scope, String identity) {

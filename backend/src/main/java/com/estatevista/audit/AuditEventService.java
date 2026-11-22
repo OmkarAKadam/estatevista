@@ -52,6 +52,11 @@ public class AuditEventService {
     public static final String ACTION_PROPERTY_UPDATE = "PROPERTY_UPDATE";
     public static final String ACTION_PROPERTY_ARCHIVE = "PROPERTY_ARCHIVE";
     public static final String ACTION_PROPERTY_ASSIGNMENT = "PROPERTY_ASSIGNMENT";
+    public static final String ACTION_IMAGE_UPLOAD = "PROPERTY_IMAGE_UPLOAD";
+    public static final String ACTION_IMAGE_METADATA = "PROPERTY_IMAGE_METADATA";
+    public static final String ACTION_IMAGE_PRIMARY = "PROPERTY_IMAGE_PRIMARY";
+    public static final String ACTION_IMAGE_DELETE = "PROPERTY_IMAGE_DELETE";
+    public static final String ACTION_IMAGE_FAILURE = "PROPERTY_IMAGE_FAILURE";
 
     private static final Logger log = LoggerFactory.getLogger(AuditEventService.class);
     private static final String AUDITED_ATTRIBUTE_PREFIX =
@@ -120,6 +125,49 @@ public class AuditEventService {
                 + jsonUuid(newAgentId) + "}";
         write(ACTION_PROPERTY_ASSIGNMENT, "PROPERTY", propertyId, actorId,
                 before, after, null);
+    }
+
+    /** Records a successful backend-mediated image upload. */
+    public void recordImageUpload(
+            UUID propertyId, UUID imageId, UUID actorId, String storageProvider) {
+        write(ACTION_IMAGE_UPLOAD, "PROPERTY_IMAGE", imageId, actorId,
+                "{\"outcome\":\"SUCCESS\",\"propertyId\":" + jsonUuid(propertyId)
+                        + ",\"storageProvider\":" + jsonToken(storageProvider) + "}",
+                null);
+    }
+
+    /** Records a metadata-only image update; no bytes or provider ID is logged. */
+    public void recordImageMetadata(UUID propertyId, UUID imageId, UUID actorId) {
+        write(ACTION_IMAGE_METADATA, "PROPERTY_IMAGE", imageId, actorId,
+                "{\"outcome\":\"SUCCESS\",\"propertyId\":" + jsonUuid(propertyId) + "}",
+                null);
+    }
+
+    /** Records an explicit primary-image change, including the previous image ID. */
+    public void recordImagePrimary(
+            UUID propertyId, UUID imageId, UUID previousImageId, UUID actorId) {
+        write(ACTION_IMAGE_PRIMARY, "PROPERTY_IMAGE", imageId, actorId,
+                "{\"outcome\":\"SUCCESS\",\"propertyId\":" + jsonUuid(propertyId)
+                        + ",\"previousImageId\":" + jsonUuid(previousImageId) + "}",
+                null);
+    }
+
+    /** Records an explicit image deletion with no automatic replacement. */
+    public void recordImageDelete(UUID propertyId, UUID imageId, UUID actorId) {
+        write(ACTION_IMAGE_DELETE, "PROPERTY_IMAGE", imageId, actorId,
+                "{\"outcome\":\"SUCCESS\",\"propertyId\":" + jsonUuid(propertyId)
+                        + ",\"replacement\":\"NONE\"}",
+                null);
+    }
+
+    /** Records a safe image-operation failure reason without provider details. */
+    public void recordImageFailure(
+            UUID propertyId, UUID imageId, UUID actorId, String action, String reason) {
+        write(ACTION_IMAGE_FAILURE, "PROPERTY_IMAGE", imageId, actorId,
+                "{\"outcome\":\"FAILURE\",\"action\":" + jsonToken(action)
+                        + ",\"propertyId\":" + jsonUuid(propertyId)
+                        + ",\"reason\":" + jsonToken(reason) + "}",
+                null);
     }
 
     /**
@@ -224,6 +272,13 @@ public class AuditEventService {
         return value == null ? "null" : "\"" + value + "\"";
     }
 
+    private static String jsonToken(String value) {
+        if (value == null || !value.matches("[A-Za-z0-9_-]{1,40}")) {
+            return "\"UNKNOWN\"";
+        }
+        return "\"" + value + "\"";
+    }
+
     private static boolean markAudited(HttpServletRequest request, String event) {
         if (request == null) {
             return true;
@@ -268,7 +323,7 @@ public class AuditEventService {
     }
 
     private static String safeScope(String scope) {
-        return scope != null && scope.matches("[a-z]+") ? scope : "unknown";
+        return scope != null && scope.matches("[a-z_]+") ? scope : "unknown";
     }
 
     private static String safeDestination(String destination) {

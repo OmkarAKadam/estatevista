@@ -22,6 +22,12 @@ server:
 spring:
   application:
     name: estatevista-api
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 5MB
+      max-request-size: 6MB
+      resolve-lazily: true
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/estatevista}
     username: ${DB_USERNAME:estatevista}
@@ -73,6 +79,18 @@ app:
     registration:
       max-attempts: ${APP_RATE_LIMIT_REGISTRATION_MAX_ATTEMPTS:5}
       window-seconds: ${APP_RATE_LIMIT_REGISTRATION_WINDOW_SECONDS:60}
+    image-upload:
+      max-attempts: ${APP_RATE_LIMIT_IMAGE_UPLOAD_MAX_ATTEMPTS:20}
+      window-seconds: ${APP_RATE_LIMIT_IMAGE_UPLOAD_WINDOW_SECONDS:3600}
+  storage:
+    cloudinary:
+      # Production adapter is opt-in. Secrets have no usable defaults.
+      enabled: ${CLOUDINARY_ENABLED:false}
+      cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+      api-key: ${CLOUDINARY_API_KEY:}
+      api-secret: ${CLOUDINARY_API_SECRET:}
+      folder: ${CLOUDINARY_FOLDER:estatevista/properties}
+      timeout-seconds: ${CLOUDINARY_TIMEOUT_SECONDS:10}
 
 logging:
   level:

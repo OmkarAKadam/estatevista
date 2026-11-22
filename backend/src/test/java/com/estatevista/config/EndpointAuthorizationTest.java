@@ -27,6 +27,7 @@ import com.estatevista.audit.AuditEventService;
 import com.estatevista.auth.AuthService;
 import com.estatevista.property.PropertyService;
 import com.estatevista.security.RateLimitService;
+import com.estatevista.property.image.PropertyImageService;
 import com.estatevista.user.UserService;
 
 /**
@@ -64,6 +65,9 @@ class EndpointAuthorizationTest {
 
     @MockitoBean
     private PropertyService propertyService;
+
+    @MockitoBean
+    private PropertyImageService propertyImageService;
 
     @Test
     void adminPrefixAllowsOnlyAdminAndStillRequiresCsrfForWrites() throws Exception {

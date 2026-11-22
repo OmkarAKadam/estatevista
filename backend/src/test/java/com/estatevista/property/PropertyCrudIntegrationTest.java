@@ -870,9 +870,12 @@ class PropertyCrudIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"PUBLISHED\"}"))
                 .andExpect(status().isForbidden());
+        // Stage 4.5: image metadata reads are a public route; a nonexistent
+        // property now resolves to a generic 404, not a denied deferred route.
         mockMvc.perform(get("/api/v1/properties/{id}/images", UUID.randomUUID())
                         .cookie(admin.cookie()))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
     }
 
     // ------------------------------------------------------------------

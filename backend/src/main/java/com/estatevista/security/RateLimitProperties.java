@@ -17,6 +17,7 @@ public class RateLimitProperties {
     private boolean enabled = true;
     private Login login = new Login();
     private Registration registration = new Registration();
+    private ImageUpload imageUpload = new ImageUpload();
 
     public boolean isEnabled() {
         return enabled;
@@ -40,6 +41,14 @@ public class RateLimitProperties {
 
     public void setRegistration(Registration registration) {
         this.registration = registration;
+    }
+
+    public ImageUpload getImageUpload() {
+        return imageUpload;
+    }
+
+    public void setImageUpload(ImageUpload imageUpload) {
+        this.imageUpload = imageUpload;
     }
 
     /** Failed-login threshold for one normalized account/client pair. */
@@ -79,6 +88,32 @@ public class RateLimitProperties {
 
         public int getWindowSeconds() {
             return windowSeconds;
+        }
+
+        public void setWindowSeconds(int windowSeconds) {
+            this.windowSeconds = windowSeconds;
+        }
+    }
+
+    /** Approved property-image upload threshold for one authenticated actor. */
+    public static class ImageUpload {
+        private int maxAttempts = 20;
+        private int windowSeconds = 3600;
+
+        public int getMaxAttempts() {
+            return maxAttempts;
+        }
+
+        public void setMaxAttempts(int maxAttempts) {
+            this.maxAttempts = maxAttempts;
+        }
+
+        public int getWindowSeconds() {
+            return windowSeconds;
+        }
+
+        public void setWindowSeconds(int windowSeconds) {
+            this.windowSeconds = windowSeconds;
         }
     }
 }

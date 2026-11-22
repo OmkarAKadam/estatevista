@@ -87,6 +87,23 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Official Cloudinary Java SDK (HTTP 5 transport). Version is pinned
+             after compatibility, maintenance, license, and advisory review. -->
+        <dependency>
+            <groupId>com.cloudinary</groupId>
+            <artifactId>cloudinary-http5</artifactId>
+            <version>2.6.0</version>
+        </dependency>
+
+        <!-- Maintained ImageIO WebP reader/writer backed by libwebp 1.6.0.
+             Runtime-only: application code uses standard javax.imageio APIs. -->
+        <dependency>
+            <groupId>com.github.usefulness</groupId>
+            <artifactId>webp-imageio</artifactId>
+            <version>0.11.0</version>
+            <scope>runtime</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
