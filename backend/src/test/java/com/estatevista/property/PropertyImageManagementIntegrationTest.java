@@ -635,6 +635,14 @@ class PropertyImageManagementIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"sortOrder\":-1}"))
                 .andExpect(status().isBadRequest());
+        mockMvc.perform(patch("/api/v1/properties/{id}/images/{imageId}",
+                        fixture.draft().getId(), other)
+                        .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sortOrder\":null}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.details[*].field").value(hasItem("sortOrder")));
     }
 
     @Test

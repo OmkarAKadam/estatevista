@@ -203,6 +203,9 @@ public class PropertyImageService {
         if (request.getSortOrder() != null && request.getSortOrder() < 0) {
             errors.add(fieldError("sortOrder", "must be zero or greater"));
         }
+        if (request.hasField("sortOrder") && request.getSortOrder() == null) {
+            errors.add(fieldError("sortOrder", "must be zero or greater when supplied"));
+        }
         throwIfInvalid(errors);
 
         boolean orderChanged = false;
@@ -219,10 +222,16 @@ public class PropertyImageService {
             } else {
                 imageRepository.saveAndFlush(image);
             }
+        } catch (DataIntegrityViolationException exception) {
+            audit.recordImageFailure(
+                    propertyId, imageId, actor.id(), "METADATA", "ORDER_CONFLICT");
+            throw conflict("The requested image order conflicts with the current state");
         } catch (RuntimeException exception) {
             audit.recordImageFailure(
                     propertyId, imageId, actor.id(), "METADATA", "DATABASE_FAILURE");
-            throw conflict("The requested image order could not be saved");
+            throw new ApiException(
+                    ErrorCode.INTERNAL_ERROR,
+                    "The image metadata could not be saved.");
         }
 
         audit.recordImageMetadata(propertyId, imageId, actor.id());

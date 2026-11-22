@@ -92,6 +92,10 @@ public class PropertyService {
     private static final String CATEGORY_RESIDENTIAL = "RESIDENTIAL";
     private static final String CATEGORY_COMMERCIAL = "COMMERCIAL";
     private static final String ROLE_AGENT = "AGENT";
+    // Java exposes these ISO 4217 fund/metal/test codes as "available", but they
+    // are not active payment currencies and must not be accepted by §3.1.
+    private static final Set<String> NON_PAYMENT_ISO_CODES =
+            Set.of("XAG", "XAU", "XDR", "XPD", "XPT", "XTS", "XXX");
     private static final Map<PropertyStatus, Set<PropertyStatus>> ALLOWED_TRANSITIONS = Map.of(
             PropertyStatus.DRAFT, Set.of(PropertyStatus.PUBLISHED),
             PropertyStatus.PUBLISHED, Set.of(
@@ -417,6 +421,8 @@ public class PropertyService {
             String sort, int page, int size) {
         validateRange(minPrice, maxPrice, "minPrice", "maxPrice");
         validateRange(minBedrooms, maxBedrooms, "minBedrooms", "maxBedrooms");
+        validateBedroomFilter(minBedrooms, "minBedrooms");
+        validateBedroomFilter(maxBedrooms, "maxBedrooms");
         List<UUID> amenities = deduplicateIds(amenityIds, "amenityIds");
         ListingType parsedListingType = parseListingType(listingType);
         Pageable pageable = pageable(page, size, publicSort(sort));
@@ -991,6 +997,11 @@ public class PropertyService {
             errors.add(fieldError("currencyCode", "must be an uppercase ISO 4217 alpha-3 code"));
             return;
         }
+        if (NON_PAYMENT_ISO_CODES.contains(code)) {
+            errors.add(fieldError("currencyCode",
+                    "must be an active ISO 4217 alpha-3 code"));
+            return;
+        }
         try {
             Currency currency = Currency.getInstance(code);
             if (!code.equals(currency.getCurrencyCode())
@@ -1043,6 +1054,12 @@ public class PropertyService {
             Comparable<?> min, Comparable<?> max, String minField, String maxField) {
         if (min != null && max != null && compare(min, max) > 0) {
             throw validation(minField, "must be less than or equal to " + maxField);
+        }
+    }
+
+    private static void validateBedroomFilter(Integer value, String field) {
+        if (value != null && (value < 0 || value > Short.MAX_VALUE)) {
+            throw validation(field, "must be between 0 and " + Short.MAX_VALUE);
         }
     }
 

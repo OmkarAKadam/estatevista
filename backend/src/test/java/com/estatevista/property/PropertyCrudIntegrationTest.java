@@ -320,6 +320,9 @@ class PropertyCrudIntegrationTest {
                 valid.replace("\"currencyCode\": \"INR\"", "\"currencyCode\": \"inr\""),
                 "currencyCode");
         assertCreateValidationError(admin,
+                valid.replace("\"currencyCode\": \"INR\"", "\"currencyCode\": \"XAU\""),
+                "currencyCode");
+        assertCreateValidationError(admin,
                 valid.replace("\"latitude\": 22.3", "\"latitude\": 91.0"),
                 "location.latitude");
         assertCreateValidationError(admin,
@@ -456,6 +459,10 @@ class PropertyCrudIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.error.details[*].field").value(hasItem("size")));
+        mockMvc.perform(get("/api/v1/properties").param("minBedrooms", "32768"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.details[*].field").value(hasItem("minBedrooms")));
     }
 
     @Test

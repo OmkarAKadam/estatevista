@@ -439,9 +439,10 @@ fallback text.
   server-side logic of its own. Registration, login, session detection and
   logout fail with a safe network message when the backend is not running. The
   API's CORS configuration must allow the exact frontend origin.
-- **No property-management, saved-search, inquiry or chat features exist yet.**
-  The backend currently exposes authentication only; the catalogue remains a
-  static demonstration dataset.
+- **Authenticated property management is implemented; saved-search, inquiry and
+  chat remain later-stage work.** The backend exposes authentication and the
+  Stage 4 property-management APIs; the public catalogue still uses a static
+  demonstration dataset.
 
 ---
 
