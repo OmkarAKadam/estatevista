@@ -6,8 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.sql.PreparedStatement;
 
 import com.estatevista.audit.AuditEventService;
-import com.estatevista.common.exception.ApiException;
-import com.estatevista.common.exception.ErrorCode;
+import com.estatevista.common.exception.RateLimitExceededException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +31,10 @@ public class RateLimitService {
     public static final String SCOPE_LOGIN = "login";
     public static final String SCOPE_REGISTRATION = "registration";
     public static final String SCOPE_IMAGE_UPLOAD = "image_upload";
+    public static final String SCOPE_PUBLIC_SEARCH = "public_search";
+    public static final String SCOPE_PROPERTY_DETAIL = "property_detail";
+    public static final String SCOPE_AUTHENTICATED_API = "authenticated_api";
+    public static final String SCOPE_ADMIN_MUTATION = "admin_mutation";
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitService.class);
 
@@ -67,8 +70,8 @@ public class RateLimitService {
      * Registers one attempt and rejects the caller when the configured threshold
      * has already been reached inside the active window.
      *
-     * @param scope one of {@link #SCOPE_LOGIN}, {@link #SCOPE_REGISTRATION}, or
-     *              {@link #SCOPE_IMAGE_UPLOAD}
+     * @param scope one of the declared {@code SCOPE_*} constants; property
+     *              scopes use the approved SECURITY_ARCHITECTURE.md §11.9 baselines
      * @param identity normalized email/client identity; never logged or stored raw
      */
     @Transactional
@@ -86,9 +89,7 @@ public class RateLimitService {
         if (active != null && active >= maxAttempts) {
             log.warn("Rate limit rejected an attempt scope={}", scope);
             auditEventService.recordRateLimitRejected(scope);
-            throw new ApiException(
-                    ErrorCode.TOO_MANY_REQUESTS,
-                    "Too many attempts. Please try again later.");
+            throw new RateLimitExceededException(windowSeconds);
         }
         jdbcTemplate.update(INSERT_EVENT, key);
     }
@@ -124,6 +125,18 @@ public class RateLimitService {
         if (SCOPE_IMAGE_UPLOAD.equals(scope)) {
             return Math.max(1, properties.getImageUpload().getMaxAttempts());
         }
+        if (SCOPE_PUBLIC_SEARCH.equals(scope)) {
+            return Math.max(1, properties.getPublicSearch().getMaxAttempts());
+        }
+        if (SCOPE_PROPERTY_DETAIL.equals(scope)) {
+            return Math.max(1, properties.getPropertyDetail().getMaxAttempts());
+        }
+        if (SCOPE_AUTHENTICATED_API.equals(scope)) {
+            return Math.max(1, properties.getAuthenticatedApi().getMaxAttempts());
+        }
+        if (SCOPE_ADMIN_MUTATION.equals(scope)) {
+            return Math.max(1, properties.getAdminMutation().getMaxAttempts());
+        }
         return Math.max(1, properties.getLogin().getMaxAttempts());
     }
 
@@ -133,6 +146,18 @@ public class RateLimitService {
         }
         if (SCOPE_IMAGE_UPLOAD.equals(scope)) {
             return Math.max(1, properties.getImageUpload().getWindowSeconds());
+        }
+        if (SCOPE_PUBLIC_SEARCH.equals(scope)) {
+            return Math.max(1, properties.getPublicSearch().getWindowSeconds());
+        }
+        if (SCOPE_PROPERTY_DETAIL.equals(scope)) {
+            return Math.max(1, properties.getPropertyDetail().getWindowSeconds());
+        }
+        if (SCOPE_AUTHENTICATED_API.equals(scope)) {
+            return Math.max(1, properties.getAuthenticatedApi().getWindowSeconds());
+        }
+        if (SCOPE_ADMIN_MUTATION.equals(scope)) {
+            return Math.max(1, properties.getAdminMutation().getWindowSeconds());
         }
         return Math.max(1, properties.getLogin().getWindowSeconds());
     }

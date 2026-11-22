@@ -18,9 +18,13 @@
   };
 
   var STATUS_BADGES = {
+    published: { label: "Available", modifier: "ev-badge--available" },
     available: { label: "Available", modifier: "ev-badge--available" },
     reserved: { label: "Reserved", modifier: "ev-badge--reserved" },
-    sold: { label: "Sold", modifier: "ev-badge--sold" }
+    unavailable: { label: "Unavailable", modifier: "ev-badge--reserved" },
+    sold: { label: "Sold", modifier: "ev-badge--sold" },
+    rented: { label: "Rented", modifier: "ev-badge--reserved" },
+    archived: { label: "Archived", modifier: "ev-badge--neutral" }
   };
 
   function el(tag, className, content) {
@@ -89,6 +93,55 @@
     return STATUS_BADGES[key] || null;
   }
 
+  /** Maps a backend category/subtype pair onto the established card type keys. */
+  function normalizeApiType(property) {
+    var subtype = cleanText(property && property.subtype).toLowerCase();
+    var category = cleanText(property && property.category).toLowerCase();
+    var source = subtype || category;
+
+    if (/penthouse/.test(source)) {
+      return "penthouse";
+    }
+    if (/villa|house/.test(source)) {
+      return /row|terrace/.test(source) ? "rowhouse" : "villa";
+    }
+    if (/flat|apartment/.test(source)) {
+      return "apartment";
+    }
+    if (/row/.test(source)) {
+      return "rowhouse";
+    }
+
+    return cleanText(subtype || category);
+  }
+
+  /** Converts an approved PropertySummaryResponse into the shared card model. */
+  function fromApiSummary(summary) {
+    if (!summary || typeof summary !== "object") {
+      return null;
+    }
+
+    var areaValue = Number(summary.areaValue);
+    var image = cleanText(summary.primaryImageUrl);
+
+    return {
+      id: cleanText(summary.id),
+      title: cleanText(summary.title) || "Untitled property",
+      type: normalizeApiType(summary),
+      status: cleanText(summary.status).toLowerCase() || "published",
+      price: Number.isFinite(Number(summary.price)) ? Number(summary.price) : null,
+      locality: cleanText(summary.locality),
+      city: cleanText(summary.city),
+      areaSqft:
+        cleanText(summary.areaUnit).toUpperCase() === "SQFT" && Number.isFinite(areaValue)
+          ? areaValue
+          : null,
+      bedrooms: Number(summary.bedrooms),
+      bathrooms: Number(summary.bathrooms),
+      images: image ? [image] : []
+    };
+  }
+
   function locationLabel(property) {
     return [cleanText(property.locality), cleanText(property.city)]
       .filter(function (part) {
@@ -106,6 +159,10 @@
     var raw = cleanText(rawValue);
 
     if (raw === "") {
+      return PLACEHOLDER_IMAGE;
+    }
+
+    if (/^[a-z][a-z0-9+.-]*:/i.test(raw) && !/^https?:\/\//i.test(raw)) {
       return PLACEHOLDER_IMAGE;
     }
 
@@ -269,6 +326,8 @@
     countLabel: countLabel,
     typeLabel: typeLabel,
     statusBadge: statusBadge,
+    normalizeApiType: normalizeApiType,
+    fromApiSummary: fromApiSummary,
     locationLabel: locationLabel,
     primaryImage: primaryImage,
     resolveImagePath: resolveImagePath

@@ -12,6 +12,8 @@ import com.estatevista.authorization.AccountAuthorizationService;
 import com.estatevista.authorization.SessionAuthorizationFilter;
 import com.estatevista.common.exception.ErrorCode;
 import com.estatevista.common.response.ApiErrorResponse;
+import com.estatevista.security.PropertyRateLimitFilter;
+import com.estatevista.security.RateLimitService;
 import tools.jackson.databind.ObjectMapper;
 
 import org.springframework.beans.factory.ObjectProvider;
@@ -27,6 +29,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.context.SecurityContextRepository;
@@ -59,16 +62,19 @@ public class SecurityConfig {
     private final AppProperties appProperties;
     private final ObjectProvider<AccountAuthorizationService> accountAuthorizationService;
     private final ObjectProvider<AuditEventService> auditEventService;
+    private final ObjectProvider<RateLimitService> rateLimitService;
 
     public SecurityConfig(
             ObjectMapper objectMapper,
             AppProperties appProperties,
             ObjectProvider<AccountAuthorizationService> accountAuthorizationService,
-            ObjectProvider<AuditEventService> auditEventService) {
+            ObjectProvider<AuditEventService> auditEventService,
+            ObjectProvider<RateLimitService> rateLimitService) {
         this.objectMapper = objectMapper;
         this.appProperties = appProperties;
         this.accountAuthorizationService = accountAuthorizationService;
         this.auditEventService = auditEventService;
+        this.rateLimitService = rateLimitService;
     }
 
     @Bean
@@ -186,6 +192,13 @@ public class SecurityConfig {
             http.addFilterAfter(
                     new SessionAuthorizationFilter(resolver, securityContextRepository),
                     SecurityContextHolderFilter.class);
+        }
+
+        RateLimitService limiter = rateLimitService.getIfAvailable();
+        if (limiter != null) {
+            http.addFilterBefore(
+                    new PropertyRateLimitFilter(limiter, objectMapper),
+                    AuthorizationFilter.class);
         }
 
         http

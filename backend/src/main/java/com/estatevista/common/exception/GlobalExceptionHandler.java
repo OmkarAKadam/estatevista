@@ -88,11 +88,16 @@ public class GlobalExceptionHandler {
                     request.getRequestURI(),
                     exception.getMessage());
         }
-        return respond(
+        ResponseEntity<ApiErrorResponse> response = respond(
                 exception.getErrorCode(),
                 exception.getMessage(),
                 exception.getDetails(),
                 request);
+        if (exception instanceof RateLimitExceededException rateLimitException) {
+            response.getHeaders().set(
+                    "Retry-After", String.valueOf(rateLimitException.getRetryAfterSeconds()));
+        }
+        return response;
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -1,6 +1,8 @@
 package com.estatevista.property.image;
 
 import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -29,7 +31,10 @@ import org.springframework.web.multipart.MultipartFile;
  *
  * <p>All supported payloads are decoded, bounded, redrawn, and re-encoded so
  * EXIF/GPS/comments/profiles and untrusted container chunks cannot reach
- * external storage. WebP uses a maintained ImageIO reader/writer that decodes
+ * external storage. A bounded, dependency-free parser reads the EXIF
+ * orientation tag (JPEG APP1 / WebP EXIF chunk) before decoding; the corrected
+ * pixel transform is baked into the canonical image so no viewer has to trust
+ * source metadata. WebP uses a maintained ImageIO reader/writer that decodes
  * real pixel data; animated payloads and malformed containers are rejected.</p>
  */
 @Component
@@ -79,16 +84,18 @@ public class PropertyImageProcessor {
             throw invalid("file", "file extension does not match the image content");
         }
 
+        int orientation = sourceOrientation(input, format);
+
         return switch (format) {
-            case JPEG -> reencode(input, "jpg", "jpeg", "image/jpeg", false);
-            case PNG -> reencode(input, "png", "png", "image/png", true);
-            case WEBP -> reencodeWebP(input);
+            case JPEG -> reencode(input, "jpg", "jpeg", "image/jpeg", false, orientation);
+            case PNG -> reencode(input, "png", "png", "image/png", true, orientation);
+            case WEBP -> reencodeWebP(input, orientation);
         };
     }
 
     private static SanitizedImage reencode(
             byte[] input, String formatName, String extension,
-            String contentType, boolean rejectAnimation) {
+            String contentType, boolean rejectAnimation, int orientation) {
         try (ImageInputStream imageInput = ImageIO.createImageInputStream(
                 new ByteArrayInputStream(input))) {
             ImageReader reader = ImageIO.getImageReaders(imageInput).next();
@@ -100,6 +107,8 @@ public class PropertyImageProcessor {
                 int width = reader.getWidth(0);
                 int height = reader.getHeight(0);
                 validateDimensions(width, height);
+                validateDimensions(outputWidth(width, height, orientation),
+                        outputHeight(width, height, orientation));
 
                 BufferedImage decoded;
                 try {
@@ -114,14 +123,7 @@ public class PropertyImageProcessor {
                 int type = "jpeg".equals(extension)
                         ? BufferedImage.TYPE_INT_RGB
                         : BufferedImage.TYPE_INT_ARGB;
-                BufferedImage canonical = new BufferedImage(
-                        decoded.getWidth(), decoded.getHeight(), type);
-                Graphics2D graphics = canonical.createGraphics();
-                try {
-                    graphics.drawImage(decoded, 0, 0, null);
-                } finally {
-                    graphics.dispose();
-                }
+                BufferedImage canonical = applyOrientation(decoded, orientation, type);
 
                 ImageWriter writer = ImageIO.getImageWritersByFormatName(formatName).next();
                 ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -150,7 +152,7 @@ public class PropertyImageProcessor {
         }
     }
 
-    private static SanitizedImage reencodeWebP(byte[] input) {
+    private static SanitizedImage reencodeWebP(byte[] input, int orientation) {
         validateWebPContainer(input, false);
         try (ImageInputStream imageInput = ImageIO.createImageInputStream(
                 new ByteArrayInputStream(input))) {
@@ -169,6 +171,8 @@ public class PropertyImageProcessor {
                 int width = reader.getWidth(0);
                 int height = reader.getHeight(0);
                 validateDimensions(width, height);
+                validateDimensions(outputWidth(width, height, orientation),
+                        outputHeight(width, height, orientation));
 
                 BufferedImage decoded;
                 try {
@@ -180,14 +184,8 @@ public class PropertyImageProcessor {
                     throw invalid("file", "image could not be decoded");
                 }
 
-                BufferedImage canonical = new BufferedImage(
-                        decoded.getWidth(), decoded.getHeight(), BufferedImage.TYPE_INT_ARGB);
-                Graphics2D graphics = canonical.createGraphics();
-                try {
-                    graphics.drawImage(decoded, 0, 0, null);
-                } finally {
-                    graphics.dispose();
-                }
+                BufferedImage canonical = applyOrientation(
+                        decoded, orientation, BufferedImage.TYPE_INT_ARGB);
 
                 Iterator<ImageWriter> writers = ImageIO.getImageWritersByMIMEType("image/webp");
                 if (!writers.hasNext()) {
@@ -222,6 +220,192 @@ public class PropertyImageProcessor {
         } catch (OutOfMemoryError error) {
             throw invalid("file", "image requires too much memory to decode");
         }
+    }
+
+    /**
+     * Reads the EXIF orientation tag from JPEG APP1 or WebP EXIF chunks. The
+     * scan is bounded by marker/chunk count and declared segment lengths; no
+     * undeclared or oversized structure is followed. Unreadable or unsupported
+     * orientation data is ignored and treated as orientation 1.
+     */
+    private static int sourceOrientation(byte[] input, Format format) {
+        return switch (format) {
+            case JPEG -> jpegOrientation(input);
+            case WEBP -> webpOrientation(input);
+            case PNG -> 1;
+        };
+    }
+
+    private static int jpegOrientation(byte[] input) {
+        int offset = 2;
+        int scanned = 0;
+
+        while (offset + 4 <= input.length && scanned++ < 64) {
+            if ((input[offset] & 0xff) != 0xff) {
+                break;
+            }
+            int marker = input[offset + 1] & 0xff;
+            if (marker == 0xd8 || marker == 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+                offset += 2;
+                continue;
+            }
+            if (marker == 0xd9 || marker == 0xda) {
+                break;
+            }
+
+            int length = ((input[offset + 2] & 0xff) << 8) | (input[offset + 3] & 0xff);
+            if (length < 2 || offset + 2L + length > input.length) {
+                break;
+            }
+            int payload = offset + 4;
+            int payloadLength = length - 2;
+            if (marker == 0xe1 && hasExifHeader(input, payload, payloadLength)) {
+                int orientation = tiffOrientation(input, payload + 6, payloadLength - 6);
+                if (orientation > 0) {
+                    return orientation;
+                }
+            }
+            offset += 2 + length;
+        }
+        return 1;
+    }
+
+    private static int webpOrientation(byte[] input) {
+        if (input.length < 20 || !matches(input, 0, "RIFF") || !matches(input, 8, "WEBP")) {
+            return 1;
+        }
+        int offset = 12;
+        int chunks = 0;
+
+        while (offset + 8 <= input.length && chunks++ < 64) {
+            String chunkName = ascii(input, offset);
+            long size = u32(input, offset + 4);
+            long paddedSize = size + (size & 1L);
+            if (size > Integer.MAX_VALUE || offset + 8L + paddedSize > input.length) {
+                break;
+            }
+            if ("EXIF".equals(chunkName)) {
+                int payload = offset + 8;
+                int payloadLength = (int) size;
+                if (hasExifHeader(input, payload, payloadLength)) {
+                    int orientation = tiffOrientation(input, payload + 6, payloadLength - 6);
+                    if (orientation > 0) {
+                        return orientation;
+                    }
+                }
+            }
+            offset += 8 + (int) paddedSize;
+        }
+        return 1;
+    }
+
+    private static boolean hasExifHeader(byte[] input, int offset, int available) {
+        return available >= 6
+                && input[offset] == 'E' && input[offset + 1] == 'x'
+                && input[offset + 2] == 'i' && input[offset + 3] == 'f'
+                && input[offset + 4] == 0 && input[offset + 5] == 0;
+    }
+
+    private static int tiffOrientation(byte[] input, int base, int length) {
+        if (length < 8) {
+            return 1;
+        }
+        boolean little = input[base] == 'I' && input[base + 1] == 'I';
+        boolean big = input[base] == 'M' && input[base + 1] == 'M';
+        if (!little && !big) {
+            return 1;
+        }
+        if (readU16(input, base + 2, little) != 42) {
+            return 1;
+        }
+
+        long ifdOffset = readU32(input, base + 4, little);
+        if (ifdOffset < 8 || ifdOffset > length - 2) {
+            return 1;
+        }
+        int position = base + (int) ifdOffset;
+        int entries = readU16(input, position, little);
+        if (entries > 128) {
+            return 1;
+        }
+        for (int index = 0; index < entries; index++) {
+            int entry = position + 2 + index * 12;
+            if (entry + 12 > base + length) {
+                break;
+            }
+            if (readU16(input, entry, little) != 0x0112) {
+                continue;
+            }
+            int type = readU16(input, entry + 2, little);
+            long count = readU32(input, entry + 4, little);
+            if (type != 3 || count != 1) {
+                return 1;
+            }
+            int value = readU16(input, entry + 8, little);
+            return value >= 1 && value <= 8 ? value : 1;
+        }
+        return 1;
+    }
+
+    private static int readU16(byte[] input, int offset, boolean littleEndian) {
+        int first = input[offset] & 0xff;
+        int second = input[offset + 1] & 0xff;
+        return littleEndian ? first | (second << 8) : (first << 8) | second;
+    }
+
+    private static long readU32(byte[] input, int offset, boolean littleEndian) {
+        long first = input[offset] & 0xffL;
+        long second = input[offset + 1] & 0xffL;
+        long third = input[offset + 2] & 0xffL;
+        long fourth = input[offset + 3] & 0xffL;
+        return littleEndian
+                ? first | (second << 8) | (third << 16) | (fourth << 24)
+                : (first << 24) | (second << 16) | (third << 8) | fourth;
+    }
+
+    private static int outputWidth(int width, int height, int orientation) {
+        return orientation >= 5 ? height : width;
+    }
+
+    private static int outputHeight(int width, int height, int orientation) {
+        return orientation >= 5 ? width : height;
+    }
+
+    /** Bakes the EXIF orientation into canonical pixels using no extra dependency. */
+    private static BufferedImage applyOrientation(
+            BufferedImage decoded, int orientation, int type) {
+        int width = decoded.getWidth();
+        int height = decoded.getHeight();
+        BufferedImage canonical = new BufferedImage(
+                outputWidth(width, height, orientation),
+                outputHeight(width, height, orientation),
+                type);
+        Graphics2D graphics = canonical.createGraphics();
+        try {
+            graphics.setRenderingHint(
+                    RenderingHints.KEY_INTERPOLATION,
+                    RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+            graphics.setRenderingHint(
+                    RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_OFF);
+            graphics.drawImage(decoded, orientationTransform(orientation, width, height), null);
+        } finally {
+            graphics.dispose();
+        }
+        return canonical;
+    }
+
+    private static AffineTransform orientationTransform(int orientation, int width, int height) {
+        return switch (orientation) {
+            case 2 -> new AffineTransform(-1, 0, 0, 1, width, 0);
+            case 3 -> new AffineTransform(-1, 0, 0, -1, width, height);
+            case 4 -> new AffineTransform(1, 0, 0, -1, 0, height);
+            case 5 -> new AffineTransform(0, 1, 1, 0, 0, 0);
+            case 6 -> new AffineTransform(0, 1, -1, 0, height, 0);
+            case 7 -> new AffineTransform(0, -1, -1, 0, height, width);
+            case 8 -> new AffineTransform(0, -1, 1, 0, 0, width);
+            default -> new AffineTransform();
+        };
     }
 
     private static void validateWebPContainer(byte[] input, boolean requireCleanOutput) {

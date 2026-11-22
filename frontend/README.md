@@ -5,10 +5,11 @@ and vanilla JavaScript. It presents fictional property listings across India
 with search, filtering, sorting, detail views, a small image gallery, an About
 page, a Contact page with client-side validation, and a custom 404 page.
 
-There is no frontend framework and no build step. The property catalogue remains
-a static demonstration dataset, while account registration, login, session
-detection, current-user retrieval, and logout are integrated with the separate
-Spring Boot API. See
+There is no frontend framework and no build step. Public property listings and
+details, account registration, login, session detection, current-user retrieval,
+and logout are integrated with the separate Spring Boot API. The home-page
+featured rail remains a local showcase because the `featured` endpoint is
+deferred pending an approved contract. See
 [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md) for the authentication
 contract and development setup.
 
@@ -25,8 +26,8 @@ details are invented for demonstration purposes.
 
 | Item | Value |
 |---|---|
-| GitHub repository | _TBD — add after the repository is created_ |
-| Live demo | _TBD — add after the Vercel deployment_ |
+| GitHub repository | https://github.com/OmkarAKadam/estatevista.git |
+| Live demo | _TBD — no Vercel deployment has been performed_ |
 | Deployment guide | [`DEPLOYMENT.md`](DEPLOYMENT.md) |
 | Stage 5 QA record | [`docs/QA.md`](docs/QA.md) |
 
@@ -68,17 +69,18 @@ Implemented functionality includes:
 - A homepage hero, homepage search, featured-property rail and category links.
 - A property listing page with keyword, type, minimum-price and maximum-price
   filters, sorting, and shareable query-string state.
-- A property details page driven by `?id=<slug>`, with a selectable image
-  gallery and a related-properties rail.
+- A property details page driven by `?id=<uuid>`, fetched from the live public
+  API, with a selectable image gallery and a related-properties rail.
 - An About page describing the fictional studio.
 - A Contact page with a client-side validated demonstration form.
 - A custom 404 page.
 - Buyer registration and login pages integrated with the session-based backend.
 - Authentication-aware navigation with current-user detection and logout.
 
-Property discovery remains front-end only: search, filtering, gallery selection
-and the contact form run in the browser. Authentication uses the separate
-EstateVista API.
+Published listings and detail data are fetched from the EstateVista API; the
+browser applies the minimal keyword/type/price filters to the loaded page and
+handles gallery selection. The contact form is client-side only. Authentication
+also uses the EstateVista API.
 
 ---
 
@@ -114,9 +116,11 @@ in progress.
 - Stage 6: Documentation, repository hygiene and planned deployment.
 - V2 Stage 3.7: Registration, login, session detection and logout integrated
   with the Spring Boot authentication API.
+- V2 Stage 4.7/4.8: Property management, public listing and public detail pages
+  integrated with the Spring Boot property API.
 
-GitHub setup and Vercel deployment are not complete yet. The repository links
-above remain placeholders until those steps are performed.
+The GitHub remote exists and is linked above. No Vercel deployment has been
+performed, so the live demo link remains a placeholder.
 
 ---
 
@@ -130,7 +134,7 @@ above remain placeholders until those steps are performed.
 | UI framework | Bootstrap 5.3.3 via pinned jsDelivr CDN with Subresource Integrity (SRI) |
 | Typefaces | Fraunces (headings) and Inter (body) via Google Fonts |
 | Currency | Indian Rupees (INR, ₹) |
-| Property data | Plain global array in `assets/js/data.js` |
+| Property data | Published listings/details fetched from `/api/v1/properties`; featured showcase uses the local `assets/js/data.js` array |
 | Authentication | Separate Spring Boot API using an `EV_SESSION` HttpOnly cookie and an in-memory CSRF token |
 | Build step | None |
 | Hosting | Vercel static hosting (planned; not yet deployed) |
@@ -151,7 +155,7 @@ works without it.
 EstateVista/
 ├── index.html                  Homepage
 ├── properties.html             Listing browse page
-├── property-details.html       Single listing (?id=<slug>)
+├── property-details.html       Single listing (?id=<uuid>)
 ├── about.html                  Company and studio information
 ├── contact.html                Contact details and demonstration form
 ├── login.html                  Buyer login page
@@ -168,12 +172,14 @@ EstateVista/
 │   │   ├── contact.css         Contact-page composition
 │   │   └── auth.css            Login and registration page composition
 │   ├── js/
-│   │   ├── data.js             Fictional property dataset (global array)
+│   │   ├── data.js             Local featured-showcase dataset (global array)
 │   │   ├── main.js             Shared progressive enhancement
 │   │   ├── home.js             Featured rail and homepage search
 │   │   ├── property-card.js    Shared property-card renderer
-│   │   ├── properties.js       Listing filters, sorting and grid
-│   │   ├── property-details.js Single-listing renderer and gallery
+│   │   ├── properties.js       Live listing fetch, filters, sorting and grid
+│   │   ├── property-details.js Live detail fetch, renderer and gallery
+│   │   ├── public/
+│   │   │   └── property-public-api.js  Read-only public API bridge
 │   │   ├── contact.js          Contact-form validation
 │   │   ├── core/
 │   │   │   ├── api.js          Credentialed API client and CSRF memory
@@ -214,7 +220,7 @@ is reserved for future portraits; no team photography is currently committed.
 |---|---|
 | `index.html` | Homepage with hero, search, featured properties and categories |
 | `properties.html` | Full listing grid with filters, sorting and URL-driven state |
-| `property-details.html` | Single property view selected by `?id=<slug>` |
+| `property-details.html` | Single property view selected by `?id=<uuid>` and fetched live |
 | `about.html` | Fictional studio story, mission, values and team section |
 | `contact.html` | Studio details and client-side validated demonstration form |
 | `login.html` | Buyer login, session bootstrap and authenticated redirect |
@@ -233,21 +239,20 @@ The site is static, so any static file server works. The repository includes a
 zero-dependency Node.js server, which is the recommended option because it keeps
 the frontend and API hostnames aligned for cookie credentials.
 
-From the project root:
+From the repository root:
 
 ```bash
 node frontend/dev-server.mjs
 ```
 
-Then open <http://localhost:5500/>. Python's built-in server is also sufficient:
+Then open <http://localhost:5500/>. If you use Python or `npx serve`, run the
+command from the `frontend` directory so the site root is served, not the
+repository root:
 
 ```bash
+cd frontend
 python -m http.server 5500
-```
-
-An alternative if Python and Node.js are unavailable:
-
-```bash
+# or
 npx serve .
 ```
 
@@ -257,8 +262,9 @@ and network access.
 Authentication requires the separate Spring Boot API running on
 `http://localhost:8080` with the frontend origin allowed in
 `APP_CORS_ALLOWED_ORIGINS`. See [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md)
-and `docs/DEVELOPMENT_SETUP.md` for the backend and database setup. The property
-catalogue, filters and contact form work without the API.
+and `docs/DEVELOPMENT_SETUP.md` for the backend and database setup. Public
+listings and details require the API; the home-page featured showcase and
+contact form work without it.
 
 **Why use a server instead of opening the files directly?** The pages load
 relative assets, resolve query parameters such as `?id=` and the listing
@@ -392,19 +398,28 @@ Stage 5 scope and does not certify later changes or claim full WCAG compliance.
 
 ## Property data
 
-`assets/js/data.js` exposes `window.EV_PROPERTIES` — a plain array of five
-fictional listings. It is a global rather than a fetched JSON file so pages work
-without CORS or a JSON round-trip.
+Public listing and detail pages fetch published properties from
+`GET /api/v1/properties` and its detail/image/related endpoints through
+`assets/js/public/property-public-api.js` and the shared `assets/js/core/api.js`
+client. Detail URLs use the server-generated UUID (`?id=<uuid>`). A malformed
+ID, a hidden or missing property, or a network failure renders a curated state;
+server text is inserted only with `textContent`.
 
-Prices are stored as whole rupees (`48500000`) and formatted at render time by
-the shared helpers in `property-card.js` and the homepage card renderer in
-`home.js`, using Indian conventions such as `₹4.85 Cr` and `₹95 L`.
+`assets/js/data.js` still exposes `window.EV_PROPERTIES`, a local array of five
+fictional listings used only by the home-page featured showcase. Those cards
+link to the live listings page rather than passing a showcase slug to the
+UUID-based detail page. The `featured` API endpoint is deferred pending an
+approved `is_featured` contract.
 
-Record shape:
+Prices are formatted at render time by the shared helpers in `property-card.js`
+and the homepage card renderer in `home.js`, using Indian conventions such as
+`₹4.85 Cr` and `₹95 L`.
+
+Local showcase record shape:
 
 | Field | Type | Notes |
 |---|---|---|
-| `id` | string | Slug used by `property-details.html?id=<slug>` |
+| `id` | string | Local showcase key; not used as a public detail link |
 | `title` | string | Display name |
 | `type` | string | `apartment`, `villa`, `penthouse`, `rowhouse` |
 | `status` | string | `available`, `reserved`, `sold` |
@@ -415,9 +430,8 @@ Record shape:
 | `featured` | boolean | Home page highlight rail |
 | `images` | string[] | Paths relative to the site root |
 
-The details renderer also checks for an optional `amenities` array. The current
-five records do not include that field, so the details page shows its documented
-fallback text.
+Live detail data supplies its own `amenities` list; when none is supplied, the
+details page shows its documented fallback text.
 
 ---
 
@@ -441,8 +455,8 @@ fallback text.
   API's CORS configuration must allow the exact frontend origin.
 - **Authenticated property management is implemented; saved-search, inquiry and
   chat remain later-stage work.** The backend exposes authentication and the
-  Stage 4 property-management APIs; the public catalogue still uses a static
-  demonstration dataset.
+  Stage 4 property-management APIs; public listings and details are fetched
+  from that API, while the home-page featured rail remains a local showcase.
 
 ---
 
@@ -455,10 +469,13 @@ yet. The intended configuration and verification steps are documented in
 Summary of the planned setup:
 
 - Framework preset: **Other**.
+- Root directory: **`frontend`**.
 - Build command: **None**.
-- Output directory: **project root**.
+- Output directory: **`frontend` root**.
 - Production branch: **main**.
 - GitHub integration so pushes to `main` trigger deployments.
+- `window.ESTATEVISTA_CONFIG.apiBaseUrl` must be injected into the deployed
+  HTML; there is no frontend-to-API proxy.
 
 The custom `404.html` handles unmatched routes. Its local asset, favicon, script
 and navigation references use root-relative paths, so they still resolve when

@@ -82,6 +82,18 @@ app:
     image-upload:
       max-attempts: ${APP_RATE_LIMIT_IMAGE_UPLOAD_MAX_ATTEMPTS:20}
       window-seconds: ${APP_RATE_LIMIT_IMAGE_UPLOAD_WINDOW_SECONDS:3600}
+    public-search:
+      max-attempts: ${APP_RATE_LIMIT_PUBLIC_SEARCH_MAX_ATTEMPTS:120}
+      window-seconds: ${APP_RATE_LIMIT_PUBLIC_SEARCH_WINDOW_SECONDS:60}
+    property-detail:
+      max-attempts: ${APP_RATE_LIMIT_PROPERTY_DETAIL_MAX_ATTEMPTS:300}
+      window-seconds: ${APP_RATE_LIMIT_PROPERTY_DETAIL_WINDOW_SECONDS:60}
+    authenticated-api:
+      max-attempts: ${APP_RATE_LIMIT_AUTHENTICATED_API_MAX_ATTEMPTS:300}
+      window-seconds: ${APP_RATE_LIMIT_AUTHENTICATED_API_WINDOW_SECONDS:60}
+    admin-mutation:
+      max-attempts: ${APP_RATE_LIMIT_ADMIN_MUTATION_MAX_ATTEMPTS:60}
+      window-seconds: ${APP_RATE_LIMIT_ADMIN_MUTATION_WINDOW_SECONDS:60}
   storage:
     cloudinary:
       # Production adapter is opt-in. Secrets have no usable defaults.

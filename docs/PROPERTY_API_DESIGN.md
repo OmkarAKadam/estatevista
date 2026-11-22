@@ -131,6 +131,14 @@ All endpoints below require a valid session and CSRF token unless marked public.
 | Errors | `400 BAD_REQUEST` (malformed UUID); `404 NOT_FOUND` (missing, non-published, or unauthorized). Do **not** return `403` for hidden properties to unauthenticated callers. |
 | Security notes | Public variant excludes private agent information and internal fields (API §7.2). |
 
+The public `property-details.html` page consumes this endpoint with the exact
+UUID from `?id=<uuid>`, plus the approved image and related endpoints. It renders
+only `PUBLISHED` data with safe DOM insertion; malformed IDs, hidden/missing
+properties, and network failures show curated states. This integration adds no
+endpoint and does not change the visibility rule above. The home-page featured
+rail remains a local showcase because the `featured` endpoint is deferred pending
+an approved `is_featured` contract.
+
 ### 4.3 `GET /api/v1/properties` — public search/list
 
 | Attribute | Value |

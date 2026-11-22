@@ -507,6 +507,13 @@ All commands were executed against the isolated PostgreSQL 18.3 cluster on port
 
 No unavailable check is reported as PASS.
 
+**Stage 4 reconciliation (22 November 2026).** Checks 27 and 28 remain recorded
+as BLOCKED for Stage 1.8; later Stage 3.8 and Stage 4 browser-to-backend evidence
+(`docs/validation/STAGE_3_8_TESTING_AND_CLOSURE_REPORT.md` and
+`docs/validation/STAGE_4_FINAL_COMPLETION_REPORT.md`) is separate later work and
+is not retroactively reported as a Stage 1.8 PASS. Production deployment remains
+an open production-readiness gate.
+
 The curated, trimmed command transcript for these checks is retained at
 [`docs/validation/stage-1.8-evidence.txt`](validation/stage-1.8-evidence.txt).
 Session identifiers in that transcript are redacted.

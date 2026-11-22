@@ -373,6 +373,28 @@ class PropertyCrudIntegrationTest {
     }
 
     @Test
+    void publicDetailHidesEveryNonPublishedStatus() throws Exception {
+        Fixture fixture = seedFixture();
+        PropertyStatus[] hiddenStatuses = {
+                PropertyStatus.DRAFT,
+                PropertyStatus.UNAVAILABLE,
+                PropertyStatus.SOLD,
+                PropertyStatus.RENTED,
+                PropertyStatus.ARCHIVED
+        };
+
+        for (PropertyStatus status : hiddenStatuses) {
+            Property property = persistProperty(fixture, fixture.agent(), residentialCategory(),
+                    fixture.residentialSubtype(), status, unique("City"),
+                    unique("Locality"), new BigDecimal("1000000.00"), null, (short) 1, false, null);
+
+            mockMvc.perform(get("/api/v1/properties/{id}", property.getId()))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
+        }
+    }
+
+    @Test
     void assignedAgentAndAdminCanReadDraftButOtherAgentCannot() throws Exception {
         Fixture fixture = seedFixture();
         Session admin = login(fixture.admin().getEmail());

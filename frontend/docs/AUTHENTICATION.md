@@ -156,13 +156,15 @@ an authorization decision.
 - Every page contains a `[data-auth-nav]` slot.
 - Anonymous visitors see **Log in** and **Create account**.
 - Authenticated visitors see the backend-provided first name and **Log out**.
-- No agent or administrator dashboard links are shown, because those areas are
-  not implemented.
+- No agent or administrator dashboard links are shown in the shared navigation.
+  Stage 4 property-management pages exist and load the auth bootstrap, but the
+  shared nav was not extended in this document's Stage 3.7 scope.
 - Logout failures are reported honestly and leave local state intact unless the
   backend already reports the session as unauthenticated.
-- `requireAuthentication()` is a frontend UX guard for future protected pages.
+- `requireAuthentication()` is a frontend UX guard for protected pages.
   It redirects to the login page with a validated same-origin `next` parameter.
-  No Stage 3.7 page requires authentication.
+  No Stage 3.7 page requires authentication; Stage 4 management pages rely on
+  the backend session and role checks.
 
 ### Safe redirects
 
@@ -305,6 +307,6 @@ Production must use exact HTTPS origins in `APP_CORS_ALLOWED_ORIGINS` and
 
 ## 9. Deferred work
 
-Property management, favorites, inquiries, chat, notifications, dashboards, and
-all Stage 3.8+ work remain out of scope. Only the authentication experience
-described here is implemented.
+This document records the Stage 3.7 authentication experience only. Property
+management and its dashboards were implemented in Stage 4 and are outside this
+contract; favorites, inquiries, chat, and notifications remain deferred work.

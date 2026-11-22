@@ -38,6 +38,18 @@ app:
     image-upload:
       max-attempts: 1000
       window-seconds: 3600
+    public-search:
+      max-attempts: 1000
+      window-seconds: 60
+    property-detail:
+      max-attempts: 1000
+      window-seconds: 60
+    authenticated-api:
+      max-attempts: 1000
+      window-seconds: 60
+    admin-mutation:
+      max-attempts: 1000
+      window-seconds: 60
   storage:
     cloudinary:
       # Automated tests always use the injected fake adapter.

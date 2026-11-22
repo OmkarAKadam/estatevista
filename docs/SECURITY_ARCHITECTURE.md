@@ -1396,7 +1396,7 @@ Administrative safeguards:
 | Authenticated but not the owner/assignee | `403` or `404` | Generic "not available" | The approved API defines `403` for insufficient permission and `404` for not accessible; prefer `403` for consistency with UI §8.9/§9.12, and use `404` for genuinely absent records. Avoid a response that confirms the existence of another user's record. |
 | Resource genuinely absent | `404` | Standard error envelope | Do not leak whether it existed |
 | Duplicate/conflict | `409` | Conflict code | Favorites and conversations rely on uniqueness |
-| Invalid business state | `422` | Validation/business code | For example, invalid status transition |
+| Invalid business state | `409` or `422` | Validation/business code | Property lifecycle: illegal or same-status transitions return `409`; `422` is reserved for unmet publication prerequisites (PROPERTY_API_DESIGN §4.8, D-06). The two codes are not interchangeable. |
 | Rate limited | `429` | `Retry-After` | Generic, no account-status disclosure |
 | Payload too large / unsupported media | `413` / `415` | File-specific, safe | Upload only |
 | Server/configuration failure | `500`/`503` | Generic; correlation ID | No stack trace or SQL |
@@ -1708,7 +1708,7 @@ Do not expose `Server`, framework version, or internal build details in headers 
 | Duplicate conversation | Unique constraint; return the existing conversation with `200` (API §25.1.A) |
 | Duplicate message | No approved idempotency key yet (D-23); client retries may duplicate; document the risk and add an idempotency key only after approval |
 | Concurrent assignment | Use optimistic locking/versioning (approved) or a transaction with a fresh read; return `409` on conflict |
-| Concurrent status change | Re-read state inside the transaction; return `409`/`422` on an invalid transition |
+| Concurrent status change | Re-read state inside the transaction; return `409` for an illegal or same-status transition and `422` only for unmet publication prerequisites (D-06) |
 
 ### 11.16 API inventory and deny-by-default
 

@@ -20,7 +20,67 @@
   var cleanText = CARD.cleanText;
   var formatPrice = CARD.formatPrice;
 
+  var API_READY_TIMEOUT_MS = 5000;
+
   /* ---------------------------------------------------------------- helpers */
+
+  function waitForPublicApi() {
+    return new Promise(function (resolve, reject) {
+      if (window.EVPublicPropertyApi) {
+        resolve(window.EVPublicPropertyApi);
+        return;
+      }
+
+      var settled = false;
+      var timer = window.setTimeout(function () {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        reject(new Error("Property API unavailable"));
+      }, API_READY_TIMEOUT_MS);
+
+      window.addEventListener(
+        "ev-public-property-api-ready",
+        function onReady() {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          window.clearTimeout(timer);
+          resolve(window.EVPublicPropertyApi);
+        },
+        { once: true }
+      );
+    });
+  }
+
+  function toCardModel(summary) {
+    return CARD.fromApiSummary(summary);
+  }
+
+  function showLoadError() {
+    var grid = document.getElementById("propertyGrid");
+    var emptyState = document.getElementById("emptyResults");
+    var count = document.getElementById("resultsCount");
+    var message = emptyState ? emptyState.querySelector("p.text-muted") : null;
+
+    if (grid) {
+      grid.hidden = true;
+      grid.innerHTML = "";
+    }
+    if (message) {
+      message.textContent =
+        "Property listings could not be loaded. Please try again after the property service is available.";
+    }
+    if (emptyState) {
+      emptyState.hidden = false;
+    }
+    if (count) {
+      count.textContent = "Property listings unavailable";
+    }
+  }
+
 
   function el(tag, className, content) {
     var node = document.createElement(tag);
@@ -310,15 +370,30 @@
       return;
     }
 
-    var collection = Array.isArray(window.EV_PROPERTIES)
-      ? window.EV_PROPERTIES.filter(Boolean)
-      : [];
     var criteria = readCriteria();
-
     populateForm(criteria);
-    renderResults(applyCriteria(collection, criteria));
     renderSummary(criteria);
     wireForm();
+
+    var count = document.getElementById("resultsCount");
+
+    if (count) {
+      count.textContent = "Loading published properties\u2026";
+    }
+
+    waitForPublicApi()
+      .then(function (api) {
+        return api.listPublishedProperties({ page: 0, size: 100 });
+      })
+      .then(function (summaries) {
+        var collection = (Array.isArray(summaries) ? summaries : [])
+          .map(toCardModel)
+          .filter(Boolean);
+        renderResults(applyCriteria(collection, criteria));
+      })
+      .catch(function () {
+        showLoadError();
+      });
   }
 
   if (document.readyState === "loading") {

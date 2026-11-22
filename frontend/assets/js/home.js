@@ -139,8 +139,10 @@
 
   function buildCard(property) {
     var title = cleanText(property.title) || "Untitled property";
-    var id = cleanText(property.id);
-    var href = "property-details.html" + (id ? "?id=" + encodeURIComponent(id) : "");
+    // Featured cards are still local showcase data because the approved
+    // featured endpoint is deferred. Link to live listings instead of sending
+    // a demonstration slug to the UUID-based detail page.
+    var href = "properties.html";
 
     var column = el("div", "col-md-6 col-lg-4");
     var card = el("article", "card-estate");
