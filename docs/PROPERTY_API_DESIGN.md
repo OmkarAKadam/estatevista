@@ -31,7 +31,7 @@ Aligned with:
 | Validation | Bean Validation on DTOs + `UnknownFieldGuard` for mass assignment + DB CHECK/FK constraints as final layer. Field errors use `error.details[{field,message}]`, never echoing values. |
 | Visibility | Public reads return only `status = 'PUBLISHED'`; filter in the query **before** pagination, counting, featured/recent/related selection, and image resolution (C-10/D-08). Non-visible detail or image collection to an unauthenticated caller → `404`. |
 | Slugs | Server-generated from the title on create, unique, maximum 220 characters, collision-suffixed deterministically, and protected by the existing nullable unique DB column. Clients never supply `slug`; generation retries are bounded and exhaustion returns `409 CONFLICT` (G-13 / D-10). |
-| Rate limits | Approved baselines from SECURITY §11.9, not new thresholds: public search 120/minute/IP; property detail 300/minute/IP; authenticated API 300/minute/user; admin mutations 60/minute/admin; image upload 20/hour/user and ≤10 images/property. Exceeded limits → `429 TOO_MANY_REQUESTS`. F-8 (`Retry-After`) remains open. |
+| Rate limits | Approved baselines from SECURITY §11.9, not new thresholds: public search 120/minute/IP; property detail 300/minute/IP; authenticated API 300/minute/user; admin mutations 60/minute/admin; image upload 20/hour/user and ≤10 images/property. Exceeded limits → `429 TOO_MANY_REQUESTS` with `Retry-After`. |
 
 ---
 
@@ -149,7 +149,7 @@ an approved `is_featured` contract.
 | Ownership restriction | Query filtered to `status = 'PUBLISHED'` at repository level before pagination. |
 | Request DTO | Query params from API §7.1: `keyword`, `categoryId`, `subtypeId`, `listingType`, `minPrice`, `maxPrice`, `city`, `locality`, `minBedrooms`, `maxBedrooms`, `amenityIds`, `sort` (`newest|oldest|price_asc|price_desc`), `page`, `size`. |
 | Response DTO | `200 OK` → paged `ApiResponse<PropertySummaryResponse>` with `meta`. |
-| Validation | Unknown params rejected or ignored consistently; `minPrice ≤ maxPrice`; `minBedrooms ≤ maxBedrooms`; `size ≤ 100`; non-negative `page`. |
+| Validation | Unknown params rejected or ignored consistently; `keyword` ≤100 chars; `amenityIds` ≤20 IDs; `minPrice ≤ maxPrice`; `minBedrooms ≤ maxBedrooms`; `size` 1–100; non-negative `page`; blank `sort` defaults to `newest`. |
 | Success codes | `200` |
 | Errors | `400 VALIDATION_ERROR`; `429`; `500`. |
 | Security notes | Totals, featured/recent/related lists must apply the same filter; no hidden-record leakage through counts. |
