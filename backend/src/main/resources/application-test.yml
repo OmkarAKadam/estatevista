@@ -12,12 +12,12 @@ spring:
   datasource:
     url: ${TEST_DB_URL:jdbc:postgresql://localhost:5432/estatevista_test}
     username: ${TEST_DB_USERNAME:estatevista}
-    password: ${TEST_DB_PASSWORD:}
+    password: ${TEST_DB_PASSWORD:kai_vista}
     hikari:
       # The disposable cluster allows 50 connections and the suite caches
-      # several Spring contexts. Keep each pool small so one extra context
-      # cannot exhaust the cluster.
-      maximum-pool-size: 2
+      # several Spring contexts. Five connections per context leave headroom
+      # while allowing the concurrent-cleanup-worker tests to run safely.
+      maximum-pool-size: 5
       minimum-idle: 0
   jpa:
     show-sql: false
@@ -50,6 +50,15 @@ app:
     admin-mutation:
       max-attempts: 1000
       window-seconds: 60
+  image-cleanup:
+    # Tests drive the worker deterministically; no background poller runs.
+    enabled: false
+    poll-ms: 3600000
+    batch-size: 20
+    max-attempts: 3
+    backoff-ms: 0
+    max-backoff-ms: 60000
+    lease-seconds: 60
   storage:
     cloudinary:
       # Automated tests always use the injected fake adapter.

@@ -32,10 +32,13 @@ import org.springframework.web.context.request.ServletRequestAttributes;
  * cookies, authorization headers, bearer credentials, and private content are
  * never accepted by this API and therefore cannot be persisted.</p>
  *
- * <p>Each write uses a new transaction so a failed login, a rolled-back
+ * <p>Most writes use a new transaction so a failed login, a rolled-back
  * rate-limit check, or a caller's read-only transaction cannot suppress the
- * audit record. Audit-write failures are logged with the action and correlation
- * ID but never change the primary request outcome.</p>
+ * audit record; those failures are logged with the action and correlation ID
+ * but do not change the primary request outcome. The image-deletion audit is
+ * the deliberate exception: it participates in the caller's transaction so the
+ * audit row, metadata removal, and durable cleanup task commit or roll back
+ * together.</p>
  */
 @Service
 public class AuditEventService {
@@ -57,6 +60,7 @@ public class AuditEventService {
     public static final String ACTION_IMAGE_METADATA = "PROPERTY_IMAGE_METADATA";
     public static final String ACTION_IMAGE_PRIMARY = "PROPERTY_IMAGE_PRIMARY";
     public static final String ACTION_IMAGE_DELETE = "PROPERTY_IMAGE_DELETE";
+    public static final String ACTION_IMAGE_CLEANUP = "PROPERTY_IMAGE_CLEANUP";
     public static final String ACTION_IMAGE_FAILURE = "PROPERTY_IMAGE_FAILURE";
 
     private static final Logger log = LoggerFactory.getLogger(AuditEventService.class);
@@ -178,6 +182,27 @@ public class AuditEventService {
                 null);
     }
 
+    /**
+     * Records image deletion inside the caller's transaction. The deletion ADR
+     * requires the audit row, metadata removal, and outbox insert to commit or
+     * roll back together, so this method deliberately does not use the
+     * independent {@link #transactionTemplate} audit sink.
+     */
+    public void recordImageDeleteInTransaction(UUID propertyId, UUID imageId, UUID actorId) {
+        writeInCurrentTransaction(ACTION_IMAGE_DELETE, "PROPERTY_IMAGE", imageId, actorId,
+                "{\"outcome\":\"SUCCESS\",\"propertyId\":" + jsonUuid(propertyId)
+                        + ",\"replacement\":\"NONE\"}");
+    }
+
+    /** Records the eventual provider-cleanup outcome for a committed deletion. */
+    public void recordImageCleanup(
+            UUID propertyId, UUID imageId, UUID actorId, String outcome) {
+        write(ACTION_IMAGE_CLEANUP, "PROPERTY_IMAGE", imageId, actorId,
+                "{\"outcome\":" + jsonToken(outcome)
+                        + ",\"propertyId\":" + jsonUuid(propertyId) + "}",
+                null);
+    }
+
     /** Records a safe image-operation failure reason without provider details. */
     public void recordImageFailure(
             UUID propertyId, UUID imageId, UUID actorId, String action, String reason) {
@@ -260,23 +285,10 @@ public class AuditEventService {
             String afterData,
             HttpServletRequest request) {
         try {
-            transactionTemplate.executeWithoutResult(status -> {
-                HttpServletRequest effectiveRequest =
-                        request == null ? currentRequest() : request;
-                AuditLog entry = new AuditLog();
-                entry.setAction(action);
-                entry.setEntityType(entityType);
-                entry.setEntityId(entityId);
-                entry.setBeforeData(beforeData);
-                entry.setAfterData(afterData);
-                entry.setRequestId(requestId(effectiveRequest));
-                entry.setIpAddress(clientAddress(effectiveRequest));
-                if (actorId != null) {
-                    User actor = userRepository.findById(actorId).orElse(null);
-                    entry.setActor(actor);
-                }
-                auditLogRepository.save(entry);
-            });
+            transactionTemplate.executeWithoutResult(status ->
+                    auditLogRepository.save(buildEntry(
+                            action, entityType, entityId, actorId,
+                            beforeData, afterData, request)));
         } catch (RuntimeException exception) {
             // Do not turn a valid operation or a genuine security rejection into
             // a different response merely because the audit sink failed. The
@@ -284,6 +296,43 @@ public class AuditEventService {
             log.warn("Audit write failed action={} requestId={} error={}",
                     action, requestIdForLog(request), exception.getClass().getSimpleName());
         }
+    }
+
+    private void writeInCurrentTransaction(
+            String action,
+            String entityType,
+            UUID entityId,
+            UUID actorId,
+            String afterData) {
+        // saveAndFlush makes an audit failure roll back the caller's metadata and
+        // outbox transaction instead of leaving a silent divergence.
+        auditLogRepository.saveAndFlush(buildEntry(
+                action, entityType, entityId, actorId, null, afterData, null));
+    }
+
+    private AuditLog buildEntry(
+            String action,
+            String entityType,
+            UUID entityId,
+            UUID actorId,
+            String beforeData,
+            String afterData,
+            HttpServletRequest request) {
+        HttpServletRequest effectiveRequest =
+                request == null ? currentRequest() : request;
+        AuditLog entry = new AuditLog();
+        entry.setAction(action);
+        entry.setEntityType(entityType);
+        entry.setEntityId(entityId);
+        entry.setBeforeData(beforeData);
+        entry.setAfterData(afterData);
+        entry.setRequestId(requestId(effectiveRequest));
+        entry.setIpAddress(clientAddress(effectiveRequest));
+        if (actorId != null) {
+            User actor = userRepository.findById(actorId).orElse(null);
+            entry.setActor(actor);
+        }
+        return entry;
     }
 
     private static String jsonUuid(UUID value) {

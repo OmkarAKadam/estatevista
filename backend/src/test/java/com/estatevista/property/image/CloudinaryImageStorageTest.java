@@ -183,13 +183,43 @@ class CloudinaryImageStorageTest {
     }
 
     @Test
+    void alreadyMissingDeleteIsIdempotentSuccess() throws Exception {
+        String publicId = expectedPublicId(UUID.randomUUID(), UUID.randomUUID());
+        when(uploader.destroy(eq(publicId), any()))
+                .thenReturn(Map.of("result", "not found"))
+                .thenReturn(Map.of("result", "not_found"));
+
+        assertThatThrownBy(() -> storage.delete("CLOUDINARY", publicId))
+                .isInstanceOf(ProviderAssetNotFoundException.class);
+        assertThatThrownBy(() -> storage.delete("CLOUDINARY", publicId))
+                .isInstanceOf(ProviderAssetNotFoundException.class);
+    }
+
+    @Test
     void unacknowledgedDeleteIsTreatedAsFailure() throws Exception {
         String publicId = expectedPublicId(UUID.randomUUID(), UUID.randomUUID());
-        when(uploader.destroy(eq(publicId), any())).thenReturn(Map.of("result", "not found"));
+        when(uploader.destroy(eq(publicId), any())).thenReturn(Map.of("result", "partial"));
 
         assertThatThrownBy(() -> storage.delete("CLOUDINARY", publicId))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Cloudinary delete was not acknowledged");
+    }
+
+    @Test
+    void permanentDeleteErrorsAreClassifiedSeparately() throws Exception {
+        String publicId = expectedPublicId(UUID.randomUUID(), UUID.randomUUID());
+        when(uploader.destroy(eq(publicId), any()))
+                .thenReturn(Map.of("result", "invalid public id"))
+                .thenReturn(Map.of("result", "unauthorized"));
+
+        assertThatThrownBy(() -> storage.delete("CLOUDINARY", publicId))
+                .isInstanceOf(PermanentProviderException.class);
+        assertThatThrownBy(() -> storage.delete("CLOUDINARY", publicId))
+                .isInstanceOf(PermanentProviderException.class);
+        assertThatThrownBy(() -> storage.delete("UNSUPPORTED", publicId))
+                .isInstanceOf(PermanentProviderException.class);
+        assertThatThrownBy(() -> storage.delete("CLOUDINARY", "not-a-managed-id"))
+                .isInstanceOf(PermanentProviderException.class);
     }
 
     private static CloudinaryProperties validProperties() {

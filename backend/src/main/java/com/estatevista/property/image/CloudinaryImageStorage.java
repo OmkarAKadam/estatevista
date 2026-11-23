@@ -104,9 +104,15 @@ public class CloudinaryImageStorage implements ImageStorage {
     @Override
     public void delete(String storageProvider, String storagePublicId) {
         if (!PROVIDER.equals(storageProvider)) {
-            throw new IllegalStateException("Unsupported storage provider");
+            throw new PermanentProviderException("Unsupported storage provider");
         }
-        String publicId = requireManagedPublicId(storagePublicId);
+        String publicId;
+        try {
+            publicId = requireManagedPublicId(storagePublicId);
+        } catch (IllegalStateException invalidIdentifier) {
+            // A malformed or unmanaged identifier can never become valid on retry.
+            throw new PermanentProviderException("Storage identifier is not managed by this adapter");
+        }
 
         Map<String, Object> options = new HashMap<>();
         options.put("resource_type", "image");
@@ -121,7 +127,20 @@ public class CloudinaryImageStorage implements ImageStorage {
             log.warn("Cloudinary delete failed error={}", exception.getClass().getSimpleName());
             throw new IllegalStateException("Cloudinary delete failed");
         }
-        if (!"ok".equals(stringValue(response, "result"))) {
+        String result = stringValue(response, "result");
+        if (result != null && ("not found".equalsIgnoreCase(result)
+                || "not_found".equalsIgnoreCase(result))) {
+            throw new ProviderAssetNotFoundException("Cloudinary asset is already absent");
+        }
+        if ("invalid public id".equalsIgnoreCase(result)
+                || "invalid_public_id".equalsIgnoreCase(result)
+                || "unauthorized".equalsIgnoreCase(result)
+                || "not authorized".equalsIgnoreCase(result)) {
+            throw new PermanentProviderException("Cloudinary delete was rejected");
+        }
+        if (!"ok".equals(result)) {
+            // Unknown provider outcomes remain retryable and are bounded by the
+            // worker attempt limit; no provider diagnostic is exposed to callers.
             throw new IllegalStateException("Cloudinary delete was not acknowledged");
         }
     }

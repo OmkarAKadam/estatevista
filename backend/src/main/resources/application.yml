@@ -31,7 +31,7 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/estatevista}
     username: ${DB_USERNAME:estatevista}
-    password: ${DB_PASSWORD:}
+    password: ${DB_PASSWORD:kai_vista}
     hikari:
       pool-name: EstateVistaPool
       maximum-pool-size: ${DB_POOL_SIZE:10}
@@ -94,6 +94,14 @@ app:
     admin-mutation:
       max-attempts: ${APP_RATE_LIMIT_ADMIN_MUTATION_MAX_ATTEMPTS:60}
       window-seconds: ${APP_RATE_LIMIT_ADMIN_MUTATION_WINDOW_SECONDS:60}
+  image-cleanup:
+    enabled: ${APP_IMAGE_CLEANUP_ENABLED:true}
+    poll-ms: ${APP_IMAGE_CLEANUP_POLL_MS:5000}
+    batch-size: ${APP_IMAGE_CLEANUP_BATCH_SIZE:20}
+    max-attempts: ${APP_IMAGE_CLEANUP_MAX_ATTEMPTS:5}
+    backoff-ms: ${APP_IMAGE_CLEANUP_BACKOFF_MS:1000}
+    max-backoff-ms: ${APP_IMAGE_CLEANUP_MAX_BACKOFF_MS:60000}
+    lease-seconds: ${APP_IMAGE_CLEANUP_LEASE_SECONDS:60}
   storage:
     cloudinary:
       # Production adapter is opt-in. Secrets have no usable defaults.

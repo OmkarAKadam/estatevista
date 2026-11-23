@@ -58,9 +58,9 @@ class ApplicationIntegrationTest {
             assertThat(connection.isValid(2)).isTrue();
         }
 
-        assertThat(flyway.info().all()).hasSize(16);
+        assertThat(flyway.info().all()).hasSize(17);
         assertThat(flyway.info().current()).isNotNull();
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("16");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("17");
         assertThat(flyway.info().current().getState().name()).isEqualTo("SUCCESS");
     }
 

@@ -1,6 +1,7 @@
 package com.estatevista.property;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -15,6 +16,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -25,6 +27,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -42,14 +45,20 @@ import com.estatevista.property.entity.ListingType;
 import com.estatevista.property.entity.Property;
 import com.estatevista.property.entity.PropertyCategory;
 import com.estatevista.property.entity.PropertyImage;
+import com.estatevista.property.entity.PropertyImageDeletionOutbox;
 import com.estatevista.property.entity.PropertyResidentialDetails;
 import com.estatevista.property.entity.PropertyStatus;
 import com.estatevista.property.entity.PropertySubtype;
+import com.estatevista.property.image.ImageCleanupProperties;
+import com.estatevista.property.image.ImageDeletionRequested;
 import com.estatevista.property.image.ImageStorage;
+import com.estatevista.property.image.ProviderAssetNotFoundException;
+import com.estatevista.property.image.PropertyImageCleanupWorker;
 import com.estatevista.property.image.SanitizedImage;
 import com.estatevista.property.image.StoredImage;
 import com.estatevista.property.repository.AmenityRepository;
 import com.estatevista.property.repository.PropertyCategoryRepository;
+import com.estatevista.property.repository.PropertyImageDeletionOutboxRepository;
 import com.estatevista.property.repository.PropertyImageRepository;
 import com.estatevista.property.repository.PropertyRepository;
 import com.estatevista.property.repository.PropertyResidentialDetailsRepository;
@@ -74,12 +83,15 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
@@ -143,6 +155,24 @@ class PropertyImageManagementIntegrationTest {
     private PropertyImageRepository imageRepository;
 
     @Autowired
+    private PropertyImageDeletionOutboxRepository outboxRepository;
+
+    @Autowired
+    private PropertyImageCleanupWorker cleanupWorker;
+
+    @Autowired
+    private ImageCleanupProperties cleanupProperties;
+
+    @Autowired
+    private ObjectProvider<ImageStorage> storageProvider;
+
+    @Autowired
+    private AuditEventService audit;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
+    @Autowired
     private FakeImageStorage fakeStorage;
 
     private final List<UUID> createdUserIds = new ArrayList<>();
@@ -152,6 +182,13 @@ class PropertyImageManagementIntegrationTest {
 
     @BeforeEach
     void resetFakeStorage() {
+        // Defensive cleanup so an interrupted failure-injection test cannot leak
+        // a trigger into later tests or a later run.
+        jdbcTemplate.execute("DROP TRIGGER IF EXISTS ev_fail_outbox_completion_trigger "
+                + "ON property_image_deletion_outbox");
+        jdbcTemplate.execute("DROP FUNCTION IF EXISTS ev_fail_outbox_completion()");
+        jdbcTemplate.execute("DROP TRIGGER IF EXISTS ev_fail_image_delete_audit_trigger ON audit_logs");
+        jdbcTemplate.execute("DROP FUNCTION IF EXISTS ev_fail_image_delete_audit()");
         fakeStorage.reset();
     }
 
@@ -174,6 +211,8 @@ class PropertyImageManagementIntegrationTest {
             jdbcTemplate.update("DELETE FROM audit_logs WHERE actor_id = ?", userId);
         }
         for (UUID propertyId : propertyIds) {
+            jdbcTemplate.update(
+                    "DELETE FROM property_image_deletion_outbox WHERE property_id = ?", propertyId);
             jdbcTemplate.update("DELETE FROM property_images WHERE property_id = ?", propertyId);
             jdbcTemplate.update(
                     "DELETE FROM property_residential_details WHERE property_id = ?", propertyId);
@@ -594,7 +633,14 @@ class PropertyImageManagementIntegrationTest {
         assertThat(imageRepository.findById(primary)).isEmpty();
         assertThat(imageRepository.findByProperty_IdAndIsPrimaryTrue(fixture.draft().getId()))
                 .isEmpty();
+        assertThat(onlyOutboxFor(primary).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_PENDING);
+        assertThat(fakeStorage.deleteCalls()).isZero();
+
+        assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
         assertThat(fakeStorage.deleteCalls()).isEqualTo(1);
+        assertThat(onlyOutboxFor(primary).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_COMPLETED);
         assertThat(countAudit(AuditEventService.ACTION_IMAGE_DELETE, primary)).isEqualTo(1);
     }
 
@@ -745,21 +791,29 @@ class PropertyImageManagementIntegrationTest {
     }
 
     @Test
-    void externalDeleteFailureReturnsServiceUnavailableAndRetainsMetadata() throws Exception {
+    void externalDeleteFailureIsRetriedAfterMetadataCommit() throws Exception {
         Fixture fixture = seedFixture();
         Session admin = login(fixture.admin().getEmail());
         UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        String publicId = imageRepository.findById(imageId).orElseThrow().getStoragePublicId();
         fakeStorage.failDelete = true;
 
         mockMvc.perform(delete("/api/v1/properties/{id}/images/{imageId}",
                         fixture.draft().getId(), imageId)
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken()))
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.error.code").value("SERVICE_UNAVAILABLE"));
+                .andExpect(status().isNoContent());
 
-        assertThat(imageRepository.findById(imageId)).isPresent();
-        assertThat(fakeStorage.objects()).containsKey(
-                imageRepository.findById(imageId).orElseThrow().getStoragePublicId());
+        assertThat(imageRepository.findById(imageId)).isEmpty();
+        assertThat(onlyOutboxFor(imageId).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_PENDING);
+        assertThat(fakeStorage.objects()).containsKey(publicId);
+
+        assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
+        PropertyImageDeletionOutbox task = onlyOutboxFor(imageId);
+        assertThat(task.getStatus()).isEqualTo(PropertyImageDeletionOutbox.STATUS_FAILED);
+        assertThat(task.getLastError()).isEqualTo("IllegalStateException");
+        assertThat(task.getLastError()).doesNotContain("api_secret", "SECRET");
+        assertThat(fakeStorage.objects()).containsKey(publicId);
     }
 
     @Test
@@ -879,6 +933,632 @@ class PropertyImageManagementIntegrationTest {
     }
 
     // ------------------------------------------------------------------
+    // Approved durable deletion-outbox scenarios (real PostgreSQL, fake provider)
+    // ------------------------------------------------------------------
+
+    @Test
+    void deletionScenario01SuccessfulMetadataDeletionThenProviderCleanup() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        String publicId = imageRepository.findById(imageId).orElseThrow().getStoragePublicId();
+
+        MvcResult result = deleteImage(admin, fixture.draft().getId(), imageId)
+                .andExpect(status().isNoContent())
+                .andReturn();
+
+        assertThat(result.getResponse().getContentAsString()).isEmpty();
+        assertThat(imageRepository.findById(imageId)).isEmpty();
+        PropertyImageDeletionOutbox task = onlyOutboxFor(imageId);
+        assertThat(task.getStatus()).isEqualTo(PropertyImageDeletionOutbox.STATUS_PENDING);
+        assertThat(task.getStoragePublicId()).isEqualTo(publicId);
+        assertThat(fakeStorage.deleteCalls()).isZero();
+
+        assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
+        assertThat(fakeStorage.objects()).doesNotContainKey(publicId);
+        assertThat(fakeStorage.deletedPublicIds()).containsExactly(publicId);
+        assertThat(onlyOutboxFor(imageId).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_COMPLETED);
+        assertThat(onlyOutboxFor(imageId).getLastAttemptAt()).isNotNull();
+        assertThat(onlyOutboxFor(imageId).getCompletedAt()).isNotNull();
+        assertThat(countCleanupAudit(imageId, "SUCCESS")).isEqualTo(1);
+    }
+
+    @Test
+    void deletionScenario02DatabaseFailureBeforeCommitReturnsInternalError() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        PropertyImage image = imageRepository.findById(imageId).orElseThrow();
+        seedBlockingOutbox(
+                fixture.draft().getId(), imageId, image, fixture.admin().getId());
+
+        String body = deleteImage(admin, fixture.draft().getId(), imageId)
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.error.code").value("INTERNAL_ERROR"))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(body).doesNotContain("simulated", "api_secret", "SECRET");
+        assertThat(imageRepository.findById(imageId)).isPresent();
+        assertThat(outboxRepository.findAll())
+                .filteredOn(task -> imageId.equals(task.getImageId()))
+                .hasSize(1);
+        assertThat(countAudit(AuditEventService.ACTION_IMAGE_DELETE, imageId)).isZero();
+    }
+
+    @Test
+    void deletionScenario03RollbackLeavesProviderImageIntact() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        PropertyImage image = imageRepository.findById(imageId).orElseThrow();
+        String publicId = image.getStoragePublicId();
+        seedBlockingOutbox(
+                fixture.draft().getId(), imageId, image, fixture.admin().getId());
+
+        deleteImage(admin, fixture.draft().getId(), imageId)
+                .andExpect(status().isInternalServerError());
+
+        assertThat(fakeStorage.objects()).containsKey(publicId);
+        assertThat(fakeStorage.deletedPublicIds()).isEmpty();
+        assertThat(fakeStorage.deleteCalls()).isZero();
+        mockMvc.perform(get("/api/v1/properties/{id}/images", fixture.draft().getId())
+                        .cookie(admin.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1));
+    }
+
+    @Test
+    void deletionAuditFailureRollsBackMetadataAndOutbox() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        String publicId = imageRepository.findById(imageId).orElseThrow().getStoragePublicId();
+
+        jdbcTemplate.execute("""
+                CREATE OR REPLACE FUNCTION ev_fail_image_delete_audit() RETURNS trigger AS $$
+                BEGIN
+                    IF NEW.action = 'PROPERTY_IMAGE_DELETE' THEN
+                        RAISE EXCEPTION 'simulated audit failure';
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql
+                """);
+        jdbcTemplate.execute("""
+                CREATE TRIGGER ev_fail_image_delete_audit_trigger
+                BEFORE INSERT ON audit_logs
+                FOR EACH ROW EXECUTE FUNCTION ev_fail_image_delete_audit()
+                """);
+        try {
+            String body = deleteImage(admin, fixture.draft().getId(), imageId)
+                    .andExpect(status().isInternalServerError())
+                    .andExpect(jsonPath("$.error.code").value("INTERNAL_ERROR"))
+                    .andReturn().getResponse().getContentAsString();
+
+            assertThat(body).doesNotContain("simulated", "audit failure", "SECRET");
+            assertThat(imageRepository.findById(imageId)).isPresent();
+            assertThat(fakeStorage.objects()).containsKey(publicId);
+            assertThat(fakeStorage.deleteCalls()).isZero();
+            assertThat(outboxRepository.findAll())
+                    .filteredOn(task -> imageId.equals(task.getImageId()))
+                    .isEmpty();
+            assertThat(countAudit(AuditEventService.ACTION_IMAGE_DELETE, imageId)).isZero();
+        } finally {
+            jdbcTemplate.execute(
+                    "DROP TRIGGER IF EXISTS ev_fail_image_delete_audit_trigger ON audit_logs");
+            jdbcTemplate.execute("DROP FUNCTION IF EXISTS ev_fail_image_delete_audit()");
+        }
+    }
+
+    @Test
+    void deletionScenario04ProviderFailureSchedulesRetryWithoutMetadataRollback() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        String publicId = imageRepository.findById(imageId).orElseThrow().getStoragePublicId();
+        fakeStorage.failDelete = true;
+
+        deleteImage(admin, fixture.draft().getId(), imageId)
+                .andExpect(status().isNoContent());
+
+        assertThat(imageRepository.findById(imageId)).isEmpty();
+        assertThat(onlyOutboxFor(imageId).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_PENDING);
+        assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
+
+        PropertyImageDeletionOutbox task = onlyOutboxFor(imageId);
+        assertThat(task.getStatus()).isEqualTo(PropertyImageDeletionOutbox.STATUS_FAILED);
+        assertThat(task.getAttempts()).isEqualTo(1);
+        assertThat(task.getLastError()).isEqualTo("IllegalStateException");
+        assertThat(task.getLastError()).doesNotContain("api_secret", "SECRET");
+        assertThat(task.getLastAttemptAt()).isNotNull();
+        assertThat(task.getCompletedAt()).isNull();
+        assertThat(fakeStorage.objects()).containsKey(publicId);
+        assertThat(countCleanupAudit(imageId, "RETRY_SCHEDULED")).isEqualTo(1);
+    }
+
+    @Test
+    void deletionScenario05ProviderTimeoutIsRecordedAsRetryableFailure() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        fakeStorage.timeoutDelete = true;
+
+        deleteImage(admin, fixture.draft().getId(), imageId)
+                .andExpect(status().isNoContent());
+        assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
+
+        PropertyImageDeletionOutbox task = onlyOutboxFor(imageId);
+        assertThat(task.getStatus()).isEqualTo(PropertyImageDeletionOutbox.STATUS_FAILED);
+        assertThat(task.getLastError()).isEqualTo("SimulatedProviderTimeout");
+        assertThat(task.getLastError()).doesNotContain("timed out", "SECRET");
+    }
+
+    @Test
+    void deletionScenario06RetriedProviderDeletionEventuallyCompletes() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        String publicId = imageRepository.findById(imageId).orElseThrow().getStoragePublicId();
+        fakeStorage.failDeleteCalls = 1;
+
+        deleteImage(admin, fixture.draft().getId(), imageId)
+                .andExpect(status().isNoContent());
+        assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
+        assertThat(onlyOutboxFor(imageId).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_FAILED);
+
+        assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
+        PropertyImageDeletionOutbox task = onlyOutboxFor(imageId);
+        assertThat(task.getStatus()).isEqualTo(PropertyImageDeletionOutbox.STATUS_COMPLETED);
+        assertThat(task.getAttempts()).isEqualTo(2);
+        assertThat(task.getLastError()).isNull();
+        assertThat(fakeStorage.deleteCalls()).isEqualTo(2);
+        assertThat(fakeStorage.objects()).doesNotContainKey(publicId);
+    }
+
+    @Test
+    void deletionScenario07AlreadyMissingProviderAssetIsSuccessfulCleanup() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        String publicId = imageRepository.findById(imageId).orElseThrow().getStoragePublicId();
+        fakeStorage.objects().remove(publicId);
+        fakeStorage.missingAsset = true;
+
+        deleteImage(admin, fixture.draft().getId(), imageId)
+                .andExpect(status().isNoContent());
+        assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
+
+        PropertyImageDeletionOutbox task = onlyOutboxFor(imageId);
+        assertThat(task.getStatus()).isEqualTo(PropertyImageDeletionOutbox.STATUS_COMPLETED);
+        assertThat(countCleanupAudit(imageId, "ALREADY_MISSING")).isEqualTo(1);
+        assertThat(cleanupWorker.processDueTasks()).isZero();
+        assertThat(fakeStorage.deleteCalls()).isEqualTo(1);
+    }
+
+    @Test
+    void deletionScenario08DuplicateRequestsCreateOneTaskAndOneCleanup() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+
+        deleteImage(admin, fixture.draft().getId(), imageId)
+                .andExpect(status().isNoContent());
+        deleteImage(admin, fixture.draft().getId(), imageId)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
+
+        assertThat(outboxRepository.findAll())
+                .filteredOn(task -> imageId.equals(task.getImageId()))
+                .hasSize(1);
+        assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
+        assertThat(cleanupWorker.processDueTasks()).isZero();
+        assertThat(fakeStorage.deleteCalls()).isEqualTo(1);
+    }
+
+    @Test
+    void deletionScenario09ConcurrentDeletesCreateOneTaskAndOneCleanup() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        List<java.util.concurrent.Future<Integer>> futures = new ArrayList<>();
+        for (int index = 0; index < 2; index++) {
+            futures.add(executor.submit(() -> {
+                start.await();
+                return deleteImage(admin, fixture.draft().getId(), imageId)
+                        .andReturn().getResponse().getStatus();
+            }));
+        }
+        start.countDown();
+        executor.shutdown();
+        assertThat(executor.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
+
+        List<Integer> statuses = new ArrayList<>();
+        for (var future : futures) {
+            statuses.add(future.get());
+        }
+        assertThat(statuses).containsExactlyInAnyOrder(204, 404);
+        assertThat(outboxRepository.findAll())
+                .filteredOn(task -> imageId.equals(task.getImageId()))
+                .hasSize(1);
+        assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
+        assertThat(fakeStorage.deleteCalls()).isEqualTo(1);
+    }
+
+    @Test
+    void deletionScenario10PrimaryDeletionLeavesNoPrimaryAndDurableTask() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID primary = uploadImage(
+                admin, fixture.draft().getId(), png(210, 210), "png", true);
+
+        deleteImage(admin, fixture.draft().getId(), primary)
+                .andExpect(status().isNoContent());
+
+        assertThat(imageRepository.findByProperty_IdAndIsPrimaryTrue(fixture.draft().getId()))
+                .isEmpty();
+        assertThat(imageRepository.countByProperty_Id(fixture.draft().getId())).isZero();
+        assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
+        assertThat(onlyOutboxFor(primary).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_COMPLETED);
+    }
+
+    @Test
+    void deletionScenario11NonPrimaryDeletionPreservesExistingPrimary() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID primary = uploadImage(
+                admin, fixture.draft().getId(), png(210, 210), "png", true);
+        UUID secondary = uploadImage(
+                admin, fixture.draft().getId(), png(220, 220), "png");
+
+        deleteImage(admin, fixture.draft().getId(), secondary)
+                .andExpect(status().isNoContent());
+        assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
+
+        assertThat(imageRepository.findById(secondary)).isEmpty();
+        assertThat(imageRepository.findByProperty_IdAndIsPrimaryTrue(fixture.draft().getId()))
+                .extracting(PropertyImage::getId)
+                .containsExactly(primary);
+        assertThat(onlyOutboxFor(secondary).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_COMPLETED);
+    }
+
+    @Test
+    void deletionScenario12PendingCleanupSurvivesFreshWorkerInstance() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        String publicId = imageRepository.findById(imageId).orElseThrow().getStoragePublicId();
+
+        deleteImage(admin, fixture.draft().getId(), imageId)
+                .andExpect(status().isNoContent());
+        assertThat(onlyOutboxFor(imageId).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_PENDING);
+
+        // No in-memory queue is used: a fresh worker with the same repositories
+        // simulates process restart and recovers the committed database task.
+        PropertyImageCleanupWorker restartedWorker = new PropertyImageCleanupWorker(
+                outboxRepository, storageProvider, cleanupProperties, audit, transactionManager,
+                task -> task.run());
+        assertThat(restartedWorker.processDueTasks()).isEqualTo(1);
+
+        assertThat(fakeStorage.objects()).doesNotContainKey(publicId);
+        assertThat(onlyOutboxFor(imageId).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_COMPLETED);
+    }
+
+    @Test
+    void deletionScenario13AuthorizationDenialCreatesNoCleanupTask() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        Session buyer = login(fixture.buyer().getEmail());
+        Session otherAgent = login(fixture.otherAgent().getEmail());
+        Session anonymous = anonymousSession();
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+
+        deleteImage(buyer, fixture.draft().getId(), imageId)
+                .andExpect(status().isForbidden());
+        deleteImage(otherAgent, fixture.draft().getId(), imageId)
+                .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/api/v1/properties/{id}/images/{imageId}",
+                        fixture.draft().getId(), imageId)
+                        .cookie(anonymous.cookie()).header(CSRF_HEADER, anonymous.csrfToken()))
+                .andExpect(status().isUnauthorized());
+
+        assertThat(imageRepository.findById(imageId)).isPresent();
+        assertThat(outboxRepository.count()).isZero();
+        assertThat(fakeStorage.deleteCalls()).isZero();
+    }
+
+    @Test
+    void deletionScenario14ArchivedPropertyDenialCreatesNoCleanupTask() throws Exception {
+        Fixture fixture = seedFixture();
+        Session agent = login(fixture.agent().getEmail());
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = persistImage(fixture.archived(), false);
+
+        deleteImage(agent, fixture.archived().getId(), imageId)
+                .andExpect(status().isForbidden());
+        deleteImage(admin, fixture.archived().getId(), imageId)
+                .andExpect(status().isConflict());
+
+        assertThat(imageRepository.findById(imageId)).isPresent();
+        assertThat(outboxRepository.count()).isZero();
+        assertThat(fakeStorage.deleteCalls()).isZero();
+    }
+
+    @Test
+    void deletionScenario15DeadLetterCanBeRequeuedAndRecovered() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        String publicId = imageRepository.findById(imageId).orElseThrow().getStoragePublicId();
+        fakeStorage.failDelete = true;
+
+        deleteImage(admin, fixture.draft().getId(), imageId)
+                .andExpect(status().isNoContent());
+        for (int attempt = 0; attempt < cleanupProperties.getMaxAttempts(); attempt++) {
+            assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
+        }
+
+        PropertyImageDeletionOutbox deadLettered = onlyOutboxFor(imageId);
+        assertThat(deadLettered.getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_DEAD_LETTER);
+        assertThat(deadLettered.getAttempts()).isEqualTo(cleanupProperties.getMaxAttempts());
+        assertThat(deadLettered.getLastError()).isEqualTo("IllegalStateException");
+        assertThat(countCleanupAudit(imageId, "DEAD_LETTER")).isEqualTo(1);
+        assertThat(fakeStorage.objects()).containsKey(publicId);
+
+        fakeStorage.failDelete = false;
+        Instant now = Instant.now();
+        jdbcTemplate.update("""
+                UPDATE property_image_deletion_outbox
+                SET status = 'PENDING', attempts = 0, next_attempt_at = ?,
+                    locked_until = NULL, last_error = NULL, updated_at = ?
+                WHERE id = ?
+                """, Timestamp.from(now), Timestamp.from(now), deadLettered.getId());
+
+        assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
+        assertThat(onlyOutboxFor(imageId).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_COMPLETED);
+        assertThat(fakeStorage.objects()).doesNotContainKey(publicId);
+    }
+
+    // ------------------------------------------------------------------
+    // Additional required failure-path, concurrency, and migration coverage
+    // ------------------------------------------------------------------
+
+    @Test
+    void outboxUniquenessRejectsDuplicateProviderAsset() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        deleteImage(admin, fixture.draft().getId(), imageId).andExpect(status().isNoContent());
+        PropertyImageDeletionOutbox task = onlyOutboxFor(imageId);
+
+        assertThatThrownBy(() -> jdbcTemplate.update("""
+                INSERT INTO property_image_deletion_outbox
+                    (id, property_id, image_id, storage_provider, storage_public_id,
+                     actor_id, status, attempts, next_attempt_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'PENDING', 0, now(), now(), now())
+                """,
+                UUID.randomUUID(), fixture.draft().getId(), UUID.randomUUID(),
+                task.getStorageProvider(), task.getStoragePublicId(), fixture.admin().getId()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void expiredClaimLeaseIsRecoveredByAnotherWorker() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        String publicId = imageRepository.findById(imageId).orElseThrow().getStoragePublicId();
+        deleteImage(admin, fixture.draft().getId(), imageId).andExpect(status().isNoContent());
+        PropertyImageDeletionOutbox task = onlyOutboxFor(imageId);
+
+        // Simulate a worker that claimed the row and crashed before completion.
+        Instant stale = Instant.now().minusSeconds(120);
+        jdbcTemplate.update("""
+                UPDATE property_image_deletion_outbox
+                SET status = 'PROCESSING', attempts = 1, next_attempt_at = ?,
+                    locked_until = ?, updated_at = ?
+                WHERE id = ?
+                """, Timestamp.from(stale), Timestamp.from(stale), Timestamp.from(stale),
+                task.getId());
+        assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
+
+        assertThat(fakeStorage.objects()).doesNotContainKey(publicId);
+        assertThat(onlyOutboxFor(imageId).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_COMPLETED);
+    }
+
+    @Test
+    void afterCommitDispatchIsNonBlockingAndClaimsEachTaskOnce() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        deleteImage(admin, fixture.draft().getId(), imageId).andExpect(status().isNoContent());
+        PropertyImageDeletionOutbox task = onlyOutboxFor(imageId);
+        assertThat(task.getStatus()).isEqualTo(PropertyImageDeletionOutbox.STATUS_PENDING);
+
+        ImageCleanupProperties enabled = new ImageCleanupProperties();
+        enabled.setEnabled(true);
+        enabled.setPollMs(3_600_000);
+        enabled.setBatchSize(20);
+        enabled.setMaxAttempts(3);
+        enabled.setBackoffMs(0);
+        enabled.setMaxBackoffMs(60_000);
+        enabled.setLeaseSeconds(60);
+        List<Runnable> dispatched = new CopyOnWriteArrayList<>();
+        PropertyImageCleanupWorker dispatchWorker = new PropertyImageCleanupWorker(
+                outboxRepository, storageProvider, enabled, audit, transactionManager,
+                dispatched::add);
+
+        dispatchWorker.on(new ImageDeletionRequested(
+                task.getId(), fixture.draft().getId(), imageId, fixture.admin().getId()));
+        assertThat(dispatched).hasSize(1);
+        assertThat(fakeStorage.deleteCalls()).isZero();
+        assertThat(onlyOutboxFor(imageId).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_PENDING);
+
+        dispatched.forEach(Runnable::run);
+        assertThat(fakeStorage.deleteCalls()).isEqualTo(1);
+        assertThat(onlyOutboxFor(imageId).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_COMPLETED);
+
+        // A second, concurrent dispatch pass cannot claim the finished task.
+        dispatchWorker.on(new ImageDeletionRequested(
+                task.getId(), fixture.draft().getId(), imageId, fixture.admin().getId()));
+        dispatched.forEach(Runnable::run);
+        assertThat(fakeStorage.deleteCalls()).isEqualTo(1);
+    }
+
+    @Test
+    void databaseFailureAfterProviderCleanupLeavesRecoverableTask() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        String publicId = imageRepository.findById(imageId).orElseThrow().getStoragePublicId();
+        deleteImage(admin, fixture.draft().getId(), imageId).andExpect(status().isNoContent());
+
+        jdbcTemplate.execute("""
+                CREATE FUNCTION ev_fail_outbox_completion() RETURNS trigger AS $$
+                BEGIN
+                    RAISE EXCEPTION 'simulated completion failure';
+                END; $$ LANGUAGE plpgsql
+                """);
+        jdbcTemplate.execute("""
+                CREATE TRIGGER ev_fail_outbox_completion_trigger
+                BEFORE UPDATE ON property_image_deletion_outbox
+                FOR EACH ROW WHEN (NEW.status = 'COMPLETED')
+                EXECUTE FUNCTION ev_fail_outbox_completion()
+                """);
+        try {
+            // The worker treats a completion-write failure as a retryable task
+            // failure: the provider object is already gone and no metadata was
+            // restored. The retry remains safe because deletion is idempotent.
+            cleanupWorker.processDueTasks();
+            assertThat(fakeStorage.objects()).doesNotContainKey(publicId);
+            assertThat(onlyOutboxFor(imageId).getStatus())
+                    .isEqualTo(PropertyImageDeletionOutbox.STATUS_FAILED);
+            assertThat(onlyOutboxFor(imageId).getLastError())
+                    .isEqualTo("JpaSystemException");
+        } finally {
+            jdbcTemplate.execute("DROP TRIGGER IF EXISTS ev_fail_outbox_completion_trigger "
+                    + "ON property_image_deletion_outbox");
+            jdbcTemplate.execute("DROP FUNCTION IF EXISTS ev_fail_outbox_completion()");
+        }
+
+        // The provider object is now absent; the retry is idempotent and completes.
+        Instant stale = Instant.now().minusSeconds(120);
+        jdbcTemplate.update("""
+                UPDATE property_image_deletion_outbox
+                SET status = 'PENDING', attempts = 0, locked_until = NULL,
+                    next_attempt_at = ?, updated_at = ?
+                WHERE image_id = ?
+                """, Timestamp.from(stale), Timestamp.from(stale), imageId);
+        assertThat(cleanupWorker.processDueTasks()).isEqualTo(1);
+        PropertyImageDeletionOutbox recovered = onlyOutboxFor(imageId);
+        assertThat(recovered.getStatus()).isEqualTo(PropertyImageDeletionOutbox.STATUS_COMPLETED);
+        assertThat(countCleanupAudit(imageId, "ALREADY_MISSING")).isEqualTo(1);
+    }
+
+    @Test
+    void multipleConcurrentWorkersClaimEachTaskExactlyOnce() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID first = uploadImage(admin, fixture.draft().getId(), png(210, 210), "png");
+        UUID second = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        deleteImage(admin, fixture.draft().getId(), first).andExpect(status().isNoContent());
+        deleteImage(admin, fixture.draft().getId(), second).andExpect(status().isNoContent());
+
+        PropertyImageCleanupWorker secondWorker = new PropertyImageCleanupWorker(
+                outboxRepository, storageProvider, cleanupProperties, audit, transactionManager,
+                task -> task.run());
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        List<java.util.concurrent.Future<Integer>> futures = new ArrayList<>();
+        for (PropertyImageCleanupWorker worker : List.of(cleanupWorker, secondWorker)) {
+            futures.add(executor.submit(() -> {
+                start.await();
+                return worker.processDueTasks();
+            }));
+        }
+        start.countDown();
+        executor.shutdown();
+        assertThat(executor.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
+
+        int claimed = 0;
+        for (var future : futures) {
+            claimed += future.get();
+        }
+        assertThat(claimed).isEqualTo(2);
+        assertThat(fakeStorage.deleteCalls()).isEqualTo(2);
+        assertThat(onlyOutboxFor(first).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_COMPLETED);
+        assertThat(onlyOutboxFor(second).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_COMPLETED);
+    }
+
+    @Test
+    void retryBackoffIsBoundedByConfiguredMaximum() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        fakeStorage.failDelete = true;
+        deleteImage(admin, fixture.draft().getId(), imageId).andExpect(status().isNoContent());
+
+        ImageCleanupProperties bounded = new ImageCleanupProperties();
+        bounded.setEnabled(false);
+        bounded.setBackoffMs(1000);
+        bounded.setMaxBackoffMs(2500);
+        bounded.setMaxAttempts(10);
+        PropertyImageCleanupWorker boundedWorker = new PropertyImageCleanupWorker(
+                outboxRepository, storageProvider, bounded, audit, transactionManager,
+                task -> task.run());
+
+        long[] expectedDelay = {1000L, 2000L, 2500L, 2500L};
+        for (long expected : expectedDelay) {
+            jdbcTemplate.update("""
+                    UPDATE property_image_deletion_outbox
+                    SET locked_until = NULL, next_attempt_at = now()
+                    WHERE image_id = ?
+                    """, imageId);
+            Instant before = Instant.now();
+            assertThat(boundedWorker.processDueTasks()).isEqualTo(1);
+            long observed = java.time.Duration.between(
+                    before, onlyOutboxFor(imageId).getNextAttemptAt()).toMillis();
+            assertThat(observed).isBetween(expected - 1500L, expected + 1500L);
+        }
+        assertThat(onlyOutboxFor(imageId).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_FAILED);
+    }
+
+    @Test
+    void outboxRowsAreRetainedAndBlockUnexpectedPropertyDeletion() throws Exception {
+        Fixture fixture = seedFixture();
+        Session admin = login(fixture.admin().getEmail());
+        UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
+        deleteImage(admin, fixture.draft().getId(), imageId).andExpect(status().isNoContent());
+        assertThat(imageRepository.findById(imageId)).isEmpty();
+        assertThat(onlyOutboxFor(imageId).getStatus())
+                .isEqualTo(PropertyImageDeletionOutbox.STATUS_PENDING);
+
+        jdbcTemplate.update("DELETE FROM property_residential_details WHERE property_id = ?",
+                fixture.draft().getId());
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "DELETE FROM properties WHERE id = ?", fixture.draft().getId()))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("property_image_deletion_outbox");
+    }
+
+    // ------------------------------------------------------------------
     // Fixtures and helpers
     // ------------------------------------------------------------------
 
@@ -892,16 +1572,24 @@ class PropertyImageManagementIntegrationTest {
 
     static final class FakeImageStorage implements ImageStorage {
         private final Map<String, StoredObject> objects = new java.util.concurrent.ConcurrentHashMap<>();
+        private final List<String> deletedPublicIds = new CopyOnWriteArrayList<>();
         private volatile boolean failUpload;
         private volatile boolean failDelete;
+        private volatile boolean timeoutDelete;
+        private volatile boolean missingAsset;
+        private volatile int failDeleteCalls;
         private volatile int uploadCalls;
         private volatile int deleteCalls;
         private volatile StoredObject lastObject;
 
         void reset() {
             objects.clear();
+            deletedPublicIds.clear();
             failUpload = false;
             failDelete = false;
+            timeoutDelete = false;
+            missingAsset = false;
+            failDeleteCalls = 0;
             uploadCalls = 0;
             deleteCalls = 0;
             lastObject = null;
@@ -932,8 +1620,21 @@ class PropertyImageManagementIntegrationTest {
         @Override
         public void delete(String storageProvider, String storagePublicId) {
             deleteCalls++;
-            if (failDelete) {
+            deletedPublicIds.add(storagePublicId);
+            if (missingAsset) {
+                throw new ProviderAssetNotFoundException("simulated missing provider asset");
+            }
+            if (timeoutDelete) {
+                throw new SimulatedProviderTimeout("simulated provider timeout");
+            }
+            if (failDelete || failDeleteCalls > 0) {
+                if (failDeleteCalls > 0) {
+                    failDeleteCalls--;
+                }
                 throw new IllegalStateException("simulated delete failure with api_secret=SECRET");
+            }
+            if (!objects.containsKey(storagePublicId)) {
+                throw new ProviderAssetNotFoundException("simulated missing provider asset");
             }
             objects.remove(storagePublicId);
         }
@@ -952,6 +1653,16 @@ class PropertyImageManagementIntegrationTest {
 
         StoredObject lastObject() {
             return lastObject;
+        }
+
+        List<String> deletedPublicIds() {
+            return deletedPublicIds;
+        }
+    }
+
+    private static final class SimulatedProviderTimeout extends RuntimeException {
+        SimulatedProviderTimeout(String message) {
+            super(message);
         }
     }
 
@@ -1346,6 +2057,58 @@ class PropertyImageManagementIntegrationTest {
 
     private JsonNode readData(MvcResult result) throws Exception {
         return objectMapper.readTree(result.getResponse().getContentAsString()).at("/data");
+    }
+
+    private ResultActions deleteImage(Session session, UUID propertyId, UUID imageId)
+            throws Exception {
+        return mockMvc.perform(delete("/api/v1/properties/{id}/images/{imageId}",
+                        propertyId, imageId)
+                        .cookie(session.cookie()).header(CSRF_HEADER, session.csrfToken()));
+    }
+
+    private PropertyImageDeletionOutbox onlyOutboxFor(UUID imageId) {
+        List<PropertyImageDeletionOutbox> tasks = outboxRepository.findAll().stream()
+                .filter(task -> imageId.equals(task.getImageId()))
+                .toList();
+        assertThat(tasks).hasSize(1);
+        return tasks.get(0);
+    }
+
+    private void seedBlockingOutbox(
+            UUID propertyId, UUID imageId, PropertyImage image, UUID actorId) {
+        Instant now = Instant.now();
+        jdbcTemplate.update("""
+                INSERT INTO property_image_deletion_outbox (
+                    id, property_id, image_id, storage_provider, storage_public_id,
+                    actor_id, status, attempts, next_attempt_at, locked_until,
+                    last_error, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                UUID.randomUUID(),
+                propertyId,
+                imageId,
+                image.getStorageProvider(),
+                image.getStoragePublicId(),
+                actorId,
+                PropertyImageDeletionOutbox.STATUS_PENDING,
+                0,
+                Timestamp.from(now),
+                null,
+                null,
+                Timestamp.from(now),
+                Timestamp.from(now));
+    }
+
+    private long countCleanupAudit(UUID imageId, String outcome) {
+        Long count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM audit_logs
+                WHERE action = ? AND entity_id = ? AND after_data ->> 'outcome' = ?
+                """,
+                Long.class,
+                AuditEventService.ACTION_IMAGE_CLEANUP,
+                imageId,
+                outcome);
+        return count == null ? 0L : count;
     }
 
     private long countAudit(String action, UUID entityId) {

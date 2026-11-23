@@ -33,6 +33,7 @@ import com.estatevista.property.entity.PropertyAmenityId;
 import com.estatevista.property.entity.PropertyCategory;
 import com.estatevista.property.entity.PropertyCommercialDetails;
 import com.estatevista.property.entity.PropertyImage;
+import com.estatevista.property.entity.PropertyImageDeletionOutbox;
 import com.estatevista.property.entity.PropertyResidentialDetails;
 import com.estatevista.property.entity.PropertyStatus;
 import com.estatevista.property.entity.PropertySubtype;
@@ -40,6 +41,7 @@ import com.estatevista.property.repository.AmenityRepository;
 import com.estatevista.property.repository.PropertyAmenityRepository;
 import com.estatevista.property.repository.PropertyCategoryRepository;
 import com.estatevista.property.repository.PropertyCommercialDetailsRepository;
+import com.estatevista.property.repository.PropertyImageDeletionOutboxRepository;
 import com.estatevista.property.repository.PropertyImageRepository;
 import com.estatevista.property.repository.PropertyRepository;
 import com.estatevista.property.repository.PropertyResidentialDetailsRepository;
@@ -160,6 +162,7 @@ class BusinessSchemaIntegrationTest {
                 PropertyResidentialDetails.class,
                 com.estatevista.property.entity.PropertyCommercialDetails.class,
                 PropertyImage.class,
+                PropertyImageDeletionOutbox.class,
                 Amenity.class,
                 PropertyAmenity.class,
                 Favorite.class,
@@ -183,6 +186,7 @@ class BusinessSchemaIntegrationTest {
                 PropertyResidentialDetailsRepository.class,
                 com.estatevista.property.repository.PropertyCommercialDetailsRepository.class,
                 PropertyImageRepository.class,
+                PropertyImageDeletionOutboxRepository.class,
                 AmenityRepository.class,
                 PropertyAmenityRepository.class,
                 FavoriteRepository.class,
@@ -208,8 +212,8 @@ class BusinessSchemaIntegrationTest {
 
         assertThat(versions).containsExactly(
                 "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15",
-                "16");
-        assertThat(successes).hasSize(16).containsOnly(true);
+                "16", "17");
+        assertThat(successes).hasSize(17).containsOnly(true);
     }
 
     @Test

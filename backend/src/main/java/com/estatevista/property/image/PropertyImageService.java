@@ -1,6 +1,7 @@
 package com.estatevista.property.image;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -18,7 +19,9 @@ import com.estatevista.property.dto.ImageMetadataUpdateRequest;
 import com.estatevista.property.dto.PropertyImageResponse;
 import com.estatevista.property.entity.Property;
 import com.estatevista.property.entity.PropertyImage;
+import com.estatevista.property.entity.PropertyImageDeletionOutbox;
 import com.estatevista.property.entity.PropertyStatus;
+import com.estatevista.property.repository.PropertyImageDeletionOutboxRepository;
 import com.estatevista.property.repository.PropertyImageRepository;
 import com.estatevista.property.repository.PropertyRepository;
 import com.estatevista.security.RateLimitService;
@@ -26,6 +29,7 @@ import com.estatevista.security.RateLimitService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -39,6 +43,11 @@ import org.springframework.web.multipart.MultipartFile;
  * configured until the separate D-08/G-11 approval is granted. Mutations fail
  * closed with a safe 503 when no adapter is available; integration tests supply
  * a deterministic fake adapter.</p>
+ *
+ * <p>Image deletion follows the approved durable-outbox ADR: active metadata and
+ * a cleanup task commit atomically, then provider deletion occurs after commit.
+ * Provider cleanup is eventual, retried, and idempotent; the API never deletes
+ * provider bytes before the metadata transaction commits.</p>
  */
 @Service
 @Transactional(readOnly = true)
@@ -49,30 +58,36 @@ public class PropertyImageService {
 
     private final PropertyRepository propertyRepository;
     private final PropertyImageRepository imageRepository;
+    private final PropertyImageDeletionOutboxRepository outboxRepository;
     private final AccountAuthorizationService accounts;
     private final ResourceAuthorizationService resources;
     private final AuditEventService audit;
     private final RateLimitService rateLimitService;
     private final PropertyImageProcessor processor;
     private final ObjectProvider<ImageStorage> storageProvider;
+    private final ApplicationEventPublisher events;
 
     public PropertyImageService(
             PropertyRepository propertyRepository,
             PropertyImageRepository imageRepository,
+            PropertyImageDeletionOutboxRepository outboxRepository,
             AccountAuthorizationService accounts,
             ResourceAuthorizationService resources,
             AuditEventService audit,
             RateLimitService rateLimitService,
             PropertyImageProcessor processor,
-            ObjectProvider<ImageStorage> storageProvider) {
+            ObjectProvider<ImageStorage> storageProvider,
+            ApplicationEventPublisher events) {
         this.propertyRepository = propertyRepository;
         this.imageRepository = imageRepository;
+        this.outboxRepository = outboxRepository;
         this.accounts = accounts;
         this.resources = resources;
         this.audit = audit;
         this.rateLimitService = rateLimitService;
         this.processor = processor;
         this.storageProvider = storageProvider;
+        this.events = events;
     }
 
     @Transactional
@@ -285,23 +300,28 @@ public class PropertyImageService {
         rejectArchived(actor, property);
         PropertyImage image = requireImage(imageId, propertyId);
 
-        ImageStorage storage = storageProvider.getIfAvailable();
-        if (storage == null) {
+        if (storageProvider.getIfAvailable() == null) {
             audit.recordImageFailure(
                     propertyId, imageId, actor.id(), "DELETE", "PROVIDER_NOT_CONFIGURED");
             throw serviceUnavailable();
         }
-        try {
-            storage.delete(image.getStorageProvider(), image.getStoragePublicId());
-        } catch (RuntimeException exception) {
-            audit.recordImageFailure(
-                    propertyId, imageId, actor.id(), "DELETE", "PROVIDER_FAILURE");
-            throw serviceUnavailable();
-        }
+
+        Instant now = Instant.now();
+        UUID taskId = UUID.randomUUID();
+        PropertyImageDeletionOutbox cleanupTask = new PropertyImageDeletionOutbox(
+                taskId,
+                propertyId,
+                imageId,
+                image.getStorageProvider(),
+                image.getStoragePublicId(),
+                actor.id(),
+                now);
 
         try {
             imageRepository.delete(image);
             imageRepository.flush();
+            outboxRepository.saveAndFlush(cleanupTask);
+            audit.recordImageDeleteInTransaction(propertyId, imageId, actor.id());
         } catch (RuntimeException exception) {
             audit.recordImageFailure(
                     propertyId, imageId, actor.id(), "DELETE", "DATABASE_FAILURE");
@@ -309,7 +329,9 @@ public class PropertyImageService {
                     ErrorCode.INTERNAL_ERROR,
                     "The image could not be removed from metadata.");
         }
-        audit.recordImageDelete(propertyId, imageId, actor.id());
+
+        events.publishEvent(new ImageDeletionRequested(
+                taskId, propertyId, imageId, actor.id()));
     }
 
     private void applyRequestedOrder(UUID propertyId, UUID imageId, int requestedOrder) {

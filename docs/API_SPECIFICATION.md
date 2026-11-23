@@ -1007,7 +1007,7 @@ The following details require final decisions during their corresponding impleme
 | Property Lifecycle | Final status transitions |
 | Property Updates | Which property fields agents may edit |
 | Property Assignment | Every property is created with one primary agent; there is no unassigned state |
-| Property Images | Upload limits and supported formats |
+| Property Images | Upload limits and supported formats. Image deletion uses the approved durable outbox: metadata and cleanup task commit together; provider cleanup is eventual and retried by a backend worker (project-owner-approved ADR: `STAGE_4_IMAGE_DELETION_OUTBOX_ADR.md`; register index in `STAGE_4_DECISION_REGISTER.md` §10). |
 | Search | Full-text search and geographic search implementation |
 | Inquiries | Final workflow and status transitions |
 | Conversations | Handling conversations when an agent is deactivated |

@@ -4,7 +4,7 @@
 
 This register is the single consistency record for the final Stage 4.1 correction pass. It records the owner-authorized decisions D-01…D-11, resolves assessment gaps G-01…G-16 and open questions U-01…U-09, preserves Stage 3 findings F-1…F-8 as **OPEN**, and identifies the implementation dependencies that must be respected in later stages.
 
-**Status: FINALIZED — documentation only.** All decisions needed for a Stage 4.2 design/implementation start are resolved and the Stage 4 documents are consistent with the approved architecture. This does **not** itself authorize Stage 4.2: explicit stage approval is still required. No Java, frontend, SQL, dependency, or configuration change is made by this register.
+**Status: FINALIZED — design decisions, with one later implementation ADR recorded in §10.** All decisions needed for a Stage 4.2 design/implementation start are resolved and the Stage 4 documents are consistent with the approved architecture. This does **not** itself authorize Stage 5: explicit stage approval is still required. The Stage 4.1 baseline in §2 made no source change; the separately approved Stage 4 deletion-outbox implementation is recorded in §10.
 
 Companion documents:
 
@@ -152,6 +152,23 @@ All findings remain **OPEN**. They are reproduced verbatim in `PROPERTY_AUTHORIZ
 - The lifecycle is expressed in one matrix, consistent with the D-06 SECURITY clarification.
 - Existing statuses, constraints, one-primary index, and upload-security requirements are preserved.
 - F-1…F-8 remain open and documented.
-- No Stage 4.2 code, migration, dependency, or configuration was added.
+- No Stage 4.2 code, migration, dependency, or configuration was added during the Stage 4.1 documentation pass; the later Stage 4.5 deletion-outbox implementation is recorded in §10.
 
 **Next step:** independent final closure report in `docs/validation/`, followed only by explicit user authorization for Stage 4.2. The four design documents are ready for the approved documentation commit; reports under `docs/validation/` must not be committed or force-added.
+
+---
+
+## 10. Stage 4 final closure ADR — durable image-deletion outbox
+
+The full formal ADR is `docs/STAGE_4_IMAGE_DELETION_OUTBOX_ADR.md`. This section is the decision-register index entry.
+
+| Field | Decision |
+|---|---|
+| Status | **APPROVED BY PROJECT OWNER** on **22 November 2026**, from `docs/validation/STAGE_4_FINAL_CLOSURE_DECISION.md` §5. No self-approval or delegated-signer assumption is made. The backend, database, operations, and security reviewer rows in `SECURITY_ARCHITECTURE.md` §22.2 remain **Review pending** and are not represented as approved. |
+| Problem | The previous provider-first delete could succeed at the provider and then roll back the database row, leaving active metadata pointing at a missing asset. |
+| Selected design | In one transaction, lock the property, authorize, reject archived, delete the `property_images` row, and insert `property_image_deletion_outbox` with provider/public ID, property/image/actor IDs, attempt state, and status. Publish an after-commit event. A backend worker claims due rows with PostgreSQL `FOR UPDATE SKIP LOCKED`, calls `ImageStorage.delete` outside any metadata transaction, and marks `COMPLETED`, `FAILED`, or `DEAD_LETTER`. |
+| Consistency contract | `204 No Content` means metadata deletion and the durable task committed. Provider cleanup is eventual. No active metadata row can point at an asset the backend has confirmed missing. |
+| Idempotency and recovery | Provider `not found` is success; duplicate cleanup requests and claims are harmless. Bounded exponential backoff is used; exhausted rows are dead-lettered and audited. Operator requeue: set `status = 'PENDING'`, `attempts = 0`, `next_attempt_at = now()`, `locked_until = NULL`, `last_error = NULL`. |
+| Scope controls | Five approved endpoints, role rules, CSRF, archived immutability, and the one-primary invariant are unchanged. No direct browser-to-provider deletion, new frontend framework, queue service, H2 database, or Stage 5 surface is introduced. |
+| Migration and operations | V17 adds the outbox table, unique asset key, status check, and due/lease indexes; V1–V16 are untouched. `app.image-cleanup.*` controls enablement, poll interval, batch size, max attempts, backoff, and lease. Eventual-consistency and retry behavior are documented in `PROPERTY_API_DESIGN.md` §5.4 and `DATABASE_DESIGN.md` §7.2. |
+| Verification | Deterministic real-PostgreSQL tests cover all 15 required deletion scenarios with only the external storage boundary faked; full backend, frontend-static, and live-browser gates are recorded in the ignored final closure decision report. |
