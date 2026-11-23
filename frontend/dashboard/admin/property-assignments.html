@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Assign estate agents to EstateVista property listings.">
+  <title>Property Assignments | EstateVista Admin</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <link rel="stylesheet" href="/assets/css/theme.css">
+  <link rel="stylesheet" href="/assets/css/components.css">
+  <link rel="stylesheet" href="/assets/css/property-management.css">
+</head>
+<body class="mgmt-shell" data-management-page data-management-mode="assignments" data-management-role="ADMIN">
+  <a class="visually-hidden-focusable mgmt-skip" href="#management-content">Skip to management content</a>
+  <div class="mgmt-scrim" data-dash-scrim hidden></div>
+  <aside class="dash-sidebar" id="dash-sidebar" data-dash-sidebar aria-label="Management navigation"></aside>
+
+  <div class="mgmt-main">
+    <header class="dash-topbar">
+      <button class="dash-topbar__menu" type="button" data-dash-menu-toggle aria-controls="dash-sidebar" aria-expanded="false">
+        <span class="dash-topbar__menu-bars" aria-hidden="true"></span>
+        <span class="visually-hidden">Toggle navigation</span>
+      </button>
+      <h1 class="dash-topbar__title" data-dash-title>Property Assignments</h1>
+      <span class="dash-topbar__spacer"></span>
+      <span class="dash-topbar__role" data-dash-role></span>
+      <div class="site-auth" data-auth-nav data-auth-home-href="/index.html" data-auth-login-href="/login.html"></div>
+    </header>
+
+    <main class="mgmt-content" id="management-content" data-management-content tabindex="-1" hidden>
+      <nav class="mgmt-breadcrumb" aria-label="Breadcrumb">
+        <ul>
+          <li><a href="/index.html">Home</a></li>
+          <li><a href="/dashboard/admin/properties.html">Properties</a></li>
+          <li aria-current="page">Assignments</li>
+        </ul>
+      </nav>
+
+      <div class="mgmt-page-head">
+        <div>
+          <h2>Assign agents</h2>
+          <p>Enter an active agent's UUID to assign or reassign a property. The backend validates the identifier and role.</p>
+        </div>
+        <div class="mgmt-page-head__actions">
+          <a class="btn btn-outline-secondary" href="/dashboard/admin/properties.html">Back to properties</a>
+        </div>
+      </div>
+
+      <div class="mgmt-notice" data-assignment-notice hidden>
+        <p data-assignment-notice-text></p>
+      </div>
+
+      <section class="ev-panel" aria-labelledby="assignmentListHeading">
+        <div class="ev-panel__head">
+          <h2 id="assignmentListHeading">Properties</h2>
+          <span class="text-muted small" data-list-summary>Loading…</span>
+        </div>
+
+        <form class="mgmt-toolbar" data-list-filters aria-label="Filter properties for assignment">
+          <div class="mgmt-field mgmt-toolbar__wide">
+            <label for="filterKeyword">Keyword</label>
+            <input class="form-control" id="filterKeyword" name="keyword" type="search" placeholder="Title or location">
+          </div>
+          <div class="mgmt-field">
+            <label for="filterStatus">Status</label>
+            <select class="form-select" id="filterStatus" name="status">
+              <option value="">All statuses</option>
+            </select>
+          </div>
+          <div class="mgmt-field">
+            <label for="filterCity">City</label>
+            <input class="form-control" id="filterCity" name="city" type="text" maxlength="100">
+          </div>
+          <div class="mgmt-field">
+            <label for="filterAgent">Current agent ID</label>
+            <input class="form-control" id="filterAgent" name="primaryAgentId" type="text" placeholder="Optional UUID">
+          </div>
+          <div class="mgmt-toolbar__actions">
+            <button class="btn btn-primary btn-sm" type="submit">Apply filters</button>
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-list-reset>Reset</button>
+          </div>
+        </form>
+
+        <div class="mgmt-alert" data-list-error role="alert" hidden></div>
+        <div class="mgmt-skeleton" data-list-loading aria-label="Loading properties">
+          <div class="mgmt-skeleton__row"></div>
+          <div class="mgmt-skeleton__row"></div>
+          <div class="mgmt-skeleton__row"></div>
+        </div>
+
+        <div class="mgmt-table-wrap" data-list-table hidden>
+          <table class="mgmt-table">
+            <caption class="visually-hidden">Properties available for assignment</caption>
+            <thead>
+              <tr>
+                <th scope="col">Property</th>
+                <th scope="col">Location</th>
+                <th scope="col">Status</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody data-list-body></tbody>
+          </table>
+        </div>
+
+        <div class="mgmt-records" data-list-records hidden></div>
+
+        <div class="ev-empty" data-list-empty hidden>
+          <h3>No properties found</h3>
+          <p>Adjust the filters to find the property you want to assign.</p>
+        </div>
+
+        <div class="mgmt-pagination" data-list-pagination hidden>
+          <span data-pagination-summary></span>
+          <div class="mgmt-pagination__buttons">
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-page-prev>Previous</button>
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-page-next>Next</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="mgmt-denied" data-access-denied role="alert" tabindex="-1" hidden></div>
+    <div class="ev-toast-region" data-toast-region aria-live="polite" aria-atomic="false"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+  <script src="/assets/js/main.js"></script>
+  <script type="module" src="/assets/js/auth/auth-init.js"></script>
+  <script type="module" src="/assets/js/management/property-assignments-page.js"></script>
+</body>
+</html>

@@ -5,9 +5,16 @@ and vanilla JavaScript. It presents fictional property listings across India
 with search, filtering, sorting, detail views, a small image gallery, an About
 page, a Contact page with client-side validation, and a custom 404 page.
 
-There is no framework, no build step, no backend and no database. All company
-details, agent names, listings, prices, testimonials and contact details are
-invented for demonstration purposes.
+There is no frontend framework and no build step. Public property listings and
+details, account registration, login, session detection, current-user retrieval,
+and logout are integrated with the separate Spring Boot API. The home-page
+featured rail remains a local showcase because the `featured` endpoint is
+deferred pending an approved contract. See
+[`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md) for the authentication
+contract and development setup.
+
+All company details, agent names, listings, prices, testimonials and contact
+details are invented for demonstration purposes.
 
 > **Fictional content notice.** EstateVista is a demonstration project. No
 > listing on this site represents a real property, and no contact detail belongs
@@ -19,8 +26,8 @@ invented for demonstration purposes.
 
 | Item | Value |
 |---|---|
-| GitHub repository | _TBD — add after the repository is created_ |
-| Live demo | _TBD — add after the Vercel deployment_ |
+| GitHub repository | https://github.com/OmkarAKadam/estatevista.git |
+| Live demo | _TBD — no Vercel deployment has been performed_ |
 | Deployment guide | [`DEPLOYMENT.md`](DEPLOYMENT.md) |
 | Stage 5 QA record | [`docs/QA.md`](docs/QA.md) |
 
@@ -62,14 +69,18 @@ Implemented functionality includes:
 - A homepage hero, homepage search, featured-property rail and category links.
 - A property listing page with keyword, type, minimum-price and maximum-price
   filters, sorting, and shareable query-string state.
-- A property details page driven by `?id=<slug>`, with a selectable image
-  gallery and a related-properties rail.
+- A property details page driven by `?id=<uuid>`, fetched from the live public
+  API, with a selectable image gallery and a related-properties rail.
 - An About page describing the fictional studio.
 - A Contact page with a client-side validated demonstration form.
 - A custom 404 page.
+- Buyer registration and login pages integrated with the session-based backend.
+- Authentication-aware navigation with current-user detection and logout.
 
-The site is intentionally front-end only. Search, filtering, gallery selection
-and form validation run in the browser.
+Published listings and detail data are fetched from the EstateVista API; the
+browser applies the minimal keyword/type/price filters to the loaded page and
+handles gallery selection. The contact form is client-side only. Authentication
+also uses the EstateVista API.
 
 ---
 
@@ -94,8 +105,8 @@ Screenshots of the current build, captured from the locally served site at a
 
 ## Stage status
 
-**Stages 1–5 are complete.** Stage 6 — Documentation and deployment — is in
-progress.
+**V1 Stages 1–5 are complete.** V1 Stage 6 — Documentation and deployment — is
+in progress.
 
 - Stage 1: Foundation and design system.
 - Stage 2: Homepage, featured properties and mobile navigation.
@@ -103,9 +114,13 @@ progress.
 - Stage 4: Property details, About and Contact pages.
 - Stage 5: Responsive, accessibility and functional QA.
 - Stage 6: Documentation, repository hygiene and planned deployment.
+- V2 Stage 3.7: Registration, login, session detection and logout integrated
+  with the Spring Boot authentication API.
+- V2 Stage 4.7/4.8: Property management, public listing and public detail pages
+  integrated with the Spring Boot property API.
 
-GitHub setup and Vercel deployment are not complete yet. The repository links
-above remain placeholders until those steps are performed.
+The GitHub remote exists and is linked above. No Vercel deployment has been
+performed, so the live demo link remains a placeholder.
 
 ---
 
@@ -115,18 +130,22 @@ above remain placeholders until those steps are performed.
 |---|---|
 | Markup | HTML5 |
 | Styling | CSS3 with custom properties |
-| Behaviour | Vanilla JavaScript, ES5-style syntax with modern browser APIs such as `URLSearchParams` and `Element.closest` |
+| Behaviour | Vanilla JavaScript: ES modules for authentication and existing classic scripts for the property catalogue, with modern browser APIs such as `URLSearchParams` and `Element.closest` |
 | UI framework | Bootstrap 5.3.3 via pinned jsDelivr CDN with Subresource Integrity (SRI) |
 | Typefaces | Fraunces (headings) and Inter (body) via Google Fonts |
 | Currency | Indian Rupees (INR, ₹) |
-| Property data | Plain global array in `assets/js/data.js` |
+| Property data | Published listings/details fetched from `/api/v1/properties`; featured showcase uses the local `assets/js/data.js` array |
+| Authentication | Separate Spring Boot API using an `EV_SESSION` HttpOnly cookie and an in-memory CSRF token |
 | Build step | None |
 | Hosting | Vercel static hosting (planned; not yet deployed) |
 
 No `package.json` exists by design. There is nothing to install, bundle or
 compile. Bootstrap and the web fonts are requested at runtime from public CDNs,
 so a network connection is required for the full visual treatment. The CSS
-includes fallback font stacks for offline or blocked-network use.
+includes fallback font stacks for offline or blocked-network use. Authentication
+features additionally require the backend API described in
+[`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md); the property catalogue still
+works without it.
 
 ---
 
@@ -136,26 +155,42 @@ includes fallback font stacks for offline or blocked-network use.
 EstateVista/
 ├── index.html                  Homepage
 ├── properties.html             Listing browse page
-├── property-details.html       Single listing (?id=<slug>)
+├── property-details.html       Single listing (?id=<uuid>)
 ├── about.html                  Company and studio information
 ├── contact.html                Contact details and demonstration form
+├── login.html                  Buyer login page
+├── register.html               Buyer registration page
 ├── 404.html                    Custom not-found page
+├── dev-server.mjs              Zero-dependency static development server
 ├── assets/
 │   ├── css/
 │   │   ├── theme.css           Tokens, Bootstrap overrides, base elements
-│   │   ├── components.css      Buttons, badges, chips, cards, forms
+│   │   ├── components.css      Buttons, badges, chips, cards, forms, auth nav
 │   │   ├── home.css            Homepage composition
 │   │   ├── property-details.css Single-listing composition
 │   │   ├── about.css           About-page composition
-│   │   └── contact.css         Contact-page composition
+│   │   ├── contact.css         Contact-page composition
+│   │   └── auth.css            Login and registration page composition
 │   ├── js/
-│   │   ├── data.js             Fictional property dataset (global array)
+│   │   ├── data.js             Local featured-showcase dataset (global array)
 │   │   ├── main.js             Shared progressive enhancement
 │   │   ├── home.js             Featured rail and homepage search
 │   │   ├── property-card.js    Shared property-card renderer
-│   │   ├── properties.js       Listing filters, sorting and grid
-│   │   ├── property-details.js Single-listing renderer and gallery
-│   │   └── contact.js          Contact-form validation
+│   │   ├── properties.js       Live listing fetch, filters, sorting and grid
+│   │   ├── property-details.js Live detail fetch, renderer and gallery
+│   │   ├── public/
+│   │   │   └── property-public-api.js  Read-only public API bridge
+│   │   ├── contact.js          Contact-form validation
+│   │   ├── core/
+│   │   │   ├── api.js          Credentialed API client and CSRF memory
+│   │   │   └── config.js       API base URL resolution
+│   │   └── auth/
+│   │       ├── auth-state.js   In-memory presentation state
+│   │       ├── auth-service.js Register, login, session, logout
+│   │       ├── auth-ui.js      Navigation, form helpers, safe redirects, guard
+│   │       ├── auth-init.js    Per-page session bootstrap
+│   │       ├── login-page.js   Login validation and messaging
+│   │       └── register-page.js Registration validation and messaging
 │   └── images/
 │       ├── about/              Studio interior photograph
 │       ├── brand/              favicon.svg and property-placeholder.svg
@@ -164,6 +199,7 @@ EstateVista/
 │       ├── properties/         Five listing photographs
 │       └── team/               Reserved directory; only .gitkeep is committed
 ├── docs/
+│   ├── AUTHENTICATION.md       Stage 3.7 authentication contract and checklist
 │   ├── QA.md                   Stage 5 QA record
 │   └── screenshots/            README preview images (3 PNGs)
 ├── DEPLOYMENT.md               Planned Vercel deployment guide
@@ -184,47 +220,62 @@ is reserved for future portraits; no team photography is currently committed.
 |---|---|
 | `index.html` | Homepage with hero, search, featured properties and categories |
 | `properties.html` | Full listing grid with filters, sorting and URL-driven state |
-| `property-details.html` | Single property view selected by `?id=<slug>` |
+| `property-details.html` | Single property view selected by `?id=<uuid>` and fetched live |
 | `about.html` | Fictional studio story, mission, values and team section |
 | `contact.html` | Studio details and client-side validated demonstration form |
+| `login.html` | Buyer login, session bootstrap and authenticated redirect |
+| `register.html` | Buyer registration with client-side validation |
 | `404.html` | Custom page for unmatched routes |
 
 The listing and details pages depend on `assets/js/data.js`; the homepage also
-uses it for the featured rail.
+uses it for the featured rail. Authentication pages and the shared header load
+the ES-module auth layer from `assets/js/core/` and `assets/js/auth/`.
 
 ---
 
 ## Local development
 
-The site is static, so any static file server works. Python's built-in server is
-sufficient and requires no project installation.
+The site is static, so any static file server works. The repository includes a
+zero-dependency Node.js server, which is the recommended option because it keeps
+the frontend and API hostnames aligned for cookie credentials.
 
-From the project root:
+From the repository root:
 
 ```bash
-python -m http.server 5500
+node frontend/dev-server.mjs
 ```
 
-Then open <http://localhost:5500/>.
-
-An alternative if Python is unavailable:
+Then open <http://localhost:5500/>. If you use Python or `npx serve`, run the
+command from the `frontend` directory so the site root is served, not the
+repository root:
 
 ```bash
+cd frontend
+python -m http.server 5500
+# or
 npx serve .
 ```
 
 `npx serve` downloads a temporary package on first use, so it requires Node.js
 and network access.
 
+Authentication requires the separate Spring Boot API running on
+`http://localhost:8080` with the frontend origin allowed in
+`APP_CORS_ALLOWED_ORIGINS`. See [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md)
+and `docs/DEVELOPMENT_SETUP.md` for the backend and database setup. Public
+listings and details require the API; the home-page featured showcase and
+contact form work without it.
+
 **Why use a server instead of opening the files directly?** The pages load
-relative assets and resolve query parameters such as `?id=` and the listing
-filters. Serving over HTTP keeps that behaviour consistent across browsers.
-Opening `index.html` through `file://` may work for basic reading, but it is not
-the recommended development path.
+relative assets, resolve query parameters such as `?id=` and the listing
+filters, and the authentication modules use `fetch()`. Serving over HTTP keeps
+that behaviour consistent across browsers. Opening `index.html` through
+`file://` may work for basic reading, but it is not the recommended development
+path.
 
 The property dataset is a plain JavaScript global specifically so that no
-`fetch()` or CORS setup is required. To stop the server, press `Ctrl+C` in the
-terminal.
+`fetch()` or CORS setup is required for the catalogue. To stop the server, press
+`Ctrl+C` in the terminal.
 
 ---
 
@@ -238,7 +289,7 @@ overrides win:
 3. `assets/css/theme.css`
 4. `assets/css/components.css`
 5. The page-specific stylesheet where one exists (`home.css`,
-   `property-details.css`, `about.css` or `contact.css`)
+   `property-details.css`, `about.css`, `contact.css` or `auth.css`)
 
 Bootstrap's JavaScript bundle is included on every page because the responsive
 navigation uses the Bootstrap collapse component.
@@ -347,19 +398,28 @@ Stage 5 scope and does not certify later changes or claim full WCAG compliance.
 
 ## Property data
 
-`assets/js/data.js` exposes `window.EV_PROPERTIES` — a plain array of five
-fictional listings. It is a global rather than a fetched JSON file so pages work
-without CORS or a JSON round-trip.
+Public listing and detail pages fetch published properties from
+`GET /api/v1/properties` and its detail/image/related endpoints through
+`assets/js/public/property-public-api.js` and the shared `assets/js/core/api.js`
+client. Detail URLs use the server-generated UUID (`?id=<uuid>`). A malformed
+ID, a hidden or missing property, or a network failure renders a curated state;
+server text is inserted only with `textContent`.
 
-Prices are stored as whole rupees (`48500000`) and formatted at render time by
-the shared helpers in `property-card.js` and the homepage card renderer in
-`home.js`, using Indian conventions such as `₹4.85 Cr` and `₹95 L`.
+`assets/js/data.js` still exposes `window.EV_PROPERTIES`, a local array of five
+fictional listings used only by the home-page featured showcase. Those cards
+link to the live listings page rather than passing a showcase slug to the
+UUID-based detail page. The `featured` API endpoint is deferred pending an
+approved `is_featured` contract.
 
-Record shape:
+Prices are formatted at render time by the shared helpers in `property-card.js`
+and the homepage card renderer in `home.js`, using Indian conventions such as
+`₹4.85 Cr` and `₹95 L`.
+
+Local showcase record shape:
 
 | Field | Type | Notes |
 |---|---|---|
-| `id` | string | Slug used by `property-details.html?id=<slug>` |
+| `id` | string | Local showcase key; not used as a public detail link |
 | `title` | string | Display name |
 | `type` | string | `apartment`, `villa`, `penthouse`, `rowhouse` |
 | `status` | string | `available`, `reserved`, `sold` |
@@ -370,9 +430,8 @@ Record shape:
 | `featured` | boolean | Home page highlight rail |
 | `images` | string[] | Paths relative to the site root |
 
-The details renderer also checks for an optional `amenities` array. The current
-five records do not include that field, so the details page shows its documented
-fallback text.
+Live detail data supplies its own `amenities` list; when none is supplied, the
+details page shows its documented fallback text.
 
 ---
 
@@ -383,14 +442,21 @@ fallback text.
   notices explain the limitation, but the pages cannot show listings without
   JavaScript.
 - **The contact form is client-side only.** It validates locally and does not
-  send, store or forward submissions. There is no backend or form service.
+  send, store or forward submissions. There is no contact backend or form
+  service.
 - **Bootstrap and Google Fonts require network access.** A blocked CDN can
   remove Bootstrap styling or cause fallback fonts to appear. The CSS font
   stacks are intentional, but the site does not bundle local copies.
 - **Property and company content is fictional.** Names, prices, addresses,
   telephone numbers, email addresses, testimonials and listings are invented.
-- **There is no backend, database, account system, saved-search feature or chat
-  service.** The site is a static front-end demonstration.
+- **Authentication requires the separate API.** The static site has no
+  server-side logic of its own. Registration, login, session detection and
+  logout fail with a safe network message when the backend is not running. The
+  API's CORS configuration must allow the exact frontend origin.
+- **Authenticated property management is implemented; saved-search, inquiry and
+  chat remain later-stage work.** The backend exposes authentication and the
+  Stage 4 property-management APIs; public listings and details are fetched
+  from that API, while the home-page featured rail remains a local showcase.
 
 ---
 
@@ -403,10 +469,13 @@ yet. The intended configuration and verification steps are documented in
 Summary of the planned setup:
 
 - Framework preset: **Other**.
+- Root directory: **`frontend`**.
 - Build command: **None**.
-- Output directory: **project root**.
+- Output directory: **`frontend` root**.
 - Production branch: **main**.
 - GitHub integration so pushes to `main` trigger deployments.
+- `window.ESTATEVISTA_CONFIG.apiBaseUrl` must be injected into the deployed
+  HTML; there is no frontend-to-API proxy.
 
 The custom `404.html` handles unmatched routes. Its local asset, favicon, script
 and navigation references use root-relative paths, so they still resolve when
@@ -422,11 +491,12 @@ The following are **planned possibilities only** and are not implemented in the
 current build:
 
 - Motion and animation polish that respects reduced-motion preferences.
-- A backend for real enquiry handling.
+- Backend support for real enquiry handling.
 - A database-backed property catalogue.
 - Chat or conversational assistance.
 
-The current repository remains a static, front-end-only demonstration.
+The property catalogue remains a static, front-end-only demonstration, while
+authentication is integrated with the separate Spring Boot API.
 
 ---
 
@@ -460,7 +530,13 @@ that `assets/js/data.js` loads before the page-specific script. Check the browse
 console for a blocked or missing file.
 
 **The contact form appears to do nothing.** That is expected. It validates
-locally and deliberately sends nothing; there is no backend.
+locally and deliberately sends nothing; there is no contact backend.
+
+**The header still shows "Log in" after signing in, or login reports a network
+error.** Confirm the backend is running on port 8080, the frontend was opened at
+`http://localhost:5500` (or `127.0.0.1:5500`) consistently, and the exact
+frontend origin is present in `APP_CORS_ALLOWED_ORIGINS`. See
+[`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md).
 
 **A nested missing URL produces an unstyled 404 page.** This should not happen in
 the current build: `404.html` uses root-relative paths for its local assets,

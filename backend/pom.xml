@@ -87,9 +87,34 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Official Cloudinary Java SDK (HTTP 5 transport). Version is pinned
+             after compatibility, maintenance, license, and advisory review. -->
+        <dependency>
+            <groupId>com.cloudinary</groupId>
+            <artifactId>cloudinary-http5</artifactId>
+            <version>2.6.0</version>
+        </dependency>
+
+        <!-- Maintained ImageIO WebP reader/writer backed by libwebp 1.6.0.
+             Runtime-only: application code uses standard javax.imageio APIs. -->
+        <dependency>
+            <groupId>com.github.usefulness</groupId>
+            <artifactId>webp-imageio</artifactId>
+            <version>0.11.0</version>
+            <scope>runtime</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Spring Boot 4 modularized the Web MVC test slice (`@WebMvcTest`).
+             Test-only: lets the security filter-chain contract be verified
+             without starting a database-backed application context. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -104,6 +129,29 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <!-- Coverage is evidence of execution, not proof of correctness.
+                 No threshold is enforced: Stage 2 has no approved coverage gate,
+                 and an arbitrary threshold would create a false quality signal. -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.13</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

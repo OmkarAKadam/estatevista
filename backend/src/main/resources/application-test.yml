@@ -1,0 +1,78 @@
+# Automated test profile.
+# Activate with SPRING_PROFILES_ACTIVE=test.
+#
+# Web-layer tests start no Spring context and need no database. The opt-in
+# persistence tests (com.estatevista.persistence) run only when TEST_DB_URL is
+# set and must never target development or production data.
+#
+# Note: password deliberately has no usable default. A real test database must
+# supply TEST_DB_PASSWORD explicitly.
+
+spring:
+  datasource:
+    url: ${TEST_DB_URL:jdbc:postgresql://localhost:5432/estatevista_test}
+    username: ${TEST_DB_USERNAME:estatevista}
+    password: ${TEST_DB_PASSWORD:kai_vista}
+    hikari:
+      # The disposable cluster allows 50 connections and the suite caches
+      # several Spring contexts. Five connections per context leave headroom
+      # while allowing the concurrent-cleanup-worker tests to run safely.
+      maximum-pool-size: 5
+      minimum-idle: 0
+  jpa:
+    show-sql: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    clean-disabled: true
+
+app:
+  rate-limit:
+    login:
+      max-attempts: 1000
+      window-seconds: 900
+    registration:
+      max-attempts: 1000
+      window-seconds: 60
+    image-upload:
+      max-attempts: 1000
+      window-seconds: 3600
+    public-search:
+      max-attempts: 1000
+      window-seconds: 60
+    property-detail:
+      max-attempts: 1000
+      window-seconds: 60
+    authenticated-api:
+      max-attempts: 1000
+      window-seconds: 60
+    admin-mutation:
+      max-attempts: 1000
+      window-seconds: 60
+  image-cleanup:
+    # Tests drive the worker deterministically; no background poller runs.
+    enabled: false
+    poll-ms: 3600000
+    batch-size: 20
+    max-attempts: 3
+    backoff-ms: 0
+    max-backoff-ms: 60000
+    lease-seconds: 60
+  storage:
+    cloudinary:
+      # Automated tests always use the injected fake adapter.
+      enabled: false
+
+management:
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: WARN
+    com.estatevista: INFO
+    org.springframework.web: WARN
+    org.springframework.security: WARN
+    org.flywaydb: INFO

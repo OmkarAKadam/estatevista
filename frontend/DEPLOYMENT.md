@@ -17,17 +17,25 @@ production branch.
 |---|---|
 | Platform | Vercel |
 | Framework preset | **Other** |
-| Root directory | Repository root (`./`) |
+| Root directory | `frontend` |
 | Build command | **None** — leave empty |
-| Output directory | Repository root (`./`) |
+| Output directory | `frontend` (`.` relative to the Root Directory) |
 | Install command | **None** |
-| Environment variables | **None** |
+| Environment variables | None are consumed by Vercel itself; the deployed HTML must set `window.ESTATEVISTA_CONFIG.apiBaseUrl` to the API host (see below) |
 | Production branch | `main` |
-| Source repository | GitHub repository to be created |
+| Source repository | `https://github.com/OmkarAKadam/estatevista.git` |
 
 No `vercel.json` is currently committed. Vercel's zero-config static deployment
 is expected to work with the settings above. Add configuration only if the
 platform requires it during setup.
+
+**Required runtime configuration.** `assets/js/core/config.js` refuses to use a
+production API unless `window.ESTATEVISTA_CONFIG.apiBaseUrl` is injected before
+the module scripts load. A deployed page without that value shows the curated
+service-unavailable state on public property pages and cannot authenticate.
+There is no frontend-to-API proxy and no production hostname committed to the
+repository; injecting the approved API host is a deployment prerequisite, not
+an optional tuning step.
 
 ---
 
@@ -41,7 +49,7 @@ Before deploying:
 - A Vercel account is available.
 - The custom `404.html` root-relative paths have been verified locally (see
   [Custom 404 behavior](#custom-404-behavior)).
-- The final repository and demo URLs are added to `README.md`.
+- The repository URL is recorded in `README.md`; the demo URL is added only after a real deployment exists.
 
 These prerequisites are not all complete yet.
 
@@ -49,16 +57,19 @@ These prerequisites are not all complete yet.
 
 ## Planned GitHub integration
 
-1. Create the GitHub repository and push the project in a later phase.
-2. In Vercel, choose **Add New → Project**.
-3. Import the GitHub repository.
-4. Set the framework preset to **Other**.
-5. Leave the build command, output directory and install command at their
-   no-build defaults, using the repository root.
-6. Deploy from the `main` branch.
+1. In Vercel, choose **Add New → Project**.
+2. Select the existing GitHub repository
+   `https://github.com/OmkarAKadam/estatevista.git`.
+3. Set the framework preset to **Other** and Root Directory to `frontend`.
+4. Leave the build command, install command and output directory at their
+   no-build defaults; the output is the `frontend` root.
+5. Deploy from the `main` branch.
+6. Inject `window.ESTATEVISTA_CONFIG.apiBaseUrl` into the deployed HTML before
+   the module scripts load, using the approved API hostname.
 7. Confirm that later pushes to `main` create production deployments.
 
-No GitHub repository, remote or Vercel project is configured by this document.
+The GitHub remote exists and is recorded in `README.md`. No Vercel project,
+deployment, or production API hostname is configured by this document.
 
 ---
 
@@ -249,7 +260,8 @@ the setting.
 
 This deployment phase does not add:
 
-- A backend or serverless functions.
+- A backend or serverless functions. The API is a separately deployed Spring
+  Boot service; this frontend deployment does not create or proxy it.
 - A database.
 - Chat or conversational functionality.
 - Animations or new interactive features.

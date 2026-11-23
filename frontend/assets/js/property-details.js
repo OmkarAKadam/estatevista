@@ -1,9 +1,10 @@
 /**
  * EstateVista — property details behaviour (Stage 4).
  *
- * Resolves ?id=<property-id> against window.EV_PROPERTIES, then renders the
- * listing, a selectable image gallery and related properties. The shared card
- * renderer from property-card.js is reused for the related rail.
+ * Reads ?id=<uuid> from the approved public URL, fetches the published property
+ * and its images from the live API, then renders the listing, a selectable
+ * gallery and related properties. The shared card renderer from
+ * property-card.js is reused for the related rail.
  */
 (function () {
   "use strict";
@@ -60,26 +61,93 @@
     return parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1];
   }
 
-  /** Reads ?id= and returns the matching record, or null. */
-  function findProperty() {
+  var API_READY_TIMEOUT_MS = 5000;
+
+  function waitForPublicApi() {
+    return new Promise(function (resolve, reject) {
+      if (window.EVPublicPropertyApi) {
+        resolve(window.EVPublicPropertyApi);
+        return;
+      }
+
+      var settled = false;
+      var timer = window.setTimeout(function () {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        reject(new Error("Property API unavailable"));
+      }, API_READY_TIMEOUT_MS);
+
+      window.addEventListener(
+        "ev-public-property-api-ready",
+        function onReady() {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          window.clearTimeout(timer);
+          resolve(window.EVPublicPropertyApi);
+        },
+        { once: true }
+      );
+    });
+  }
+
+  /** Reads the approved ?id=<uuid> public detail link. */
+  function readPropertyId() {
     var params = new URLSearchParams(window.location.search);
     var rawId = params.get("id");
-    var id = rawId ? rawId.trim() : "";
-    var collection = Array.isArray(window.EV_PROPERTIES) ? window.EV_PROPERTIES : [];
+    return rawId ? rawId.trim() : "";
+  }
 
-    if (!id) {
-      return null;
-    }
+  function toViewModel(detail, images) {
+    var location = detail.location && typeof detail.location === "object" ? detail.location : {};
+    var residential =
+      detail.residentialDetails && typeof detail.residentialDetails === "object"
+        ? detail.residentialDetails
+        : {};
+    var areaValue = Number(detail.areaValue);
+    var primary = text(detail.primaryImageUrl);
+    var paths = [];
 
-    for (var index = 0; index < collection.length; index += 1) {
-      var property = collection[index];
-
-      if (property && typeof property.id === "string" && property.id === id) {
-        return property;
+    (Array.isArray(images) ? images : []).forEach(function (image) {
+      var url = image && typeof image === "object" ? text(image.imageUrl) : "";
+      if (url && paths.indexOf(url) === -1) {
+        paths.push(url);
       }
+    });
+
+    if (primary && paths.indexOf(primary) === -1) {
+      paths.unshift(primary);
     }
 
-    return null;
+    var amenities = (Array.isArray(detail.amenities) ? detail.amenities : [])
+      .map(function (amenity) {
+        return amenity && typeof amenity === "object" ? text(amenity.name) : "";
+      })
+      .filter(function (name) {
+        return name !== "";
+      });
+
+    return {
+      id: text(detail.id),
+      title: text(detail.title) || "Property details",
+      description: text(detail.description),
+      type: CARD.normalizeApiType(detail),
+      status: text(detail.status).toLowerCase() || "published",
+      price: Number.isFinite(Number(detail.price)) ? Number(detail.price) : null,
+      locality: text(location.locality),
+      city: text(location.city),
+      areaSqft:
+        text(detail.areaUnit).toUpperCase() === "SQFT" && Number.isFinite(areaValue)
+          ? areaValue
+          : null,
+      bedrooms: Number(residential.bedrooms),
+      bathrooms: Number(residential.bathrooms),
+      amenities: amenities,
+      images: paths
+    };
   }
 
   function imagePaths(property) {
@@ -146,12 +214,12 @@
 
     function captionFor(index) {
       if (paths[index] === CARD.PLACEHOLDER_IMAGE) {
-        return "No photograph is available for this fictional listing.";
+        return "No photograph is available for this property.";
       }
 
       return (
         "Image " + (index + 1) + " of " + paths.length +
-        " \u00B7 Demonstration photograph for this fictional listing."
+        " \u00B7 Photograph supplied for this listing."
       );
     }
 
@@ -323,10 +391,12 @@
       sentences.push("The listing records " + joinSentence(details) + ".");
     }
 
-    sentences.push(
-      "This description is generated from the fields available in the demonstration dataset. No further property claims have been added, and the listing describes no real home."
-    );
+    if (text(property.description)) {
+      setText("detailDescription", text(property.description));
+      return;
+    }
 
+    sentences.push("Further details are available from the property manager.");
     setText("detailDescription", sentences.join(" "));
   }
 
@@ -348,7 +418,7 @@
 
     setText(
       "detailAmenities",
-      "Amenity details are not included in this demonstration dataset. The specifications above show every field available for this fictional listing."
+      "No amenity details have been supplied for this property."
     );
   }
 
@@ -374,28 +444,20 @@
     }
   }
 
-  function renderRelated(property) {
+  function renderRelated(related) {
     var section = byId("relatedSection");
     var grid = byId("relatedGrid");
-    var collection = Array.isArray(window.EV_PROPERTIES) ? window.EV_PROPERTIES : [];
-    var currentId = text(property.id);
-    var currentType = text(property.type).toLowerCase();
-    var others = collection.filter(function (item) {
-      return item && text(item.id) !== currentId;
-    });
-    var sameType = others.filter(function (item) {
-      return currentType !== "" && text(item.type).toLowerCase() === currentType;
-    });
-    var remaining = others.filter(function (item) {
-      return sameType.indexOf(item) === -1;
-    });
-    var related = sameType.concat(remaining).slice(0, 3);
+    var models = (Array.isArray(related) ? related : [])
+      .map(function (item) {
+        return CARD.fromApiSummary(item);
+      })
+      .filter(Boolean);
 
     if (!section || !grid) {
       return;
     }
 
-    if (related.length === 0) {
+    if (models.length === 0) {
       section.hidden = true;
       return;
     }
@@ -404,7 +466,7 @@
 
     var fragment = document.createDocumentFragment();
 
-    related.forEach(function (item) {
+    models.forEach(function (item) {
       fragment.appendChild(CARD.buildCard(item, { columnClass: "col", headingTag: "h3" }));
     });
 
@@ -424,7 +486,7 @@
         "content",
         "View " + title +
           (location ? " in " + location : "") +
-          ", a fictional EstateVista property listing."
+          ", an EstateVista property listing."
       );
     }
   }
@@ -441,6 +503,7 @@
 
     if (error) {
       error.hidden = true;
+      error.removeAttribute("aria-busy");
     }
 
     setText("breadcrumbCurrent", title);
@@ -454,7 +517,6 @@
     renderDescription(property);
     renderAmenities(property);
     renderGallery(property, title);
-    renderRelated(property);
     updateMeta(property);
   }
 
@@ -474,6 +536,7 @@
 
     if (error) {
       error.hidden = false;
+      error.removeAttribute("aria-busy");
     }
 
     setText("breadcrumbCurrent", title);
@@ -489,6 +552,31 @@
     }
   }
 
+  function showLoading() {
+    var detail = byId("propertyDetail");
+    var error = byId("propertyError");
+    var related = byId("relatedSection");
+
+    if (detail) {
+      detail.hidden = true;
+    }
+    if (related) {
+      related.hidden = true;
+    }
+    if (error) {
+      error.hidden = false;
+      error.setAttribute("aria-busy", "true");
+    }
+
+    setText("breadcrumbCurrent", "Loading property");
+    setText("propertyErrorTitle", "Loading property details");
+    setText(
+      "propertyErrorMessage",
+      "Fetching the latest published information for this property\u2026"
+    );
+    document.title = "Loading property \u2014 EstateVista";
+  }
+
   function init() {
     if (!CARD) {
       showError(
@@ -498,17 +586,57 @@
       return;
     }
 
-    var property = findProperty();
+    var id = readPropertyId();
 
-    if (!property) {
+    if (!id) {
       showError(
         "Property not found",
-        "The property you requested is not part of the EstateVista collection. It may have been removed, or the link may be incomplete."
+        "The property link is incomplete. Return to the properties page to browse published listings."
       );
       return;
     }
 
-    render(property);
+    showLoading();
+
+    waitForPublicApi()
+      .then(function (api) {
+        if (!api.UUID_PATTERN.test(id)) {
+          var invalid = new Error("Invalid property identifier");
+          invalid.name = "InvalidPropertyIdError";
+          throw invalid;
+        }
+
+        return api.getPublishedDetail(id).then(function (detail) {
+          return api
+            .listPublishedImages(id)
+            .catch(function () {
+              return [];
+            })
+            .then(function (images) {
+              render(toViewModel(detail, images));
+              return api
+                .getRelatedProperties(id)
+                .catch(function () {
+                  return [];
+                })
+                .then(renderRelated);
+            });
+        });
+      })
+      .catch(function (error) {
+        if (error && (error.status === 404 || error.name === "InvalidPropertyIdError")) {
+          showError(
+            "Property not found",
+            "This property is not available publicly. It may have been removed, or the link may be incomplete."
+          );
+          return;
+        }
+
+        showError(
+          "Property details unavailable",
+          "The property service is not available right now. Please try again later or browse other published properties."
+        );
+      });
   }
 
   if (document.readyState === "loading") {

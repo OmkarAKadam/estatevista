@@ -46,7 +46,10 @@
               <a class="nav-link site-nav__link" href="contact.html" data-nav-link>Contact us</a>
             </li>
           </ul>
-          
+          <div class="site-auth" data-auth-nav data-auth-login-href="login.html" data-auth-register-href="register.html" data-auth-home-href="index.html">
+            <a class="site-auth__link" href="login.html">Log in</a>
+            <a class="btn btn-primary btn-sm site-auth__cta" href="register.html">Create account</a>
+          </div>
         </div>
       </div>
     </nav>
@@ -57,7 +60,7 @@
       <div class="container ev-container">
         <p class="ev-eyebrow">Property discovery</p>
         <h1>Properties</h1>
-        <p class="ev-lede">Browse the full collection of fictional apartments, villas and row houses. Search by keyword or location, narrow by type and price, then sort the results.</p>
+        <p class="ev-lede">Browse the current collection of published apartments, villas and row houses. Search by keyword or location, narrow by type and price, then sort the results.</p>
 
         <!-- Search & Filter Form -->
         <form class="property-filters" id="propertyFilters" aria-label="Property filters">
@@ -203,6 +206,8 @@
   <script src="assets/js/data.js" defer></script>
   <script src="assets/js/main.js" defer></script>
   <script src="assets/js/property-card.js" defer></script>
+  <script type="module" src="assets/js/public/property-public-api.js"></script>
   <script src="assets/js/properties.js" defer></script>
+  <script type="module" src="assets/js/auth/auth-init.js"></script>
 </body>
 </html>

@@ -47,6 +47,10 @@
               <a class="nav-link site-nav__link" href="contact.html" data-nav-link>Contact us</a>
             </li>
           </ul>
+          <div class="site-auth" data-auth-nav data-auth-login-href="login.html" data-auth-register-href="register.html" data-auth-home-href="index.html">
+            <a class="site-auth__link" href="login.html">Log in</a>
+            <a class="btn btn-primary btn-sm site-auth__cta" href="register.html">Create account</a>
+          </div>
         </div>
       </div>
     </nav>
@@ -91,7 +95,7 @@
                 <a class="btn btn-primary" href="contact.html">Enquire about this home</a>
                 <a class="btn btn-secondary" href="properties.html">Back to properties</a>
               </div>
-              <p class="property-detail__disclaimer">Fictional listing. The details on this page come from the EstateVista demonstration dataset and describe no real property.</p>
+              <p class="property-detail__disclaimer">Listing details are served live by the EstateVista property API. Enquiry links are illustrative.</p>
             </div>
           </div>
 
@@ -143,7 +147,7 @@
           <div class="ev-section-head__text">
             <p class="ev-eyebrow">Keep exploring</p>
             <h2 id="relatedHeading">Similar properties</h2>
-            <p class="ev-section-intro">Other fictional homes from the collection, with the same property type shown first.</p>
+            <p class="ev-section-intro">Other published properties from the collection.</p>
           </div>
           <a class="ev-section-head__link" href="properties.html">
             View all properties
@@ -211,6 +215,8 @@
   <script src="assets/js/data.js" defer></script>
   <script src="assets/js/main.js" defer></script>
   <script src="assets/js/property-card.js" defer></script>
+  <script type="module" src="assets/js/public/property-public-api.js"></script>
   <script src="assets/js/property-details.js" defer></script>
+  <script type="module" src="assets/js/auth/auth-init.js"></script>
 </body>
 </html>

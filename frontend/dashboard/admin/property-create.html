@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Create a new EstateVista property listing.">
+  <title>Create Property | EstateVista Admin</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <link rel="stylesheet" href="/assets/css/theme.css">
+  <link rel="stylesheet" href="/assets/css/components.css">
+  <link rel="stylesheet" href="/assets/css/property-management.css">
+</head>
+<body class="mgmt-shell" data-management-page data-management-mode="create" data-management-role="ADMIN">
+  <a class="visually-hidden-focusable mgmt-skip" href="#management-content">Skip to management content</a>
+  <div class="mgmt-scrim" data-dash-scrim hidden></div>
+  <aside class="dash-sidebar" id="dash-sidebar" data-dash-sidebar aria-label="Management navigation"></aside>
+
+  <div class="mgmt-main">
+    <header class="dash-topbar">
+      <button class="dash-topbar__menu" type="button" data-dash-menu-toggle aria-controls="dash-sidebar" aria-expanded="false">
+        <span class="dash-topbar__menu-bars" aria-hidden="true"></span>
+        <span class="visually-hidden">Toggle navigation</span>
+      </button>
+      <h1 class="dash-topbar__title" data-dash-title>Create Property</h1>
+      <span class="dash-topbar__spacer"></span>
+      <span class="dash-topbar__role" data-dash-role></span>
+      <div class="site-auth" data-auth-nav data-auth-home-href="/index.html" data-auth-login-href="/login.html"></div>
+    </header>
+
+    <main class="mgmt-content" id="management-content" data-management-content tabindex="-1" hidden>
+      <nav class="mgmt-breadcrumb" aria-label="Breadcrumb">
+        <ul>
+          <li><a href="/index.html">Home</a></li>
+          <li><a href="/dashboard/admin/properties.html">Properties</a></li>
+          <li aria-current="page">Create</li>
+        </ul>
+      </nav>
+
+      <div class="mgmt-page-head">
+        <div>
+          <h2>Create a property listing</h2>
+          <p>New listings start in <strong>DRAFT</strong>. Add images and publish when the listing is ready.</p>
+        </div>
+        <div class="mgmt-page-head__actions">
+          <a class="btn btn-outline-secondary" href="/dashboard/admin/properties.html">Back to properties</a>
+        </div>
+      </div>
+
+      <div class="mgmt-form-with-rail">
+        <form class="ev-panel" data-property-form novalidate>
+          <div class="mgmt-alert" data-form-error role="alert" hidden></div>
+
+          <div class="mgmt-form-grid">
+            <fieldset data-mode="create">
+              <legend>Category</legend>
+              <div class="mgmt-form__fields mgmt-form__fields--paired">
+                <div class="mgmt-field">
+                  <label for="categoryId">Category</label>
+                  <select class="form-select" id="categoryId" name="categoryId" required></select>
+                  <p class="mgmt-field__error" id="categoryId-error" data-error-for="categoryId" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="subtypeId">Subtype</label>
+                  <select class="form-select" id="subtypeId" name="subtypeId" required disabled></select>
+                  <p class="mgmt-field__error" id="subtypeId-error" data-error-for="subtypeId" hidden></p>
+                </div>
+              </div>
+              <p class="mgmt-field__hint">Category and subtype are fixed after creation.</p>
+            </fieldset>
+
+            <fieldset>
+              <legend>Basic information</legend>
+              <div class="mgmt-form__fields">
+                <div class="mgmt-field mgmt-field--wide">
+                  <label for="title">Title</label>
+                  <input class="form-control" id="title" name="title" type="text" maxlength="200" required autocomplete="off">
+                  <p class="mgmt-field__error" id="title-error" data-error-for="title" hidden></p>
+                </div>
+                <div class="mgmt-field mgmt-field--wide">
+                  <label for="description">Description</label>
+                  <textarea class="form-control" id="description" name="description" rows="6" maxlength="10000" required></textarea>
+                  <p class="mgmt-field__error" id="description-error" data-error-for="description" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="listingType">Listing type</label>
+                  <select class="form-select" id="listingType" name="listingType" required>
+                    <option value="">Select…</option>
+                    <option value="SALE">For sale</option>
+                    <option value="RENT">For rent</option>
+                  </select>
+                  <p class="mgmt-field__error" id="listingType-error" data-error-for="listingType" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="currencyCode">Currency code</label>
+                  <input class="form-control" id="currencyCode" name="currencyCode" type="text" minlength="3" maxlength="3" pattern="[A-Z]{3}" value="INR" required>
+                  <p class="mgmt-field__error" id="currencyCode-error" data-error-for="currencyCode" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="price">Price</label>
+                  <input class="form-control" id="price" name="price" type="number" min="0.01" step="0.01" inputmode="decimal" required>
+                  <p class="mgmt-field__error" id="price-error" data-error-for="price" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="areaValue">Area value</label>
+                  <input class="form-control" id="areaValue" name="areaValue" type="number" min="0.01" step="0.01" inputmode="decimal" required>
+                  <p class="mgmt-field__error" id="areaValue-error" data-error-for="areaValue" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="areaUnit">Area unit</label>
+                  <select class="form-select" id="areaUnit" name="areaUnit" required>
+                    <option value="SQ_FT">Square feet</option>
+                    <option value="SQ_M">Square metres</option>
+                    <option value="ACRE">Acres</option>
+                  </select>
+                  <p class="mgmt-field__error" id="areaUnit-error" data-error-for="areaUnit" hidden></p>
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Location</legend>
+              <div class="mgmt-form__fields mgmt-form__fields--paired">
+                <div class="mgmt-field mgmt-field--wide">
+                  <label for="location.addressLine">Address line</label>
+                  <input class="form-control" id="location.addressLine" name="location.addressLine" type="text" maxlength="255" required autocomplete="street-address">
+                  <p class="mgmt-field__error" id="location.addressLine-error" data-error-for="location.addressLine" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="location.locality">Locality</label>
+                  <input class="form-control" id="location.locality" name="location.locality" type="text" maxlength="120">
+                  <p class="mgmt-field__error" id="location.locality-error" data-error-for="location.locality" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="location.city">City</label>
+                  <input class="form-control" id="location.city" name="location.city" type="text" maxlength="100" required autocomplete="address-level2">
+                  <p class="mgmt-field__error" id="location.city-error" data-error-for="location.city" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="location.state">State</label>
+                  <input class="form-control" id="location.state" name="location.state" type="text" maxlength="100" required autocomplete="address-level1">
+                  <p class="mgmt-field__error" id="location.state-error" data-error-for="location.state" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="location.postalCode">Postal code</label>
+                  <input class="form-control" id="location.postalCode" name="location.postalCode" type="text" maxlength="20" required autocomplete="postal-code">
+                  <p class="mgmt-field__error" id="location.postalCode-error" data-error-for="location.postalCode" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="location.country">Country</label>
+                  <input class="form-control" id="location.country" name="location.country" type="text" maxlength="100" value="India" required autocomplete="country-name">
+                  <p class="mgmt-field__error" id="location.country-error" data-error-for="location.country" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="location.latitude">Latitude <span class="text-muted">(optional)</span></label>
+                  <input class="form-control" id="location.latitude" name="location.latitude" type="number" min="-90" max="90" step="0.0000001">
+                  <p class="mgmt-field__error" id="location.latitude-error" data-error-for="location.latitude" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="location.longitude">Longitude <span class="text-muted">(optional)</span></label>
+                  <input class="form-control" id="location.longitude" name="location.longitude" type="number" min="-180" max="180" step="0.0000001">
+                  <p class="mgmt-field__error" id="location.longitude-error" data-error-for="location.longitude" hidden></p>
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset data-category-kind="RESIDENTIAL" hidden>
+              <legend>Residential details</legend>
+              <div class="mgmt-form__fields mgmt-form__fields--paired">
+                <div class="mgmt-field">
+                  <label for="residential.bedrooms">Bedrooms</label>
+                  <input class="form-control" id="residential.bedrooms" name="residential.bedrooms" type="number" min="0" step="1">
+                  <p class="mgmt-field__error" id="residential.bedrooms-error" data-error-for="residential.bedrooms" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="residential.bathrooms">Bathrooms</label>
+                  <input class="form-control" id="residential.bathrooms" name="residential.bathrooms" type="number" min="0" step="1">
+                  <p class="mgmt-field__error" id="residential.bathrooms-error" data-error-for="residential.bathrooms" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="residential.balconies">Balconies</label>
+                  <input class="form-control" id="residential.balconies" name="residential.balconies" type="number" min="0" step="1">
+                  <p class="mgmt-field__error" id="residential.balconies-error" data-error-for="residential.balconies" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="residential.floorNumber">Floor number</label>
+                  <input class="form-control" id="residential.floorNumber" name="residential.floorNumber" type="number" min="0" step="1">
+                  <p class="mgmt-field__error" id="residential.floorNumber-error" data-error-for="residential.floorNumber" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="residential.totalFloors">Total floors</label>
+                  <input class="form-control" id="residential.totalFloors" name="residential.totalFloors" type="number" min="0" step="1">
+                  <p class="mgmt-field__error" id="residential.totalFloors-error" data-error-for="residential.totalFloors" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="residential.parkingSpaces">Parking spaces</label>
+                  <input class="form-control" id="residential.parkingSpaces" name="residential.parkingSpaces" type="number" min="0" step="1">
+                  <p class="mgmt-field__error" id="residential.parkingSpaces-error" data-error-for="residential.parkingSpaces" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="residential.furnishingStatus">Furnishing status</label>
+                  <input class="form-control" id="residential.furnishingStatus" name="residential.furnishingStatus" type="text" maxlength="30" placeholder="e.g. Furnished">
+                  <p class="mgmt-field__error" id="residential.furnishingStatus-error" data-error-for="residential.furnishingStatus" hidden></p>
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset data-category-kind="COMMERCIAL" hidden>
+              <legend>Commercial details</legend>
+              <div class="mgmt-form__fields mgmt-form__fields--paired">
+                <div class="mgmt-field">
+                  <label for="commercial.parkingSpaces">Parking spaces</label>
+                  <input class="form-control" id="commercial.parkingSpaces" name="commercial.parkingSpaces" type="number" min="0" step="1">
+                  <p class="mgmt-field__error" id="commercial.parkingSpaces-error" data-error-for="commercial.parkingSpaces" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="commercial.floorNumber">Floor number</label>
+                  <input class="form-control" id="commercial.floorNumber" name="commercial.floorNumber" type="number" min="0" step="1">
+                  <p class="mgmt-field__error" id="commercial.floorNumber-error" data-error-for="commercial.floorNumber" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="commercial.totalFloors">Total floors</label>
+                  <input class="form-control" id="commercial.totalFloors" name="commercial.totalFloors" type="number" min="0" step="1">
+                  <p class="mgmt-field__error" id="commercial.totalFloors-error" data-error-for="commercial.totalFloors" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="commercial.washrooms">Washrooms</label>
+                  <input class="form-control" id="commercial.washrooms" name="commercial.washrooms" type="number" min="0" step="1">
+                  <p class="mgmt-field__error" id="commercial.washrooms-error" data-error-for="commercial.washrooms" hidden></p>
+                </div>
+                <div class="mgmt-field">
+                  <label for="commercial.suitableFor">Suitable for</label>
+                  <input class="form-control" id="commercial.suitableFor" name="commercial.suitableFor" type="text" maxlength="255">
+                  <p class="mgmt-field__error" id="commercial.suitableFor-error" data-error-for="commercial.suitableFor" hidden></p>
+                </div>
+                <div class="mgmt-choice">
+                  <input class="form-check-input" id="commercial.powerBackup" name="commercial.powerBackup" type="checkbox" value="true">
+                  <label for="commercial.powerBackup">Power backup available</label>
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Amenities</legend>
+              <div class="mgmt-amenities" data-amenities aria-label="Amenities">
+                <p class="text-muted mb-0">Loading amenities…</p>
+              </div>
+              <p class="mgmt-field__error" data-amenities-error hidden></p>
+            </fieldset>
+
+            <fieldset data-mode="create">
+              <legend>Assignment</legend>
+              <div class="mgmt-form__fields">
+                <div class="mgmt-field">
+                  <label for="primaryAgentId">Primary agent ID</label>
+                  <input class="form-control" id="primaryAgentId" name="primaryAgentId" type="text" inputmode="text" placeholder="00000000-0000-0000-0000-000000000000" required>
+                  <p class="mgmt-field__hint">Enter the active agent's UUID. The backend validates the identifier and role.</p>
+                  <p class="mgmt-field__error" id="primaryAgentId-error" data-error-for="primaryAgentId" hidden></p>
+                </div>
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="mgmt-form__actions">
+            <button class="btn btn-primary" type="submit" data-submit-button>Create draft</button>
+            <a class="btn btn-outline-secondary" href="/dashboard/admin/properties.html">Cancel</a>
+          </div>
+        </form>
+
+        <aside class="mgmt-summary-rail" aria-label="Creation guidance">
+          <h2 class="h6">Before publishing</h2>
+          <ul class="mb-0">
+            <li>Complete every required field and save the draft.</li>
+            <li>Upload at least one image and choose a primary image.</li>
+            <li>Confirm the assigned agent is active.</li>
+            <li>Publish from the property list when the draft is ready.</li>
+          </ul>
+          <p class="mgmt-field__hint mb-0">Publication is validated by the backend; this page does not bypass those checks.</p>
+        </aside>
+      </div>
+    </main>
+
+    <div class="mgmt-denied" data-access-denied role="alert" tabindex="-1" hidden></div>
+    <div class="ev-toast-region" data-toast-region aria-live="polite" aria-atomic="false"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+  <script src="/assets/js/main.js"></script>
+  <script type="module" src="/assets/js/auth/auth-init.js"></script>
+  <script type="module" src="/assets/js/management/property-form-page.js"></script>
+</body>
+</html>

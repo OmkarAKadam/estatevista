@@ -389,6 +389,37 @@ A partial unique index should enforce one primary image per property:
 
 `UNIQUE(property_id) WHERE is_primary = TRUE`
 
+## 7.2 `property_image_deletion_outbox`
+
+Created by Flyway V17 under the project-owner-approved deletion-outbox ADR (`STAGE_4_IMAGE_DELETION_OUTBOX_ADR.md`, 22 November 2026). Stores durable provider-cleanup work for images whose active metadata has already been removed. The row is inserted in the same transaction that deletes the `property_images` row, so a rollback leaves both metadata and provider bytes intact.
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| id | UUID | PK | Cleanup task identifier |
+| property_id | UUID | FK → properties.id, RESTRICT, NOT NULL | Owning property |
+| image_id | UUID | NOT NULL | Removed image identifier (audit reference only) |
+| storage_provider | VARCHAR(30) | NOT NULL | Provider name |
+| storage_public_id | VARCHAR(255) | NULL | Provider asset identifier |
+| actor_id | UUID | NULL | Principal that requested deletion |
+| status | VARCHAR(20) | NOT NULL, CHECK | `PENDING`, `PROCESSING`, `FAILED`, `COMPLETED`, or `DEAD_LETTER` |
+| attempts | INTEGER | NOT NULL, DEFAULT 0, CHECK ≥ 0 | Claim count |
+| next_attempt_at | TIMESTAMPTZ | NOT NULL | Earliest retry time |
+| last_attempt_at | TIMESTAMPTZ | NULL | Time of the most recent claim/attempt |
+| completed_at | TIMESTAMPTZ | NULL | Time provider cleanup was confirmed |
+| locked_until | TIMESTAMPTZ | NULL | Lease held by a worker |
+| last_error | VARCHAR(255) | NULL | Safe failure class only; no provider diagnostics |
+| created_at | TIMESTAMPTZ | NOT NULL | Task creation time |
+| updated_at | TIMESTAMPTZ | NOT NULL | Last state change |
+
+Rules:
+
+- `UNIQUE (storage_provider, storage_public_id)` prevents duplicate cleanup tasks for the same asset.
+- Due-task claim uses `(status, next_attempt_at)` and `(status, locked_until)` indexes with `FOR UPDATE SKIP LOCKED`; provider I/O never occurs inside a database transaction.
+- Provider deletion is idempotent: `not found` is recorded as `COMPLETED / ALREADY_MISSING`.
+- Failures retry with bounded exponential backoff; exhausted attempts become `DEAD_LETTER` and are audited.
+- Manual recovery: set a dead-letter row to `PENDING`, reset `attempts = 0`, `next_attempt_at = now()`, `locked_until = NULL`, and `last_error = NULL`. The next worker poll retries it. Completed-row pruning requires the approved retention policy.
+- The table stores identifiers only — never image bytes, credentials, signatures, or tokens.
+
 # 8. Property Amenities
 
 ## 8.1 `amenities`

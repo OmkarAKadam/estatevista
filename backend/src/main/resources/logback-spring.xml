@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <springProperty scope="context" name="APPLICATION_NAME"
+                    source="spring.application.name"
+                    defaultValue="estatevista-api"/>
+
+    <!--
+      Stage 3.6 D-11: every log line carries the request correlation id from
+      CorrelationIdFilter. The replace converter is a defense-in-depth redactor
+      for accidental key=value logging of credentials, tokens, cookies, or
+      session identifiers; application code must never emit those values.
+    -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %-5level [${APPLICATION_NAME}] [%thread] requestId=%X{requestId:-} %logger{36} - %replace(%msg){'(?i)(password|passwd|pwd|token|secret|authorization|cookie|sessionid|jsessionid|ev_session)\s*[=:]\s*[^,\s]+', '$1=[REDACTED]'}%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>

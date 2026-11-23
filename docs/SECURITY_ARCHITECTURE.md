@@ -682,7 +682,7 @@ CORS is not an authorization control and does not replace CSRF protection. A dis
 
 #### 8.5.7 Token lifecycle
 
-The following lifecycle is normative for the frontend and backend. "Bootstrap" means `GET /api/v1/auth/me` with `credentials: "include"`.
+The following lifecycle is normative for the frontend and backend. "Bootstrap" means `GET /api/v1/auth/me` with `credentials: "include"`. A public compatibility bootstrap, `GET /api/v1/auth/csrf`, follows the same transport rule: it returns the session-bound token only in the CORS-exposed `X-CSRF-TOKEN` response header with `Cache-Control: no-store`; its JSON body has no token or alternative token field. It does not authenticate the caller, weaken session binding, broaden CSRF exemptions, or replace the authoritative authenticated `/auth/me` bootstrap.
 
 | Event | Backend behaviour | Frontend behaviour |
 |---|---|---|
@@ -713,7 +713,7 @@ The session-bound synchronizer design **cannot** be implemented by simply config
 
 **Version-specific verification (9 November 2026).** The feasibility claims above were rechecked against the official Spring Security 6.5.11 API reference and source and the 7.1.2 source; the full findings are in Section 18.6. In both versions `HttpSessionCsrfTokenRepository` stores the token in the `HttpSession`, defaults the header to `X-CSRF-TOKEN`, generates with `UUID.randomUUID()`, and never writes a cookie. `CsrfTokenRepository.loadDeferredToken` exists since 5.8, so the token can stay deferred until first use. `CsrfAuthenticationStrategy` removes the token on successful authentication and supports a `setRequestHandler` hook, which is the supported place to write the post-rotation token. `XorCsrfTokenRequestAttributeHandler` is the default BREACH-masking handler; a plain `CsrfTokenRequestAttributeHandler` resolves the raw header value. Spring Security 7.1 adds a `csrf.spa()` shorthand that 6.5 does not have. These findings support approval of the design (SD-53). At the time of this review no dependency version was pinned; Stage 1.8 now pins Spring Boot 4.1.2 and Spring Security 7.1.2 and records the recheck in `DEVELOPMENT_SETUP.md` §12. The wiring must still be implemented and tested against that version.
 
-The mechanism is recorded as **SD-53, Approved (design; version recheck gate)**, and is not implemented by this document. Its responsibilities are:
+The mechanism is recorded as **SD-53, Approved (design; version recheck gate)**. The baseline responsibilities are implemented in Stage 3.6 and verified in `docs/validation/STAGE_3_6_SD53_FINAL_VERIFICATION_REPORT.md`; they remain:
 
 1. **Token storage and generation** (implementation options: extend or wrap `HttpSessionCsrfTokenRepository`, or write a working-name `SessionCsrfTokenRepository`): store the `CsrfToken` as an `HttpSession` attribute under a namespaced key, load it for the current session, save it on rotation, and clear it when the session is invalidated. Generate the token with `SecureRandom` at the required 256 bits rather than relying on the default `UUID` generator. It must never write a cookie.
 2. **`CsrfFilter` wiring**: register the repository with `http.csrf(...)` and keep the `X-CSRF-TOKEN` header name. Use a `CsrfTokenRequestHandler` that resolves the raw header token against the session token. The exact handler choice must be verified against the Spring Security version in use. In particular, when BREACH masking is enabled (`XorCsrfTokenRequestAttributeHandler`), the handler must correctly resolve the unmasked header value rather than the masked request attribute; if a framework-provided SPA handler is available in the selected version, verify that it matches this session-backed, header-only flow before using it.
@@ -723,7 +723,7 @@ The mechanism is recorded as **SD-53, Approved (design; version recheck gate)**,
 6. **Rotation on authentication**: Spring Security's `CsrfAuthenticationStrategy` clears the token when authentication succeeds. Verify that the login response header is written after that strategy runs, so the browser receives the new session-bound token rather than the pre-authentication value. The password-change and privilege-change paths need the same ordering check.
 7. **Persistence**: the token lives in `spring_session_attributes` through Spring Session JDBC; no new table is required beyond the session schema in SD-03. On session invalidation the attribute disappears with the session.
 
-The exact Spring Security configuration is an approved design. The dependency version is now selected (Spring Security 7.1.2 through Spring Boot 4.1.2), and the recheck is recorded in `DEVELOPMENT_SETUP.md` §12. The wiring must still be proven with the tests in Section 17, not assumed from the framework documentation. This document does not claim that the mechanism is already implemented.
+The exact Spring Security configuration is an approved design. The dependency version is selected (Spring Security 7.1.2 through Spring Boot 4.1.2), and the recheck is recorded in `DEVELOPMENT_SETUP.md` §12. Stage 3.6 wires a session-backed custom 256-bit generator (`com.estatevista.config.SecureCsrfTokenRepository`, 32 bytes / 256 bits from `java.security.SecureRandom`, URL-safe Base64 without padding), plain raw-header request handling, header-only token delivery, and JSON CSRF failure handling; verification evidence is recorded in `docs/validation/STAGE_3_6_SD53_FINAL_VERIFICATION_REPORT.md`. The broader Section 17 suite remains additional acceptance evidence for the full security architecture.
 
 **BREACH consideration:** the token is delivered in a response header rather than in a compressed HTML body, which avoids the classic BREACH reflection path. If HTTP compression is enabled for responses that carry the header, the implementation must verify that the header is not attacker-reflected into the compressed body. Do not put the token in a page body.
 
@@ -1197,7 +1197,7 @@ The endpoint list is the approved API Specification. This table does not invent 
 | GET | `/properties/{propertyId}/related` | Public | Eligible public records | `404` |
 | PUT | `/properties/{propertyId}` | Assigned Agent / Admin | Current `primary_agent_id`; admin any | `401`, `403`, `404` |
 | PATCH | `/properties/{propertyId}` | Assigned Agent / Admin | Current assignment; field allowlist | `400`, `401`, `403`, `404` |
-| PATCH | `/properties/{propertyId}/status` | Admin / authorized Agent | Current assignment; allowed transitions; no admin-only statuses for agents | `400`, `401`, `403`, `404`, `409` |
+| PATCH | `/properties/{propertyId}/status` | Admin / authorized Agent | Current assignment; one authoritative transition table: agents may publish, unpublish, republish, and record matching `SOLD`/`RENTED` outcomes for assigned listings; reopening `SOLD`/`RENTED` and every transition to `ARCHIVED` remain `ADMIN`-only (D-06 reconciliation). This clarifies the former “no admin-only statuses for agents” wording without changing a role gate or endpoint. | `400`, `401`, `403`, `404`, `409`, `422` |
 | DELETE | `/properties/{propertyId}` | Admin | Logical archive; preserves history | `401`, `403`, `404`, `409` |
 | GET | `/admin/properties` | Admin | Platform properties; includes archived only if approved | `401`, `403` |
 | PATCH | `/admin/properties/{propertyId}/assignment` | Admin | Validate active `AGENT`; one primary; audit | `400`, `401`, `403`, `404`, `409` |
@@ -1206,6 +1206,8 @@ The endpoint list is the approved API Specification. This table does not invent 
 | GET | `/amenities` | Public | Public lookup | — |
 
 For every public property endpoint above, **eligible** means `properties.status = 'PUBLISHED'` and the property is not otherwise withdrawn (C-10/D-08). `DRAFT`, `UNAVAILABLE`, `SOLD`, `RENTED`, and `ARCHIVED` records are excluded from discovery, featured, recent, related, and direct public detail. The filter is applied in the query, not only in the presenter, so pagination totals and related-property selection cannot leak hidden records. Authenticated historical access is governed by the ownership rules in Sections 10.4.5–10.4.7 and the retention rules in Section 14.8.
+
+**D-06 wording reconciliation (Stage 4.1).** The former condition “no admin-only statuses for agents” meant that no status value is reserved exclusively for administrators; it did not mean that every transition is available to an agent. The authoritative lifecycle table in `PROPERTY_DOMAIN_DESIGN.md` §4.3 reserves reopening completed `SOLD`/`RENTED` listings and all archival for `ADMIN`, while assigned agents retain the ordinary publish, unpublish, republish, and matching-outcome transitions. No endpoint, role gate, status value, or public-visibility rule is changed by this clarification.
 
 #### 10.4.4 Property images
 
@@ -1394,7 +1396,7 @@ Administrative safeguards:
 | Authenticated but not the owner/assignee | `403` or `404` | Generic "not available" | The approved API defines `403` for insufficient permission and `404` for not accessible; prefer `403` for consistency with UI §8.9/§9.12, and use `404` for genuinely absent records. Avoid a response that confirms the existence of another user's record. |
 | Resource genuinely absent | `404` | Standard error envelope | Do not leak whether it existed |
 | Duplicate/conflict | `409` | Conflict code | Favorites and conversations rely on uniqueness |
-| Invalid business state | `422` | Validation/business code | For example, invalid status transition |
+| Invalid business state | `409` or `422` | Validation/business code | Property lifecycle: illegal or same-status transitions return `409`; `422` is reserved for unmet publication prerequisites (PROPERTY_API_DESIGN §4.8, D-06). The two codes are not interchangeable. |
 | Rate limited | `429` | `Retry-After` | Generic, no account-status disclosure |
 | Payload too large / unsupported media | `413` / `415` | File-specific, safe | Upload only |
 | Server/configuration failure | `500`/`503` | Generic; correlation ID | No stack trace or SQL |
@@ -1514,7 +1516,7 @@ CSRF is required because the recommended authentication uses an ambient cookie. 
 
 - Enable Spring Security CSRF for all mutating REST requests.
 - Use a session-bound repository: either extend/wrap Spring Security's `HttpSessionCsrfTokenRepository` or implement an equivalent (SD-53) that stores the token in the authenticated `HttpSession` and never writes a cookie. Generate at least 256 bits of randomness rather than relying on the default `UUID` generator. **Do not use `CookieCsrfTokenRepository`** for this design; it implements double-submit and would reintroduce the cookie-tossing weakness described in Section 8.5.2. A thin custom repository or token generator plus a response-header writer is nonetheless required for the 256-bit and delivery requirements (Section 8.5.8).
-- Require the token in the `X-CSRF-TOKEN` request header. The frontend obtains it from the `X-CSRF-TOKEN` response header on `GET /auth/me` or the login response, exposes it through CORS (`Access-Control-Expose-Headers`), and holds it in memory only.
+- Require the token in the `X-CSRF-TOKEN` request header. The frontend obtains it from the `X-CSRF-TOKEN` response header on `GET /auth/me` or the login response, exposes it through CORS (`Access-Control-Expose-Headers`), and holds it in memory only. If the public compatibility `GET /auth/csrf` is used, it likewise returns the token only in the header with `Cache-Control: no-store` and never in its JSON body.
 - Ignore CSRF only for the four unauthenticated authentication POSTs identified in Section 8.5.10 and the WebSocket handshake path; logout and password change are not exempt. Document every exception and its compensating controls.
 - Rotate the token on login, session-ID rotation, privilege change, and password change. The token is destroyed with the session on logout, expiry, deactivation, or suspension.
 - Validate `Origin`/`Referer` on state-changing requests in addition to the token (Section 8.5.9). Reject a missing Origin and Referer on a state-changing browser request.
@@ -1706,7 +1708,7 @@ Do not expose `Server`, framework version, or internal build details in headers 
 | Duplicate conversation | Unique constraint; return the existing conversation with `200` (API §25.1.A) |
 | Duplicate message | No approved idempotency key yet (D-23); client retries may duplicate; document the risk and add an idempotency key only after approval |
 | Concurrent assignment | Use optimistic locking/versioning (approved) or a transaction with a fresh read; return `409` on conflict |
-| Concurrent status change | Re-read state inside the transaction; return `409`/`422` on an invalid transition |
+| Concurrent status change | Re-read state inside the transaction; return `409` for an illegal or same-status transition and `422` only for unmet publication prerequisites (D-06) |
 
 ### 11.16 API inventory and deny-by-default
 
@@ -3127,7 +3129,7 @@ The UI/UX register uses `D-xx` identifiers. This register uses `SD-xx` and maps 
 | SD-50 | MFA for administrators | **Deferred** | Non-blocking | Not in approved requirements | Outside MVP; compensate with session/audit controls |
 | SD-51 | Audit-log retention period | **Deferred** | Non-blocking | DB §13 | Outside MVP; preserve append-only records until decided |
 | SD-52 | Self-host Bootstrap/fonts where practical; CSP without `unsafe-inline`/`unsafe-eval` | **Approved** | Non-blocking | ARC-004; UI §18.11 | Implement asset strategy; configure headers |
-| SD-53 | Implement the session-bound synchronizer CSRF mechanism with a session-backed repository — extend/wrap the standard `HttpSessionCsrfTokenRepository`, or an equivalent custom `CsrfTokenRepository` — that stores the token in the `HttpSession` and never writes a cookie; generate at least 256 bits, expose the raw token through `X-CSRF-TOKEN`, resolve the header correctly (including BREACH-masking handler behaviour), write the header after authentication rotation, and integrate the JSON `403` handler. `CookieCsrfTokenRepository` is explicitly not used. | **Approved** (design; version recheck gate, Section 18.6) | Non-blocking | Section 8.5.8; SD-05; `DEVELOPMENT_SETUP.md` §12 | Implement the wiring against Spring Security 7.1.2 (recheck complete) and pass the Section 17 tests before any Verified claim |
+| SD-53 | Implement the session-bound synchronizer CSRF mechanism with a session-backed repository — extend/wrap the standard `HttpSessionCsrfTokenRepository`, or an equivalent custom `CsrfTokenRepository` — that stores the token in the `HttpSession` and never writes a cookie; generate at least 256 bits, expose the raw token through `X-CSRF-TOKEN`, resolve the header correctly (including BREACH-masking handler behaviour), write the header after authentication rotation, and integrate the JSON `403` handler. `CookieCsrfTokenRepository` is explicitly not used. | **Approved** (design); Stage 3.6 implementation wired and verified for SD-53 entropy/lifecycle/contract in `docs/validation/STAGE_3_6_SD53_FINAL_VERIFICATION_REPORT.md` | Non-blocking | Section 8.5.8; SD-05; `DEVELOPMENT_SETUP.md` §12 | Broader Section 17 acceptance evidence remains for the full security architecture |
 
 ### 18.3 Decision summary and resolved blockers
 
@@ -3143,7 +3145,7 @@ The five decisions that were pending in 0.4 are resolved under the delegated tec
 | SD-12 | Agent activation (D-14) | `INACTIVE` creation plus 256-bit 72-hour single-use activation token through the existing reset flow approved | Implement; shares the email-delivery prerequisite with SD-11 |
 | SD-48 | Hosting/session-cookie architecture | Option C architecture approved; Option B rejected; Option A unverified | Supply exact hostnames, CORS origin, `X-CSRF-TOKEN` exposure, and WebSocket origin as deployment configuration |
 
-SD-53 is approved as a design with a non-blocking version gate. Spring Boot 4.1.2 and Spring Security 7.1.2 are now pinned in the repository, and the Section 18.6 verification was repeated against 7.1.2 in `DEVELOPMENT_SETUP.md` §12. The implementation must still be wired and tested against that version before any Verified claim.
+SD-53 is approved as a design. Spring Boot 4.1.2 and Spring Security 7.1.2 are pinned in the repository, and the Section 18.6 verification was repeated against 7.1.2 in `DEVELOPMENT_SETUP.md` §12. Stage 3.6 wires the implementation and records verification evidence in `docs/validation/STAGE_3_6_SD53_FINAL_VERIFICATION_REPORT.md`; the broader Section 17 suite remains additional acceptance evidence for the full security architecture.
 
 No approved decision may be silently changed in code, and no implementation may claim Verified status until the Section 17 tests pass.
 
@@ -3234,14 +3236,14 @@ This verification was performed on 9 November 2026 against the official Spring S
 |---|---|---|---|
 | Session-backed storage | `HttpSessionCsrfTokenRepository` stores the token in the `HttpSession` and never writes a cookie | Same | The standard repository is the correct storage baseline; a fully custom repository is not required for storage. |
 | Default header name | `X-CSRF-TOKEN` | `X-CSRF-TOKEN` | The design's header name matches the framework default. |
-| Token generation | `UUID.randomUUID()` (about 122 bits) | `UUID.randomUUID()` (about 122 bits) | A custom 256-bit generator is still required to meet the design. |
+| Token generation | `UUID.randomUUID()` (about 122 bits) | `UUID.randomUUID()` (about 122 bits) | A custom 256-bit generator was required to meet the design; Stage 3.6 implements it via `SecureCsrfTokenRepository` (32 bytes / 256 bits from `SecureRandom`). |
 | Deferred token loading | `CsrfTokenRepository.loadDeferredToken` available (since 5.8) | Available | The token can remain deferred until first use, which suits header-only delivery. |
 | Rotation on authentication | `CsrfAuthenticationStrategy` removes the token on success; supports `setRequestHandler` | Same | The post-authentication header write must be ordered after this strategy; the hook is the supported place. |
 | BREACH masking | `XorCsrfTokenRequestAttributeHandler` is the default | Same, plus `csrf.spa()` shorthand | The handler must resolve the raw header value; 6.5 needs the explicit SPA-style handler configuration that 7.1 can express with `csrf.spa()`. |
 | Cookie repository | `CookieCsrfTokenRepository` is double-submit and cookie-based | Same | Explicitly rejected: it reintroduces cookie tossing and is not session-bound. |
 | CORS exposure | `exposedHeaders("X-CSRF-TOKEN")` required | Same | The CORS contract in Section 8.5.5 is still required. |
 
-At the time of this review no Spring Boot or Spring Security version was pinned. Stage 1.8 now pins Spring Boot 4.1.2 and Spring Security 7.1.2 and repeats this check against 7.1.2 in `DEVELOPMENT_SETUP.md` §12. The tests in Section 17, especially the ST-CSRF suite, remain the acceptance evidence. **SD-53 is Approved as a design with a non-blocking version gate**; it is neither Implemented nor Verified, and the wiring and tests must be completed before the CSRF control is treated as production-ready.
+At the time of this review no Spring Boot or Spring Security version was pinned. Stage 1.8 pinned Spring Boot 4.1.2 and Spring Security 7.1.2 and repeated this check against 7.1.2 in `DEVELOPMENT_SETUP.md` §12. Stage 3.6 implements the SD-53 wiring (session-backed custom 256-bit `SecureRandom` token generation, plain raw-header request handling, header-only delivery, and lifecycle/audit behavior) and verifies it in `docs/validation/STAGE_3_6_SD53_FINAL_VERIFICATION_REPORT.md`. The broader Section 17 test suite remains additional acceptance evidence for the full security architecture.
 
 ### 18.7 Delegated technical determinations
 
@@ -3254,7 +3256,7 @@ On 11 November 2026 the project owner delegated technical approval authority to 
 | SD-11 | **Approved** | 256-bit random tokens make guessing infeasible; storing only a SHA-256 hash limits damage from a database read; 30-minute single-use expiry plus session revocation blocks replay and stolen-session reuse. Neutral responses resist enumeration. | API §3.3; UI D-21; Section 9.6.3 | Email provider, sender domain, credentials; token-table migration |
 | SD-12 | **Approved** | Creating the agent `INACTIVE` with a single-use 72-hour purpose-scoped token removes admin-known passwords. Reusing the existing reset contract avoids a second conflicting token endpoint while keeping purpose separation. | API §5.1, §3.3, §23; UI D-14; FR-AUTH-008; Section 9.5 | Email delivery (SD-11); implement purpose scope and an `INACTIVE` → `ACTIVE` transition |
 | SD-48 | **Approved** | Option C keeps the session cookie host-only and first-party for REST and WebSocket requests sent directly to the API host, and avoids a parent-domain cookie and an unverified WebSocket proxy. Exact-origin credentialed CORS with exposed `X-CSRF-TOKEN` is internally consistent with the CSRF design. | System Architecture §12; ARC-011–ARC-013; Section 8.5, §11.8, §12.3 | Exact hostnames, CORS origin, `X-CSRF-TOKEN` exposure, WebSocket origin; deployment spike if Option A is chosen |
-| SD-53 | **Approved** (design, version gate) | A session-bound synchronizer token with no CSRF cookie avoids double-submit and cookie-tossing weaknesses. `HttpSessionCsrfTokenRepository` provides the storage contract; a custom 256-bit generator and post-authentication header write complete the design. | Spring Security 6.5.11/7.1.2 references; Section 8.5.8, §18.6; `DEVELOPMENT_SETUP.md` §12 | Version recheck completed against Spring Security 7.1.2; implement the wiring and pass the ST-CSRF suite |
+| SD-53 | **Approved** (design); implemented and verified for SD-53 scope in Stage 3.6 | A session-bound synchronizer token with no CSRF cookie avoids double-submit and cookie-tossing weaknesses. `SecureCsrfTokenRepository` provides session-backed storage with 32-byte `SecureRandom` generation and header-only delivery completes the design. | Spring Security 6.5.11/7.1.2 references; Section 8.5.8, §18.6; `DEVELOPMENT_SETUP.md` §12; `docs/validation/STAGE_3_6_SD53_FINAL_VERIFICATION_REPORT.md` | Broader ST-CSRF/Section 17 acceptance evidence remains for the full security architecture |
 | ARC-010–ARC-013 | **Approved** | The approved deployment model and API contracts already assume Vercel, Render, Neon, and Cloudinary. Selecting them makes the architecture internally consistent; alternatives would require rewriting the deployment and upload design. | System Architecture §12; API §8, §21; Section 13.8, §16 | Accounts, plans, credentials, regions, quotas, and provider security settings remain deployment prerequisites; no integration is claimed |
 | C-10 / D-08 | **Approved** | Only `PUBLISHED` records are publicly retrievable. This prevents draft, unavailable, sold, rented, and archived listing data (and images) from leaking through discovery or direct detail, while authenticated participants can still reach historical references. It adds no status and changes no lifecycle. | PRD §6.1; FRD FR-DISC-010; Database Design §6.3; API §7; UI D-08 | Implement the filter in every public query and image path; historical access stays authenticated |
 
@@ -3685,7 +3687,7 @@ The following questions from 0.4 are now resolved or restated as prerequisites:
 6. **Retention — deferred.** Audit-log retention (SD-51) and account erasure (SD-17) remain outside the MVP; preserve records until decided.
 7. **Email verification — deferred.** Registration remains `ACTIVE`; no verified-email claim may be made (SD-16).
 8. **Residual risk acceptance — recorded in Section 21.6.** The delegated technical authority accepts the design residual risks for Stage 1.6; implementation acceptance and operational sign-off remain with the named owners in Section 22.2.
-9. **SD-53 — approved as a design with a version gate.** The session-backed repository, `X-CSRF-TOKEN` header contract, 256-bit generator, rotation ordering, and JSON `403` handler are approved. Spring Boot 4.1.2 / Spring Security 7.1.2 are pinned and the recheck is recorded in `DEVELOPMENT_SETUP.md` §12. The wiring must be implemented and pass the Section 17 tests.
+9. **SD-53 — approved as a design and implemented in Stage 3.6.** The session-backed repository, `X-CSRF-TOKEN` header contract, 256-bit `SecureRandom` generator, rotation/lifecycle handling, and JSON `403` handler are implemented and verified for SD-53 scope in `docs/validation/STAGE_3_6_SD53_FINAL_VERIFICATION_REPORT.md`. Spring Boot 4.1.2 / Spring Security 7.1.2 remain pinned; broader Section 17 evidence remains for the full security architecture.
 
 ### 21.6 Residual risk acceptance
 

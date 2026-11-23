@@ -22,10 +22,16 @@ server:
 spring:
   application:
     name: estatevista-api
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 5MB
+      max-request-size: 6MB
+      resolve-lazily: true
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/estatevista}
     username: ${DB_USERNAME:estatevista}
-    password: ${DB_PASSWORD:}
+    password: ${DB_PASSWORD:kai_vista}
     hikari:
       pool-name: EstateVistaPool
       maximum-pool-size: ${DB_POOL_SIZE:10}
@@ -65,6 +71,46 @@ app:
   websocket:
     endpoint: /ws
     allowed-origins: ${APP_WEBSOCKET_ALLOWED_ORIGINS:http://localhost:5500,http://127.0.0.1:5500}
+  rate-limit:
+    enabled: ${APP_RATE_LIMIT_ENABLED:true}
+    login:
+      max-attempts: ${APP_RATE_LIMIT_LOGIN_MAX_ATTEMPTS:10}
+      window-seconds: ${APP_RATE_LIMIT_LOGIN_WINDOW_SECONDS:900}
+    registration:
+      max-attempts: ${APP_RATE_LIMIT_REGISTRATION_MAX_ATTEMPTS:5}
+      window-seconds: ${APP_RATE_LIMIT_REGISTRATION_WINDOW_SECONDS:60}
+    image-upload:
+      max-attempts: ${APP_RATE_LIMIT_IMAGE_UPLOAD_MAX_ATTEMPTS:20}
+      window-seconds: ${APP_RATE_LIMIT_IMAGE_UPLOAD_WINDOW_SECONDS:3600}
+    public-search:
+      max-attempts: ${APP_RATE_LIMIT_PUBLIC_SEARCH_MAX_ATTEMPTS:120}
+      window-seconds: ${APP_RATE_LIMIT_PUBLIC_SEARCH_WINDOW_SECONDS:60}
+    property-detail:
+      max-attempts: ${APP_RATE_LIMIT_PROPERTY_DETAIL_MAX_ATTEMPTS:300}
+      window-seconds: ${APP_RATE_LIMIT_PROPERTY_DETAIL_WINDOW_SECONDS:60}
+    authenticated-api:
+      max-attempts: ${APP_RATE_LIMIT_AUTHENTICATED_API_MAX_ATTEMPTS:300}
+      window-seconds: ${APP_RATE_LIMIT_AUTHENTICATED_API_WINDOW_SECONDS:60}
+    admin-mutation:
+      max-attempts: ${APP_RATE_LIMIT_ADMIN_MUTATION_MAX_ATTEMPTS:60}
+      window-seconds: ${APP_RATE_LIMIT_ADMIN_MUTATION_WINDOW_SECONDS:60}
+  image-cleanup:
+    enabled: ${APP_IMAGE_CLEANUP_ENABLED:true}
+    poll-ms: ${APP_IMAGE_CLEANUP_POLL_MS:5000}
+    batch-size: ${APP_IMAGE_CLEANUP_BATCH_SIZE:20}
+    max-attempts: ${APP_IMAGE_CLEANUP_MAX_ATTEMPTS:5}
+    backoff-ms: ${APP_IMAGE_CLEANUP_BACKOFF_MS:1000}
+    max-backoff-ms: ${APP_IMAGE_CLEANUP_MAX_BACKOFF_MS:60000}
+    lease-seconds: ${APP_IMAGE_CLEANUP_LEASE_SECONDS:60}
+  storage:
+    cloudinary:
+      # Production adapter is opt-in. Secrets have no usable defaults.
+      enabled: ${CLOUDINARY_ENABLED:false}
+      cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+      api-key: ${CLOUDINARY_API_KEY:}
+      api-secret: ${CLOUDINARY_API_SECRET:}
+      folder: ${CLOUDINARY_FOLDER:estatevista/properties}
+      timeout-seconds: ${CLOUDINARY_TIMEOUT_SECONDS:10}
 
 logging:
   level:

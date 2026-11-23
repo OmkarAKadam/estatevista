@@ -22,3 +22,6 @@ Thumbs.db
 # Local scratch
 *.tmp
 *.local
+
+# Throwaway PostgreSQL cluster used by scripts/postgres-test-cluster.ps1
+.test-postgres/

@@ -1,14 +1,16 @@
 # EstateVista V2 — Development & Environment Setup
 
-**Stage:** 1.8 — Repository & Environment Setup
-**Status:** Project shell complete and validated locally
-**Last validated:** 2026-11-12 (Windows, PowerShell, local PostgreSQL)
+**Stage:** 2.8 — Backend Integration Review & Stage 2 Closure
+**Status:** Repository, persistence, validation, configuration, logging, and
+automated test baseline complete and validated locally
+**Last validated:** 2026-11-15 (Windows, PowerShell, local PostgreSQL 18.3)
 
 This document describes the actual, validated development environment for the
-EstateVista V2 backend and frontend shell. It is intentionally limited to
-infrastructure: no authentication workflow, business module, property CRUD,
-chat handling, Cloudinary upload, or production deployment is implemented in
-this stage.
+EstateVista V2 backend and frontend. It covers infrastructure, the completed
+backend authentication and security configuration, and the Stage 3.7 frontend
+authentication integration. Property management, chat handling, Cloudinary
+upload, and production deployment remain outside this document's completed
+scope.
 
 Approved source-of-truth documents:
 
@@ -70,24 +72,46 @@ EstateVista/
 │   ├── .env.example          # dummy values only; safe to commit
 │   ├── .gitignore            # ignores .env, target/, logs, IDE files
 │   ├── README.md
-│   └── src/main/
-│       ├── java/com/estatevista/
-│       │   ├── EstateVistaApplication.java
-│       │   ├── config/
-│       │   │   ├── AppProperties.java
-│       │   │   ├── CorsConfig.java
-│       │   │   ├── SecurityConfig.java
-│       │   │   └── WebSocketConfig.java
-│       │   └── common/health/HealthController.java
-│       └── resources/
-│           ├── application.yml
-│           ├── application-dev.yml
-│           ├── application-prod.yml
-│           └── db/migration/V1__spring_session_schema.sql
+│   ├── scripts/
+│   │   └── postgres-test-cluster.ps1   # disposable test DB + full verification
+│   ├── src/main/
+│   │   ├── java/com/estatevista/
+│   │   │   ├── EstateVistaApplication.java
+│   │   │   ├── config/
+│   │   │   │   ├── AllowedOrigins.java
+│   │   │   │   ├── AppProperties.java
+│   │   │   │   ├── CorsConfig.java
+│   │   │   │   ├── SecurityConfig.java
+│   │   │   │   └── WebSocketConfig.java
+│   │   │   ├── common/
+│   │   │   │   ├── exception/     # error codes, handler, /error controller
+│   │   │   │   ├── health/HealthController.java
+│   │   │   │   └── response/      # standard API error envelope
+│   │   │   ├── user/              # roles, users, agent profiles
+│   │   │   ├── property/          # properties, categories, details, images, amenities
+│   │   │   ├── favorite/          # buyer favorites
+│   │   │   ├── inquiry/           # buyer inquiries
+│   │   │   ├── chat/              # conversations, messages, read states
+│   │   │   ├── notification/      # user notifications
+│   │   │   └── audit/             # audit history
+│   │   └── resources/
+│   │       ├── application.yml
+│   │       ├── application-dev.yml
+│   │       ├── application-test.yml
+│   │       ├── application-prod.yml
+│   │       └── db/migration/      # V1 Spring Session; V2–V14 business schema
+│   └── src/test/java/com/estatevista/
+│       ├── common/                # web-layer contract and handler tests
+│       ├── config/                # security-chain, CORS, origin-validation tests
+│       └── persistence/           # opt-in PostgreSQL integration tests
 ├── frontend/
 │   ├── dev-server.mjs        # zero-dependency static server, port 5500
+│   ├── login.html            # Stage 3.7 login page
+│   ├── register.html         # Stage 3.7 buyer registration page
 │   ├── assets/js/core/config.js
 │   ├── assets/js/core/api.js
+│   ├── assets/js/auth/       # auth service, state, navigation, page scripts
+│   ├── assets/css/auth.css   # authentication page composition
 │   └── dev/setup-check.html  # development-only connectivity check
 └── docs/
     └── DEVELOPMENT_SETUP.md  # this document
@@ -132,14 +156,17 @@ configure them in your IDE run configuration.
 
 | Variable | Purpose | Local default / example |
 | --- | --- | --- |
-| `SPRING_PROFILES_ACTIVE` | Activates `dev` or `prod` profile | `dev` |
+| `SPRING_PROFILES_ACTIVE` | Activates `dev`, `test`, or `prod` profile | `dev` |
 | `SERVER_PORT` | API port | `8080` |
 | `DB_URL` | JDBC URL | `jdbc:postgresql://localhost:5432/estatevista` |
 | `DB_USERNAME` | Database user | `estatevista` |
 | `DB_PASSWORD` | Database password | local-only value; never committed |
 | `DB_POOL_SIZE` | Hikari maximum pool size | `10` |
-| `APP_CORS_ALLOWED_ORIGINS` | Exact, comma-separated CORS origins | `http://localhost:5500,http://127.0.0.1:5500` |
-| `APP_WEBSOCKET_ALLOWED_ORIGINS` | Exact, comma-separated WebSocket origins | `http://localhost:5500,http://127.0.0.1:5500` |
+| `TEST_DB_URL` | Isolated database for integration tests | `jdbc:postgresql://localhost:5432/estatevista_test` |
+| `TEST_DB_USERNAME` | Test database user | `estatevista` |
+| `TEST_DB_PASSWORD` | Test database password | local-only value; never committed |
+| `APP_CORS_ALLOWED_ORIGINS` | Exact, comma-separated CORS origins; **required** in `prod` | `http://localhost:5500,http://127.0.0.1:5500` |
+| `APP_WEBSOCKET_ALLOWED_ORIGINS` | Exact, comma-separated WebSocket origins; **required** in `prod` | `http://localhost:5500,http://127.0.0.1:5500` |
 | `SESSION_COOKIE_SECURE` | `Secure` session cookie flag | `false` locally; must be `true` in production |
 | `FORWARD_HEADERS_STRATEGY` | Proxy header handling | `none` locally; `native` behind a trusted proxy |
 | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM` | Reserved email placeholders | dummy values only; not wired in Stage 1.8 |
@@ -147,12 +174,15 @@ configure them in your IDE run configuration.
 
 Rules:
 
-- CORS and WebSocket origins must be explicit. `*` is rejected at startup when
-  credentials are enabled.
+- CORS and WebSocket origins must be explicit comma-separated `http`/`https`
+  origins. `AllowedOrigins` rejects wildcards, blank or empty lists, unresolved
+  `${...}` placeholders, paths (including a trailing `/`), queries, fragments,
+  user info, and non-HTTP schemes at startup.
 - Production values are supplied by the hosting environment. No production
   hostname or credential is committed.
 - `application-prod.yml` deliberately has no fallback for `DB_URL`,
-  `DB_USERNAME`, or `DB_PASSWORD`; startup must fail if they are missing.
+  `DB_USERNAME`, `DB_PASSWORD`, `APP_CORS_ALLOWED_ORIGINS`, or
+  `APP_WEBSOCKET_ALLOWED_ORIGINS`; startup must fail if any is missing.
 
 ---
 
@@ -181,9 +211,40 @@ The installed PostgreSQL service on the validation machine uses
 the validation run used an isolated temporary cluster instead (next section).
 Do not weaken the installed service's authentication to make local setup work.
 
-### 5.2 Isolated validation cluster (used for this stage)
+### 5.2 Repeatable isolated test cluster (used for this stage)
 
-A temporary cluster avoids changing the installed service:
+The integration tests require a real PostgreSQL database. Testcontainers is not
+used because Docker is not installed or available in this environment. Instead,
+`backend/scripts/postgres-test-cluster.ps1` provisions a disposable cluster that
+never touches the installed service:
+
+```powershell
+# Full verification: init/start cluster, run mvn -B clean verify, stop cluster
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\postgres-test-cluster.ps1 -Action verify
+
+# Or leave the cluster running for repeated runs
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\postgres-test-cluster.ps1 -Action start
+$env:TEST_DB_URL = "jdbc:postgresql://localhost:55433/estatevista_test"
+$env:TEST_DB_USERNAME = "postgres"
+$env:TEST_DB_PASSWORD = ""
+mvn -B clean verify
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\postgres-test-cluster.ps1 -Action stop
+```
+
+Facts about the script:
+
+- Cluster directory: `backend/.test-postgres` (Git-ignored, outside `target/` so
+  `mvn clean` cannot delete a running cluster).
+- Port: `55433` (the installed service on `5432` is not used).
+- Authentication: `trust`, localhost only.
+- Database: `estatevista_test`.
+- Actions: `verify`, `start`, `stop`, `status`.
+- `verify` always stops the cluster, even when Maven fails.
+
+Trust authentication is acceptable only for this throwaway cluster on a
+nonstandard port. It is not a development or production configuration.
+
+A manual throwaway cluster remains possible if the script cannot be used:
 
 ```powershell
 $pg = "C:\Program Files\PostgreSQL\18\bin"
@@ -202,22 +263,25 @@ $env:DB_USERNAME = "postgres"
 $env:DB_PASSWORD = ""
 ```
 
-Trust authentication is acceptable only for this throwaway cluster on a
-nonstandard port. It is not a development or production configuration.
-
 ### 5.3 Schema ownership
 
 - Flyway owns the schema. Spring Session is configured with
   `spring.session.jdbc.initialize-schema: never`.
 - `V1__spring_session_schema.sql` creates the framework-owned
   `SPRING_SESSION` and `SPRING_SESSION_ATTRIBUTES` tables approved by SD-03.
-- No business/domain tables are created in Stage 1.8.
+  It must never be modified or renumbered.
+- `V2`–`V14` create the approved business schema (18 tables, seeded roles and
+  property categories, constraints, and indexes). The sequence is defined in
+  `DATABASE_DESIGN.md` §19; the implementation and evidence are recorded in
+  `docs/validation/stage-2.3-2.4-completion-report.md`.
 - `ddl-auto` is `validate`; Hibernate must never create or alter schema.
 - `flyway.clean-disabled` is `true`.
+- A fresh database must migrate through all 14 versions before the application
+  starts. Startup fails if Hibernate validation finds a schema mismatch.
 
 PostgreSQL folds unquoted identifiers to lowercase, so the physical tables are
-`spring_session`, `spring_session_attributes`, and `flyway_schema_history`.
-Spring Session queries them with unquoted names and works correctly.
+`spring_session`, `spring_session_attributes`, `users`, `properties`, and so on.
+Spring Session and JPA queries use unquoted names and work correctly.
 
 ---
 
@@ -247,9 +311,15 @@ valid. Flyway logs the applied version, and Tomcat logs the listening port.
 | Profile | File | Behavior |
 | --- | --- | --- |
 | `dev` | `application-dev.yml` | Debug logging for application and web; Flyway logs via SLF4J |
-| `prod` | `application-prod.yml` | `Secure` session cookie, `forward-headers-strategy: native`, no DB fallbacks, INFO logging |
+| `test` | `application-test.yml` | Isolated test database; reduced logging; no production fallbacks |
+| `prod` | `application-prod.yml` | `Secure` session cookie, `forward-headers-strategy: native`, no DB or origin fallbacks, INFO logging, SQL/bind/extract at WARN |
 
-Shared settings live in `application.yml`.
+Shared settings live in `application.yml`. The `prod` profile fails fast:
+starting without `APP_CORS_ALLOWED_ORIGINS` exits with code `1` and reports
+`app.cors.allowed-origins contains an invalid origin:
+${APP_CORS_ALLOWED_ORIGINS}`; the WebSocket list behaves the same way. This is
+intentional, so a misconfigured deployment cannot silently accept development
+origins.
 
 ### Health endpoints
 
@@ -258,9 +328,27 @@ GET http://localhost:8080/api/v1/health
 GET http://localhost:8080/actuator/health
 ```
 
-The application health endpoint returns a minimal JSON document
-(`status`, `service`, `timestamp`). Actuator exposes only `health`, with
-details hidden.
+The application health endpoint returns a minimal liveness JSON document
+(`status`, `service`, `timestamp`) and does not query the database. Actuator
+exposes only `health`, with details hidden. Actuator includes the database
+indicator, so it returns `200 {"status":"UP"}` while PostgreSQL is reachable and
+`503 {"status":"DOWN"}` when it is not; `/api/v1/health` stays `200 UP` in both
+cases. Every other `/actuator/**` path (for example `/actuator/env`,
+`/actuator/beans`, `/actuator/configprops`, `/actuator/heapdump`, or
+`/actuator`) is not exposed and returns the standard `401` envelope.
+
+### Logging and exception hygiene
+
+- `GlobalExceptionHandler` logs client errors at debug and unexpected server
+  errors at error with the exception, but never logs request bodies or headers.
+- Malformed JSON and similar parser failures log only the method, path, and
+  exception simple name. Framework parser messages can contain an excerpt of the
+  rejected body and are not logged (SD-44, Security Architecture §11.13,
+  §11.17, and §14.9).
+- `prod` pins SQL, JDBC bind, and result-extraction loggers to `WARN` even if a
+  parent logger is raised later (SD-47).
+- Responses never contain stack traces, exception class names, SQL text, bean
+  names, or internal paths.
 
 ---
 
@@ -268,19 +356,21 @@ details hidden.
 
 `SecurityConfig` is a deny-by-default shell:
 
-- Public: `/api/v1/health`, `/actuator/health`, `/error`, `/ws`, `/ws/**`.
-- Everything else: `denyAll()` and returns `401` for unauthenticated requests.
+- Public: `/api/v1/health`, `/actuator/health`, `/error`.
+- Everything else, including `/ws` and `/ws/**`, is denied until the owning
+  stage adds an explicit matcher. Unauthenticated requests return `401` with the
+  standard error envelope.
 - Form login, HTTP Basic, and logout are disabled.
 - Boot's default in-memory user is excluded, so the shell never starts with
   generated credentials.
 - CSRF protection remains enabled with framework defaults.
-- The access-denied handler writes a small JSON body
-  (`{"error":"FORBIDDEN"}`), including for CSRF failures.
+- The access-denied handler writes the standard JSON error envelope, including
+  for CSRF failures.
 
-This is **not** an authentication implementation. The WebSocket handshake is
-currently unauthenticated and must not be exposed publicly until the
-authentication stage adds a session handshake interceptor and subscription
-authorization.
+This is **not** an authentication implementation, and it is not a CSRF
+implementation. The WebSocket transport is configured but the handshake stays
+denied until the authentication stage adds a session handshake interceptor,
+subscription authorization, and the SD-53 CSRF wiring.
 
 ### Session persistence
 
@@ -309,16 +399,23 @@ Registered for `/api/**` and `/actuator/health`:
 - Exposed response header: `X-CSRF-TOKEN` (reserved for SD-53).
 - `Access-Control-Allow-Credentials: true`.
 - Preflight cache: 3600 seconds.
-- Wildcard origins cause startup failure.
+- Wildcard, blank, malformed, placeholder, path, query, fragment, user-info, and
+  non-HTTP origins cause startup failure through the shared `AllowedOrigins`
+  validator.
 
 ### WebSocket
 
 - Native WebSocket (no SockJS), endpoint `/ws`.
 - Exact allowed origins from `APP_WEBSOCKET_ALLOWED_ORIGINS`.
-- Empty or wildcard origin lists fail startup, matching the CORS guard.
+- Empty, wildcard, and otherwise invalid origin lists fail startup through the
+  same `AllowedOrigins` validator as CORS.
 - STOMP broker destinations: `/queue`, `/topic`; application prefix `/app`;
   user prefix `/user`.
 - No message handlers, subscriptions, or authorization exist yet.
+- The HTTP security chain denies `/ws` and `/ws/**`; an unauthenticated
+  handshake returns `401` with the standard error envelope. The authentication
+  stage must add session handshake authentication and STOMP authorization
+  before the endpoint is made public.
 
 ---
 
@@ -338,14 +435,34 @@ Defaults:
 
 Runtime API configuration (`frontend/assets/js/core/config.js`):
 
-- Local hostnames (`localhost`, `127.0.0.1`) default to
-  `http://localhost:8080/api/v1`.
+- Local hostnames (`localhost`, `127.0.0.1`) use port `8080` on the same
+  hostname as the page, e.g. `http://localhost:8080/api/v1` or
+  `http://127.0.0.1:8080/api/v1`. Keeping the hostname aligned preserves the
+  `SameSite=Lax` session cookie on credentialed fetches.
 - Non-local deployments must define
   `window.ESTATEVISTA_CONFIG = { apiBaseUrl, webSocketUrl }` before the module
   scripts run.
 - The API client (`api.js`) uses `credentials: "include"` and keeps the CSRF
   token in memory only. It does not use cookies, `localStorage`,
   `sessionStorage`, URLs, or logs for the token.
+
+Stage 3.7 adds the authentication experience:
+
+- `frontend/login.html` and `frontend/register.html`.
+- `frontend/assets/js/auth/` for the auth service, in-memory state,
+  authentication-aware navigation, safe redirects, and page bootstrap.
+- `frontend/assets/css/auth.css` for the authentication page layout.
+- Every page includes `assets/js/auth/auth-init.js`, which asks
+  `GET /api/v1/auth/me` whether a session exists and updates the header.
+- Registration uses `POST /api/v1/auth/register` (CSRF-exempt, exact
+  Origin/Referer required). Login and logout are CSRF protected.
+- Login obtains `GET /api/v1/auth/csrf`, reads `X-CSRF-TOKEN` from the response
+  header, submits credentials with `credentials: "include"`, and verifies the
+  rotated session through `GET /api/v1/auth/me`.
+- HTML, CSS, and Vanilla ES modules only; no framework and no build step.
+
+Full contract, flows, and the manual verification checklist are documented in
+[`frontend/docs/AUTHENTICATION.md`](../frontend/docs/AUTHENTICATION.md).
 
 The dev server rejects path traversal and returns `404` for missing files. It
 is not a production server.
@@ -390,9 +507,101 @@ All commands were executed against the isolated PostgreSQL 18.3 cluster on port
 
 No unavailable check is reported as PASS.
 
+**Stage 4 reconciliation (22 November 2026).** Checks 27 and 28 remain recorded
+as BLOCKED for Stage 1.8; later Stage 3.8 and Stage 4 browser-to-backend evidence
+(`docs/validation/STAGE_3_8_TESTING_AND_CLOSURE_REPORT.md` and
+`docs/validation/STAGE_4_FINAL_COMPLETION_REPORT.md`) is separate later work and
+is not retroactively reported as a Stage 1.8 PASS. Production deployment remains
+an open production-readiness gate.
+
 The curated, trimmed command transcript for these checks is retained at
 [`docs/validation/stage-1.8-evidence.txt`](validation/stage-1.8-evidence.txt).
 Session identifiers in that transcript are redacted.
+
+### 10.1 Stage 2.3 / 2.4 persistence validation (2026-11-14)
+
+Executed against a throwaway PostgreSQL 18.3 cluster on port `55433`
+(`estatevista` and `estatevista_test` databases, trust authentication, deleted
+after validation). Full evidence and acceptance assessment are in
+`docs/validation/stage-2.3-2.4-completion-report.md`.
+
+| # | Check | Result |
+| --- | --- | --- |
+| 1 | Fresh cold build (`mvn -B clean package`) | PASS — `BUILD SUCCESS` |
+| 2 | Fresh migration V1→V14 | PASS — all 14 versions applied, `success = true` |
+| 3 | Business tables created | PASS — 18 tables |
+| 4 | Foreign keys | PASS — 28, including composite `(category_id, subtype_id)` |
+| 5 | CHECK constraints | PASS — 6 (account status, listing type, status, price, latitude, longitude) |
+| 6 | Indexes | PASS — 53, including partial primary-image unique index |
+| 7 | Migration idempotency | PASS — restart reported version `14`, no reapply |
+| 8 | Hibernate `ddl-auto=validate` | PASS — application started, health `UP` |
+| 9 | Case-insensitive duplicate email | PASS — rejected by `uk_users_email` |
+| 10 | Real-PostgreSQL integration tests | PASS — 11 tests |
+| 11 | Full `mvn -B clean verify` with test DB | PASS — 17 tests, 0 failures, 0 errors, 0 skipped |
+| 12 | `V1__spring_session_schema.sql` unchanged | PASS — no diff |
+
+### 10.2 Stage 2.5 / 2.6 validation infrastructure (2026-11-15)
+
+Executed against the packaged jar and a throwaway PostgreSQL 18.3 cluster on
+port `55433` (`estatevista`, `estatevista_test`, trust authentication, deleted
+after validation). The full acceptance assessment is in
+`docs/validation/stage-2.5-2.6-completion-report.md`.
+
+| # | Check | Result |
+| --- | --- | --- |
+| 1 | Full `mvn -B clean verify` with test DB | PASS — 40 tests, 0 failures, 0 errors, 0 skipped; Flyway validated 14 migrations at version 14 |
+| 2 | Web-only `mvn clean verify` without test DB | PASS — 29 executed, 11 skipped, no failures |
+| 3 | Exception/logging unit tests | PASS — 13 tests, including malformed-body log redaction |
+| 4 | Security filter-chain tests | PASS — 7 tests covering 401, 403, CSRF, public health, `/ws` denial, allowed/disallowed CORS |
+| 5 | Exact-origin validator tests | PASS — 6 tests |
+| 6 | `dev` application health | PASS — `200 {"status":"UP",...}` |
+| 7 | `dev` Actuator health | PASS — `200 {"status":"UP"}` |
+| 8 | Non-exposed Actuator paths | PASS — `/actuator`, `/actuator/env`, `/actuator/beans`, `/actuator/configprops`, `/actuator/heapdump` all `401` JSON envelope |
+| 9 | `/ws` remains denied | PASS — `401` JSON envelope |
+| 10 | Unknown API path | PASS — `401` JSON envelope |
+| 11 | CORS allowed origin | PASS — `200`, matching `Access-Control-Allow-Origin`, `Access-Control-Allow-Credentials: true`, `Access-Control-Expose-Headers: X-CSRF-TOKEN` |
+| 12 | CORS disallowed origin | PASS — `403`; body is Spring's plain-text `Invalid CORS request` (known limitation) |
+| 13 | Health with PostgreSQL stopped | PASS — `/actuator/health` `503 {"status":"DOWN"}`; `/api/v1/health` `200 UP` |
+| 14 | `prod` missing origin configuration | PASS — exit code `1`, `app.cors.allowed-origins contains an invalid origin: ${APP_CORS_ALLOWED_ORIGINS}` |
+| 15 | `prod` configured startup | PASS — started on the configured port; no `DEBUG` lines; synthetic DB password absent from logs |
+| 16 | `prod` session cookie | PASS — `EV_SESSION=...; Path=/; Secure; HttpOnly; SameSite=Lax` |
+| 17 | `prod` CORS allowed origin | PASS — `200` with credentialed CORS headers |
+| 18 | `V1`–`V14` unchanged | PASS — no migration diff |
+| 19 | Structured JSON logs, formal redaction policy, log retention | NOT PERFORMED — requirements remain unspecified (SD-44 deferred) |
+| 20 | Production deployment/TLS/proxy checks | NOT PERFORMED — out of scope and no production credentials |
+
+### 10.3 Stage 2.7 / 2.8 automated verification (2026-11-15)
+
+Executed from `backend/` with
+`postgres-test-cluster.ps1 -Action verify` against a disposable PostgreSQL 18.3
+cluster on port `55433`. The full acceptance assessment is in
+`docs/validation/stage-2.7-2.8-completion-report.md`.
+
+A database-free run (`mvn -B clean verify` without `TEST_DB_URL`) executed 60
+tests, skipped the 23 PostgreSQL-backed tests, and passed with 0 failures and 0
+errors. That mode does not verify persistence.
+
+| # | Check | Result |
+| --- | --- | --- |
+| 1 | Full `mvn -B clean verify` with test DB (run 1) | PASS — 83 tests, 0 failures, 0 errors, 0 skipped; `BUILD SUCCESS`; 1 min 38 s |
+| 2 | Full `mvn -B clean verify` with test DB (run 2) | PASS — identical totals; 1 min 37 s; confirms repeatability with a fresh cluster |
+| 3 | Flyway validation | PASS — 14 migrations validated, schema at version 14 |
+| 4 | Hibernate schema validation | PASS — `ddl-auto=validate`; full context started |
+| 5 | Full-context integration tests | PASS — 7 tests: migration state, health, Actuator, `/ws`, unknown route, CORS, CSRF |
+| 6 | Persistence/schema tests | PASS — 16 tests: metadata, repositories, column types, full graph, commercial details, enums, constraints |
+| 7 | Unit/web-layer tests | PASS — 60 tests across error contract, configuration, security, CORS, and identifiers |
+| 8 | JaCoCo report | PASS — instruction 70.09% (1720/2454), branch 75.45% (83/110), line 65.94% (517/784); no threshold enforced |
+| 9 | Packaged-jar runtime smoke (dev profile, port 18080) | PASS — started in 29.6 s; Flyway validated 14 migrations; `/api/v1/health` 200; `/actuator/health` 200 |
+| 10 | Actuator restriction at runtime | PASS — `/actuator/beans` 401 JSON envelope |
+| 11 | Deny-by-default at runtime | PASS — `/ws` and `/api/v1/not-implemented` 401 JSON envelopes |
+| 12 | Credentialed CORS at runtime | PASS — allowed origin 200 with matching origin, credentials, exposed `X-CSRF-TOKEN`; disallowed origin 403 without allow-origin |
+| 13 | CSRF default at runtime | PASS — tokenless `POST` 403 JSON envelope |
+| 14 | Session persistence at runtime | PASS — `EV_SESSION` cookie `HttpOnly; SameSite=Lax`; row in `spring_session`; `MAX_INACTIVE_INTERVAL` 1800 |
+| 15 | CI workflow | CONFIGURED, NOT EXECUTED — `.github/workflows/backend-verify.yml`; branch has not been pushed |
+| 16 | `V1`–`V14` unchanged | PASS — no migration diff |
+| 17 | Browser E2E / production deployment | NOT PERFORMED — no browser automation and no production credentials |
+
+No unavailable check is reported as PASS.
 
 ---
 
@@ -402,7 +611,43 @@ Session identifiers in that transcript are redacted.
 - No business modules, property CRUD, chat handling, or Cloudinary integration.
 - No WebSocket message handlers or STOMP authorization.
 - CSRF design (SD-53) is not implemented; only framework defaults are active.
-- No automated tests exist yet.
+- SD-44 is only partially addressed. Safe logging practices and malformed-body
+  redaction are in place, but a structured JSON log format, a formal redaction
+  policy, log retention/rotation, and a correlation-ID scheme remain
+  unspecified/deferred.
+- There is no request correlation ID yet. Error envelopes expose success/code/
+  message/details/timestamp/path only.
+- Disallowed-origin CORS responses are Spring's plain-text
+  `Invalid CORS request`, not the JSON error envelope. Allowed and disallowed
+  decisions are correct; only the body format differs.
+- Actuator shares the application port. It is protected by the deny-by-default
+  chain and exposes only `health`, but a separate management port is not
+  configured.
+- Multipart and some data-binding failures can fall through to the generic
+  `500` handler; they are safe (no internal detail) but not mapped to `400`.
+- Automated tests cover the health endpoint, the complete error-response
+  contract, configuration contracts, security-chain/CORS behavior, origin
+  validation, and composite identifiers (Stages 2.2/2.5/2.6/2.7) plus schema,
+  mapping, and constraint verification (Stage 2.3/2.4/2.7). The suite is 83 tests
+  when `TEST_DB_URL` points at an isolated PostgreSQL database: 60 unit/web-layer
+  and 23 PostgreSQL-backed. Without `TEST_DB_URL`, the 23 integration tests are
+  skipped and are not represented as persistence coverage. No authentication or
+  business-flow tests exist because those features are not implemented.
+- Testcontainers is not used because Docker is not available in the current
+  environment. The repository provides a disposable-cluster script instead, and
+  the CI workflow uses a `postgres:18` service container. Like `TEST_DB_URL`
+  itself, this is an environment/provisioning choice, not an application
+  dependency.
+- The GitHub Actions workflow is committed but has not run: the branch has not
+  been pushed. CI execution remains unverified until the first push.
+- JaCoCo reports coverage but enforces no threshold, because no coverage gate has
+  been approved. Current instruction coverage is 70.09%; this is an execution
+  indicator, not a correctness or production-readiness claim.
+- Render supplies `PORT`, while this application reads `SERVER_PORT`. Deployment
+  configuration must bridge that mismatch; it is not resolved in this stage.
+- The persistence layer has no services, controllers, or endpoints; role,
+  ownership, participant, and status-transition rules remain application-layer
+  work for later stages.
 - The setup-check page was validated at the HTTP/API layer, not through an
   automated browser.
 - Production deployment, TLS, email, and media storage are not configured.
@@ -420,7 +665,7 @@ Spring Security **7.1.2**:
 | --- | --- | --- |
 | Session-backed token storage | `HttpSessionCsrfTokenRepository` retained | Compatible |
 | Default header/parameter | `X-CSRF-TOKEN` / `_csrf` retained | Compatible |
-| Token generation | Default is UUID-based (~122 bits) | Approved 256-bit generator still required |
+| Token generation | Default is UUID-based (~122 bits) | Stage 3.6 implements `com.estatevista.config.SecureCsrfTokenRepository` to generate 32 bytes (256 bits) from `java.security.SecureRandom`, encoded as URL-safe Base64 without padding |
 | Lazy token loading | `loadDeferredToken` supported | Compatible |
 | Token masking | `XorCsrfTokenRequestAttributeHandler` is the default and unmasks submitted values | The approved frontend sends the raw session token in `X-CSRF-TOKEN`. Use a plain `CsrfTokenRequestAttributeHandler` (or an equivalent raw-header resolver), or emit the masked value in the response header. Do not pair the default XOR handler with a raw header token |
 | Rotation after authentication | `CsrfAuthenticationStrategy` available | Rotation ordering must be wired and tested |
@@ -432,10 +677,15 @@ Spring Security **7.1.2**:
 **Result:** the approved design remains implementable on Spring Security 7.1.2
 with no blocking API removal, but two framework defaults must not be used
 as-is: `csrf.spa()` (cookie-backed) and the default XOR handler (expects a
-masked value). It is **not** implemented in Stage 1.8. The authentication stage
-must add the 256-bit generator, response-header writer, raw-header-compatible
-request handler, post-rotation ordering, audit event, and the Section 17
-security tests before the design can be marked complete.
+masked value). Stage 3.6 implements the SD-53 baseline on Spring Security 7.1.2
+with `com.estatevista.config.SecureCsrfTokenRepository` (session-backed,
+32-byte `java.security.SecureRandom` token generation, URL-safe Base64 without
+padding, no cookie), a plain `CsrfTokenRequestAttributeHandler` for raw header
+tokens, header-only CSRF delivery on bootstrap/login/me responses, and the
+existing JSON failure/audit handling. Verification evidence is recorded in
+`docs/validation/STAGE_3_6_SD53_FINAL_VERIFICATION_REPORT.md`; the broader
+Section 17 suite remains additional acceptance evidence for the full security
+architecture.
 
 This caveat is also recorded in the `SecurityConfig` Javadoc so it is visible
 to the next stage.
@@ -472,8 +722,25 @@ Verify `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD`. The `prod` profile has no
 fallbacks by design.
 
 **CORS preflight fails**
-Use an exact origin from `APP_CORS_ALLOWED_ORIGINS`. Wildcards are rejected.
-Remember that `localhost` and `127.0.0.1` are different origins.
+Use an exact origin from `APP_CORS_ALLOWED_ORIGINS`. Wildcards, trailing
+slashes, paths, queries, fragments, user info, and non-HTTP schemes are rejected
+at startup and will not match a browser origin. Remember that `localhost` and
+`127.0.0.1` are different origins.
+
+**Production startup fails on an origin property**
+`prod` requires `APP_CORS_ALLOWED_ORIGINS` and
+`APP_WEBSOCKET_ALLOWED_ORIGINS`. An unresolved placeholder or an empty list
+produces `contains an invalid origin` or `must contain at least one explicit
+origin` and exit code `1`. Supply comma-separated exact origins.
+
+**Actuator returns 401**
+Only `/actuator/health` is exposed. Every other Actuator path is protected by
+the deny-by-default chain and returns the standard `401` envelope; this is
+expected, not a misconfiguration.
+
+**`/actuator/health` is DOWN but `/api/v1/health` is UP**
+Actuator includes the database indicator; the application health endpoint is a
+liveness check and does not. Check PostgreSQL connectivity and `DB_URL`.
 
 **Port already in use**
 Change `SERVER_PORT` for the API or `FRONTEND_PORT` for the dev server. Update
@@ -485,6 +752,19 @@ The installed service uses `scram-sha-256`. Set a known password for the
 development role instead of weakening `pg_hba.conf`. Use the isolated cluster
 approach only for throwaway validation.
 
+**Persistence tests do not run**
+`ApplicationIntegrationTest` and `BusinessSchemaIntegrationTest` are disabled
+unless `TEST_DB_URL` is set. Run the disposable cluster script first:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\postgres-test-cluster.ps1 -Action verify
+```
+
+For a manual setup, provide `TEST_DB_URL`, `TEST_DB_USERNAME`, and
+`TEST_DB_PASSWORD` for an isolated PostgreSQL database. The `test` profile
+defaults the password to empty, so a password-protected test database must supply
+it explicitly.
+
 ---
 
 ## 15. Stage boundary
@@ -494,3 +774,21 @@ transport, frontend hosting, and validation baseline. It does not complete
 Stage 1 as a whole. The Stage 1.9 documentation review and closure remain
 separate, and the authentication stage owns SD-53 implementation and all
 security tests.
+
+Stage 2.1 reconciles the repository baseline (HEAD `9e20ed5`, clean tree). Stage
+2.2 adds the layered application foundation: the `test` profile, the standard
+API error envelope and handlers, a replacement `/error` controller, and
+web-layer tests. It also closes the temporary public WebSocket handshake until
+authentication exists. Stage 2.3 creates the approved business schema through
+Flyway `V2`–`V14`; Stage 2.4 adds the matching JPA entities and repositories.
+Stage 2.5 expands exception-handling and security-filter contract tests and
+removes parser messages from malformed-request logs. Stage 2.6 adds shared
+exact-origin validation, fail-fast production origin configuration, explicit
+production SQL/bind/extract logging suppression, and verified health/Actuator
+behavior. Stage 2.7 adds the automated testing strategy: unit, web-layer,
+full-context, and persistence coverage; JaCoCo reporting; a disposable
+PostgreSQL test-cluster script; and a CI workflow. Stage 2.8 performs the
+integration review and final Stage 2 verification. Business services,
+authentication, and API endpoints remain in later stages. SD-44 (structured
+logging, formal redaction policy, retention) and SD-53 (CSRF wiring) remain
+incomplete; no production-readiness claim is made.
