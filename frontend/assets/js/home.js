@@ -101,11 +101,11 @@
   }
 
   function ensureCooldown() {
-    if (cooldown || !api || typeof api.createRateLimitCooldown !== "function") {
+    if (cooldown || !api) {
       return;
     }
 
-    cooldown = api.createRateLimitCooldown(function (active) {
+    var listener = function (active) {
       if (active) {
         setRetryState(true, "Waiting for the request limit to reset");
         return;
@@ -117,7 +117,16 @@
           "The request limit has reset. You can try again now."
         );
       }
-    });
+    };
+
+    if (typeof api.getPublicReadCooldown === "function") {
+      cooldown = api.getPublicReadCooldown();
+      if (typeof cooldown.subscribe === "function") {
+        cooldown.subscribe(listener);
+      }
+    } else if (typeof api.createRateLimitCooldown === "function") {
+      cooldown = api.createRateLimitCooldown(listener);
+    }
   }
 
   function beginCooldown(error) {

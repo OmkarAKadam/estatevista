@@ -66,6 +66,7 @@
   ];
   var state = defaultState();
   var lastMeta = null;
+  var referenceGeneration = 0;
   var activeController = null;
   var requestSequence = 0;
   var keywordTimer = null;
@@ -93,6 +94,8 @@
       keyword: "",
       categoryId: "",
       subtypeId: "",
+      _legacyType: "",
+      _legacyUnknown: false,
       listingType: "",
       minPrice: null,
       maxPrice: null,
@@ -197,11 +200,11 @@
   }
 
   function ensureCooldown() {
-    if (cooldown || !api || typeof api.createRateLimitCooldown !== "function") {
+    if (cooldown || !api) {
       return;
     }
 
-    cooldown = api.createRateLimitCooldown(function (active) {
+    var listener = function (active) {
       if (active) {
         setRetryState(true, "Waiting for the request limit to reset");
         renderReferenceRetryState();
@@ -219,7 +222,16 @@
         renderFilterNotice();
       }
       cooldownSource = "";
-    });
+    };
+
+    if (typeof api.getPublicReadCooldown === "function") {
+      cooldown = api.getPublicReadCooldown();
+      if (typeof cooldown.subscribe === "function") {
+        cooldown.subscribe(listener);
+      }
+    } else if (typeof api.createRateLimitCooldown === "function") {
+      cooldown = api.createRateLimitCooldown(listener);
+    }
   }
 
   function beginCooldown(error, source) {
@@ -487,6 +499,11 @@
     if (state.keyword) {
       params.set("keyword", state.keyword);
     }
+    /* An unresolved legacy subtype stays in the URL until it is resolved
+       against authoritative reference data or explicitly cleared. */
+    if (state._legacyType) {
+      params.set("type", state._legacyType);
+    }
     if (state.categoryId) {
       params.set("categoryId", state.categoryId);
     }
@@ -588,6 +605,7 @@
       return references.promise;
     }
 
+    var generation = ++referenceGeneration;
     var catalogues = activeCatalogues(options.keys);
     catalogues.forEach(function (entry) {
       references.status[entry.key] = "loading";
@@ -601,7 +619,13 @@
       );
     });
 
-    references.promise = Promise.allSettled(tasks).then(function (results) {
+    var ownPromise = Promise.allSettled(tasks).then(function (results) {
+      /* A superseded catalogue generation must never overwrite reference data
+         or user state established by a newer request. */
+      if (generation !== referenceGeneration) {
+        return false;
+      }
+
       var unavailable = [];
       var rateLimited = false;
       var rateLimitError = null;
@@ -654,10 +678,13 @@
         beginCooldown(rateLimitError, "reference");
       }
       renderReferenceRetryState();
-      references.promise = null;
+      if (references.promise === ownPromise) {
+        references.promise = null;
+      }
       return rateLimited;
     });
 
+    references.promise = ownPromise;
     return references.promise;
   }
 
@@ -683,13 +710,18 @@
     }
 
     var legacyType = state._legacyType;
-    if (catalogUnavailable("subtypes")) {
-      if (legacyType) {
-        addWarning("The saved property type will be applied when the subtype list is available.");
+    if (legacyType) {
+      /* Only authoritative, successfully loaded subtype data may resolve a
+         legacy criterion. A stale retained list is not authoritative. */
+      if (references.status.subtypes !== "ready" || catalogUnavailable("subtypes")) {
+        state._legacyUnknown = false;
+        addWarning(
+          "The saved property type '" + legacyType +
+          "' cannot be resolved because the subtype list is unavailable. No search was run."
+        );
+        return;
       }
-      return;
     }
-    delete state._legacyType;
 
     if (catalogUnavailable("categories")) {
       if (state.categoryId) {
@@ -700,7 +732,11 @@
       state.categoryId = "";
     }
 
-    if (state.subtypeId) {
+    if (catalogUnavailable("subtypes")) {
+      if (state.subtypeId) {
+        addWarning("The saved subtype was kept and will be checked when the subtype list is available.");
+      }
+    } else if (state.subtypeId) {
       var subtype = findReference(references.subtypes, state.subtypeId);
       if (!subtype) {
         addWarning("The saved subtype was not recognised and was removed.");
@@ -725,18 +761,49 @@
       }
     }
 
-    if (legacyType && !state.subtypeId) {
+    if (legacyType) {
+      /* An explicit canonical subtype selected by the user wins over the
+         legacy alias; never let a late catalogue response undo that choice. */
+      if (state.subtypeId) {
+        addWarning("The saved property type was replaced by the selected subtype.");
+        delete state._legacyType;
+        state._legacyUnknown = false;
+        legacyType = "";
+      }
+    }
+
+    if (legacyType) {
       var wanted = LEGACY_TYPE_SYNONYMS[legacyType] || legacyType;
+      var match = null;
       for (var index = 0; index < references.subtypes.length; index += 1) {
         var candidate = references.subtypes[index];
         if (normalizedName(candidate.name) === normalizedName(wanted)) {
-          state.subtypeId = candidate.id;
-          if (!state.categoryId && candidate.categoryId) {
-            state.categoryId = candidate.categoryId;
-          }
+          match = candidate;
           break;
         }
       }
+      if (!match) {
+        state._legacyUnknown = true;
+        addWarning(
+          "The saved property type '" + legacyType +
+          "' is not recognised. Clear it or choose a subtype to continue."
+        );
+        return;
+      }
+      if (state.categoryId && match.categoryId !== state.categoryId) {
+        state._legacyUnknown = true;
+        addWarning(
+          "The saved property type '" + legacyType +
+          "' does not belong to the saved category. Clear it or choose a subtype to continue."
+        );
+        return;
+      }
+      state.subtypeId = match.id;
+      if (!state.categoryId && match.categoryId) {
+        state.categoryId = match.categoryId;
+      }
+      delete state._legacyType;
+      state._legacyUnknown = false;
     }
   }
 
@@ -908,6 +975,12 @@
     if (state.keyword) {
       items.push({ label: "Keyword", value: state.keyword });
     }
+    if (state._legacyType) {
+      items.push({
+        label: state._legacyUnknown ? "Unrecognised property type" : "Property type (pending)",
+        value: state._legacyType
+      });
+    }
     var category = findReference(references.categories, state.categoryId);
     if (category) {
       items.push({ label: "Category", value: category.name });
@@ -974,6 +1047,13 @@
     }
 
     add("keyword", "Keyword", state.keyword);
+    if (state._legacyType) {
+      add(
+        "legacyType",
+        state._legacyUnknown ? "Unrecognised property type" : "Property type (pending)",
+        state._legacyType
+      );
+    }
     var category = findReference(references.categories, state.categoryId);
     add("categoryId", "Category", category ? category.name : "");
     var subtype = findReference(references.subtypes, state.subtypeId);
@@ -1024,11 +1104,13 @@
       state.subtypeId = "";
     } else if (key === "sort") {
       state.sort = "newest";
+    } else if (key === "legacyType") {
+      delete state._legacyType;
+      state._legacyUnknown = false;
     } else if (Object.prototype.hasOwnProperty.call(state, key)) {
       state[key] = "";
     }
 
-    delete state._legacyType;
     state.page = 0;
     pendingWarning = "";
     renderFilterNotice();
@@ -1097,7 +1179,6 @@
     var priceRangeError = "";
     var bedroomRangeError = "";
     if (
-      !errors.length &&
       minPrice.value !== null &&
       maxPrice.value !== null &&
       minPrice.value > maxPrice.value
@@ -1106,7 +1187,6 @@
       errors.push(priceRangeError);
     }
     if (
-      !errors.length &&
       minBedrooms.value !== null &&
       maxBedrooms.value !== null &&
       minBedrooms.value > maxBedrooms.value
@@ -1189,6 +1269,12 @@
     Object.keys(parsed.values).forEach(function (key) {
       next[key] = parsed.values[key];
     });
+    /* Other filter changes during a catalogue outage must not silently drop
+       the legacy criterion. An explicit canonical subtype selection does. */
+    if (state._legacyType && !next.subtypeId) {
+      next._legacyType = state._legacyType;
+      next._legacyUnknown = state._legacyUnknown;
+    }
     next.page = 0;
     state = next;
     renderSummary();
@@ -1207,6 +1293,9 @@
     lastErrorWasRateLimit = false;
     lastErrorWasOffline = false;
     setRetryState(false, "");
+    if (elements.clearLegacyType) {
+      elements.clearLegacyType.hidden = true;
+    }
     if (SKELETONS && typeof SKELETONS.cards === "function") {
       SKELETONS.cards(elements.skeletons, PAGE_SIZE, "col");
     }
@@ -1223,6 +1312,36 @@
     elements.pagination.hidden = true;
     elements.errorMessage.textContent = message;
     elements.count.textContent = "Property listings unavailable";
+    if (elements.clearLegacyType) {
+      elements.clearLegacyType.hidden = true;
+    }
+    renderReferenceRetryState();
+  }
+
+  /**
+   * A legacy subtype is preserved in URL and state while it is unresolved.
+   * No property search is issued in this state: an unrestricted result list
+   * would misrepresent the user's request.
+   */
+  function showLegacyPendingState() {
+    var type = state._legacyType;
+    var message = state._legacyUnknown
+      ? "The saved property type '" + type + "' is not recognised. Clear it or choose a subtype to continue."
+      : "The saved property type '" + type + "' cannot be applied because the subtype list is unavailable. No search was run; retry the list or clear this criterion.";
+
+    clearListingSkeleton();
+    elements.loading.hidden = true;
+    elements.error.hidden = false;
+    elements.empty.hidden = true;
+    elements.grid.hidden = true;
+    elements.pagination.hidden = true;
+    elements.grid.setAttribute("aria-busy", "false");
+    elements.errorMessage.textContent = message;
+    elements.count.textContent = "Property type awaiting reference data";
+    if (elements.clearLegacyType) {
+      elements.clearLegacyType.hidden = false;
+    }
+    renderSummary();
     renderReferenceRetryState();
   }
 
@@ -1403,12 +1522,20 @@
 
   function load(options) {
     options = options || {};
-    if (cooldown && cooldown.active() && cooldownSource === "listing") {
-      renderReferenceRetryState();
-      return;
-    }
+    /* URL state is written before the guards so a criterion change made
+       during a cooldown or a pending legacy resolution is still shareable and
+       survives refresh/back-forward while no request is issued. */
     if (options.historyMode) {
       writeUrl(options.historyMode);
+    }
+    if (state._legacyType) {
+      showLegacyPendingState();
+      return;
+    }
+    if (cooldown && cooldown.active()) {
+      setRetryState(true, "Waiting for the request limit to reset");
+      renderReferenceRetryState();
+      return;
     }
 
     var sequence = ++requestSequence;
@@ -1577,6 +1704,16 @@
     if (elements.referenceRetry) {
       elements.referenceRetry.addEventListener("click", retryReferences);
     }
+    if (elements.clearLegacyType) {
+      elements.clearLegacyType.addEventListener("click", function () {
+        delete state._legacyType;
+        state._legacyUnknown = false;
+        pendingWarning = "";
+        renderFilterNotice();
+        renderSummary();
+        load({ historyMode: "pushState" });
+      });
+    }
 
     window.addEventListener("offline", function () {
       lastErrorWasOffline = true;
@@ -1651,6 +1788,7 @@
       error: document.getElementById("errorState"),
       errorMessage: document.getElementById("errorMessage"),
       retry: document.getElementById("retryLoad"),
+      clearLegacyType: document.getElementById("clearLegacyType"),
       grid: document.getElementById("propertyGrid"),
       empty: document.getElementById("emptyResults"),
       pagination: document.getElementById("propertyPagination"),

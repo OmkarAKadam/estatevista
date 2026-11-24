@@ -15,6 +15,7 @@ import {
   describeApiFailure,
   parseRetryAfter,
   createRateLimitCooldown,
+  getPublicReadCooldown,
   isCancellation,
   isOfflineHint,
   isTimeout
@@ -271,6 +272,7 @@ window.EVPublicPropertyApi = {
   describeApiFailure,
   parseRetryAfter,
   createRateLimitCooldown,
+  getPublicReadCooldown,
   isCancellation,
   isOfflineHint,
   isTimeout

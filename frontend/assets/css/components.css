@@ -498,6 +498,15 @@
   box-shadow: none;
 }
 
+/* Bootstrap removes the default outline on these controls. The generic
+   :where(...) focus-visible rule in theme.css has lower specificity, so the
+   replacement indicator is restated here for the affected form controls. */
+.form-control:focus-visible,
+.form-select:focus-visible {
+  outline: 3px solid var(--ev-color-focus);
+  outline-offset: 2px;
+}
+
 /* -----------------------------------------------------------------------------
    7. Site header and primary navigation
    -------------------------------------------------------------------------- */
@@ -953,6 +962,8 @@
 
 .ev-notice__list dd {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: var(--ev-text-sm);
   font-weight: var(--ev-weight-semibold);
   color: var(--ev-color-text);
@@ -1173,6 +1184,9 @@
   display: inline-flex;
   align-items: center;
   gap: var(--ev-space-2);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   padding: var(--ev-space-1) var(--ev-space-3);
   border: 1px solid var(--ev-sage-300);
   border-radius: var(--ev-radius-pill);
@@ -1183,6 +1197,7 @@
 }
 
 .ev-active-filter button {
+  flex: 0 0 auto;
   padding: 0;
   border: 0;
   background: none;

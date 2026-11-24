@@ -107,7 +107,7 @@
               <label for="filterMinPrice" class="form-label small">Min price</label>
               <input type="number" class="form-control form-control-sm" id="filterMinPrice"
                      name="minPrice" min="0" step="0.01" placeholder="0"
-                     aria-describedby="filterPriceHelp">
+                     aria-describedby="filterPriceHelp filterPriceError">
             </div>
             <div class="col-6 col-md-4 col-lg-2">
               <label for="filterMaxPrice" class="form-label small">Max price</label>
@@ -131,7 +131,7 @@
               <label for="filterMinBedrooms" class="form-label small">Min bedrooms</label>
               <input type="number" class="form-control form-control-sm" id="filterMinBedrooms"
                      name="minBedrooms" min="0" step="1" placeholder="Any"
-                     aria-describedby="filterBedroomsHelp">
+                     aria-describedby="filterBedroomsHelp filterBedroomsError">
             </div>
             <div class="col-6 col-md-4 col-lg-2">
               <label for="filterMaxBedrooms" class="form-label small">Max bedrooms</label>
@@ -194,6 +194,9 @@
           <p class="ev-notice__note" id="errorMessage">The property service is unavailable. Please try again.</p>
           <p class="ev-notice__actions">
             <button type="button" class="btn btn-primary btn-sm" id="retryLoad">Retry</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="clearLegacyType" hidden>
+              Clear property type
+            </button>
           </p>
         </div>
 

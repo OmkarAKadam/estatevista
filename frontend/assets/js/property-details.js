@@ -170,11 +170,12 @@
   }
 
   function ensureCooldown() {
-    if (cooldown || !window.EVPublicPropertyApi || typeof window.EVPublicPropertyApi.createRateLimitCooldown !== "function") {
+    var bridge = window.EVPublicPropertyApi;
+    if (cooldown || !bridge) {
       return;
     }
 
-    cooldown = window.EVPublicPropertyApi.createRateLimitCooldown(function (active) {
+    var listener = function (active) {
       if (active) {
         setRetryState(true, "Waiting for the request limit to reset");
         return;
@@ -187,7 +188,16 @@
           "The request limit has reset. You can try again now."
         );
       }
-    });
+    };
+
+    if (typeof bridge.getPublicReadCooldown === "function") {
+      cooldown = bridge.getPublicReadCooldown();
+      if (typeof cooldown.subscribe === "function") {
+        cooldown.subscribe(listener);
+      }
+    } else if (typeof bridge.createRateLimitCooldown === "function") {
+      cooldown = bridge.createRateLimitCooldown(listener);
+    }
   }
 
   function beginCooldown(error) {
@@ -814,6 +824,17 @@
   /** Fetches a valid UUID; optional requests never block the main detail view. */
   function loadDetail(id) {
     activeId = id;
+    ensureCooldown();
+    if (cooldown && cooldown.active()) {
+      lastErrorWasRateLimit = true;
+      setRetryState(true, "Waiting for the request limit to reset");
+      showError(
+        "Property details unavailable",
+        describe({ reason: "rate_limit", retryAfterMs: cooldown.remainingMs() }),
+        true
+      );
+      return Promise.resolve();
+    }
     var sequence = ++requestSequence;
     ++detailSequence;
     cancelControllers();

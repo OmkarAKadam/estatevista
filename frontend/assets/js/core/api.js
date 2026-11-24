@@ -29,10 +29,19 @@ const RETRY_JITTER_MS = 250;
 const RETRYABLE_STATUSES = new Set([408, 425, 500, 502, 503, 504]);
 const FALLBACK_RATE_LIMIT_COOLDOWN_MS = 60000;
 const MIN_RETRY_AFTER_MS = 1000;
-const MAX_RETRY_AFTER_MS = 300000;
+
+/* A valid server cooldown is never shortened. `MAX_SAFE_COOLDOWN_MS` is only a
+   saturation point for values that cannot be represented by exact integer
+   arithmetic; it is effectively permanent and is never treated as a fallback. */
+const MAX_SAFE_COOLDOWN_MS = Number.MAX_SAFE_INTEGER - 1000;
+
+/* JavaScript timers are signed 32-bit; longer waits are chunked against the
+   absolute expiry instead of wrapping into an immediate callback. */
+const MAX_TIMER_DELAY_MS = 2147483647;
 
 let csrfToken = null;
 let csrfRequest = null;
+let sharedPublicReadCooldown = null;
 
 /**
  * Error raised for any unsuccessful API call.
@@ -177,7 +186,15 @@ function parseBodyWithSignal(response, signal) {
   );
 }
 
-/** Accepts delay-seconds and HTTP-date Retry-After values. */
+/**
+ * Accepts delay-seconds and HTTP-date Retry-After values.
+ *
+ * Returns the full server-provided duration in milliseconds, with no upper
+ * clamp that could shorten it. Unsafe numeric overflow saturates at a finite
+ * safe value; genuinely malformed or inaccessible values return null so the
+ * caller can apply the documented 60-second fallback. Expired values collapse
+ * to the one-second safety floor and can never shorten an existing cooldown.
+ */
 export function parseRetryAfter(value, now = Date.now()) {
   if (typeof value !== "string") {
     return null;
@@ -190,8 +207,12 @@ export function parseRetryAfter(value, now = Date.now()) {
   let milliseconds = null;
   if (/^\d+$/.test(raw)) {
     const seconds = Number(raw);
-    if (Number.isFinite(seconds)) {
-      milliseconds = seconds * 1000;
+    if (!Number.isFinite(seconds)) {
+      return MAX_SAFE_COOLDOWN_MS;
+    }
+    milliseconds = seconds * 1000;
+    if (!Number.isFinite(milliseconds)) {
+      return MAX_SAFE_COOLDOWN_MS;
     }
   } else {
     const date = Date.parse(raw);
@@ -200,13 +221,13 @@ export function parseRetryAfter(value, now = Date.now()) {
     }
   }
 
-  if (milliseconds === null || !Number.isFinite(milliseconds)) {
+  if (milliseconds === null || Number.isNaN(milliseconds)) {
     return null;
   }
   if (milliseconds <= 0) {
     return MIN_RETRY_AFTER_MS;
   }
-  return Math.min(Math.floor(milliseconds), MAX_RETRY_AFTER_MS);
+  return Math.min(Math.floor(milliseconds), MAX_SAFE_COOLDOWN_MS);
 }
 
 function apiErrorFromResponse(response, payload) {
@@ -284,6 +305,18 @@ function cancellationError() {
   const error = new Error("The request was cancelled.");
   error.name = "AbortError";
   error.code = "CANCELLED";
+  return error;
+}
+
+/** Raised when a public read is attempted while an applicable cooldown is live. */
+function cooldownError(remainingMs) {
+  const error = new ApiError("Too many requests. Please wait before trying again.", {
+    status: 429,
+    code: "RATE_LIMIT_COOLDOWN",
+    reason: "rate_limit",
+    retryAfterMs: Math.max(1, remainingMs)
+  });
+  error.cooldownActive = true;
   return error;
 }
 
@@ -416,11 +449,19 @@ function isEligiblePublicRead(method, path, options, hasBody, isFormData) {
 async function publicReadRequest(path, init, options) {
   const { timeoutMs, deadlineMs } = getPublicRequestConfig();
   const deadline = Date.now() + deadlineMs;
+  const cooldown = getPublicReadCooldown();
+
+  if (cooldown.active()) {
+    throw cooldownError(cooldown.remainingMs());
+  }
 
   for (let attempt = 0; attempt <= MAX_AUTOMATIC_RETRIES; attempt += 1) {
     const remaining = deadline - Date.now();
     if (remaining <= 0) {
       throw deadlineError();
+    }
+    if (cooldown.active()) {
+      throw cooldownError(cooldown.remainingMs());
     }
 
     let result;
@@ -454,6 +495,12 @@ async function publicReadRequest(path, init, options) {
     }
 
     const error = apiErrorFromResponse(response, payload);
+    if (response.status === 429) {
+      /* Single source of truth: the cooldown starts at the exact absolute
+         expiry here, in every public-read channel, before the error is seen. */
+      cooldown.start(error.retryAfterMs);
+      throw error;
+    }
     const statusRetryable = RETRYABLE_STATUSES.has(response.status);
     if (!statusRetryable || attempt === MAX_AUTOMATIC_RETRIES) {
       throw error;
@@ -645,12 +692,22 @@ export function describeApiFailure(error, options = {}) {
 }
 
 /**
- * Shared rate-limit cooldown state. The single timer notifies subscribers when
- * a known cooldown expires; it never issues a request to update a countdown.
+ * Rate-limit cooldown backed by an absolute expiry timestamp.
+ *
+ * - A later response can extend, but never shorten, an applicable cooldown.
+ * - Waits longer than the JavaScript timer limit are chunked against the
+ *   absolute expiry rather than overflowing into an immediate callback.
+ * - Notifications are timer-driven only; no request is made to update a
+ *   countdown.
+ * - `subscribe` lets a page observe the shared cooldown without owning it.
  */
 export function createRateLimitCooldown(onChange) {
-  let until = 0;
+  let expiresAt = 0;
   let timer = null;
+  const listeners = new Set();
+  if (typeof onChange === "function") {
+    listeners.add(onChange);
+  }
 
   function clearTimer() {
     if (timer !== null) {
@@ -660,38 +717,84 @@ export function createRateLimitCooldown(onChange) {
   }
 
   function notify(active) {
-    if (typeof onChange === "function") {
-      onChange(active);
+    listeners.forEach((listener) => {
+      try {
+        listener(active);
+      } catch {
+        /* A subscriber failure must never leave cooldown state inconsistent. */
+      }
+    });
+  }
+
+  function schedule() {
+    clearTimer();
+    const remaining = expiresAt - Date.now();
+    if (remaining <= 0) {
+      expiresAt = 0;
+      return;
     }
+    const delay = Math.max(1, Math.min(remaining, MAX_TIMER_DELAY_MS));
+    timer = window.setTimeout(() => {
+      timer = null;
+      if (Date.now() < expiresAt) {
+        schedule();
+        return;
+      }
+      expiresAt = 0;
+      notify(false);
+    }, delay);
   }
 
   return {
     start(delayMs) {
-      const duration =
-        Number.isFinite(delayMs) && delayMs > 0
-          ? Math.min(Math.floor(delayMs), MAX_RETRY_AFTER_MS)
-          : FALLBACK_RATE_LIMIT_COOLDOWN_MS;
-      clearTimer();
-      until = Date.now() + duration;
-      timer = window.setTimeout(() => {
-        timer = null;
-        until = 0;
-        notify(false);
-      }, duration);
+      const now = Date.now();
+      let duration = Number.isFinite(delayMs) && delayMs > 0
+        ? Math.floor(delayMs)
+        : FALLBACK_RATE_LIMIT_COOLDOWN_MS;
+      if (!Number.isFinite(duration) || duration <= 0) {
+        duration = FALLBACK_RATE_LIMIT_COOLDOWN_MS;
+      }
+      duration = Math.min(duration, MAX_SAFE_COOLDOWN_MS - now);
+      const candidate = now + duration;
+
+      /* Never shorten an existing applicable cooldown, regardless of source. */
+      if (candidate <= expiresAt) {
+        return;
+      }
+      expiresAt = candidate;
+      schedule();
       notify(true);
     },
     active() {
-      return Date.now() < until;
+      return Date.now() < expiresAt;
     },
     remainingMs() {
-      return Math.max(0, until - Date.now());
+      return Math.max(0, expiresAt - Date.now());
+    },
+    expiryMs() {
+      return expiresAt;
+    },
+    subscribe(listener) {
+      if (typeof listener !== "function") {
+        return () => {};
+      }
+      listeners.add(listener);
+      return () => listeners.delete(listener);
     },
     clear() {
       clearTimer();
-      until = 0;
+      expiresAt = 0;
       notify(false);
     }
   };
+}
+
+/** One cooldown shared by every public-read channel on this page. */
+export function getPublicReadCooldown() {
+  if (!sharedPublicReadCooldown) {
+    sharedPublicReadCooldown = createRateLimitCooldown();
+  }
+  return sharedPublicReadCooldown;
 }
 
 /** Setup-only connectivity check. This is not a product feature. */

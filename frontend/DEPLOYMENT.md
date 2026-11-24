@@ -60,6 +60,15 @@ safe service message instead of a request to an unapproved origin. Do not use
 these settings to work around an unavailable API; fix the deployment or backend
 instead.
 
+**Rate-limit handling.** Public reads that receive `429` are not retried
+automatically. A readable `Retry-After` value (delay-seconds or HTTP-date) is
+honoured for its full duration as an absolute expiry timestamp shared by all
+public-read channels; a later response cannot shorten it, and waits longer than
+one JavaScript timer are chunked against that expiry. Missing, malformed or
+CORS-inaccessible values fall back to a documented 60-second cooldown. The
+production CORS allow-list is unchanged and does not expose `Retry-After`, so
+the fallback applies there unless the approved API configuration changes.
+
 ---
 
 ## Prerequisites
