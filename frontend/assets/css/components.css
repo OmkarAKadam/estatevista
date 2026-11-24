@@ -498,6 +498,15 @@
   box-shadow: none;
 }
 
+/* Bootstrap removes the default outline on these controls. The generic
+   :where(...) focus-visible rule in theme.css has lower specificity, so the
+   replacement indicator is restated here for the affected form controls. */
+.form-control:focus-visible,
+.form-select:focus-visible {
+  outline: 3px solid var(--ev-color-focus);
+  outline-offset: 2px;
+}
+
 /* -----------------------------------------------------------------------------
    7. Site header and primary navigation
    -------------------------------------------------------------------------- */
@@ -953,6 +962,8 @@
 
 .ev-notice__list dd {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-size: var(--ev-text-sm);
   font-weight: var(--ev-weight-semibold);
   color: var(--ev-color-text);
@@ -966,6 +977,56 @@
 
 .ev-notice__actions {
   margin: 0;
+}
+
+.ev-notice--error {
+  border-left-color: var(--ev-accent-text);
+  background-color: var(--ev-color-surface-alt);
+}
+
+/* Property discovery filters: compact, scrollable, and keyboard usable.
+   The amenity list is bounded so twenty options never stretch the page. */
+.ev-amenity-filter {
+  margin: 0;
+  padding: var(--ev-space-3);
+  border: 1px solid var(--ev-color-border);
+  border-radius: var(--ev-radius-sm);
+}
+
+.ev-amenity-filter legend {
+  float: none;
+  width: auto;
+  padding: 0 var(--ev-space-1);
+}
+
+.ev-amenity-filter__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--ev-space-1) var(--ev-space-3);
+  max-height: 11rem;
+  overflow-y: auto;
+  padding: var(--ev-space-1);
+}
+
+.ev-amenity-filter__option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ev-space-2);
+  margin: 0;
+  font-size: var(--ev-text-sm);
+}
+
+.ev-amenity-filter__option input {
+  margin-top: 0.2rem;
+  flex: 0 0 auto;
+}
+
+.ev-filter-note:not([hidden]) {
+  margin-top: var(--ev-space-2);
+}
+
+#propertyGrid[hidden] {
+  display: none !important;
 }
 
 /* A button that must sit on a forest or photographic surface. */
@@ -987,9 +1048,187 @@
 }
 
 /* -----------------------------------------------------------------------------
-   9. Motion preferences
+   9. Loading skeletons and validation feedback
    -------------------------------------------------------------------------- */
+.ev-skeleton-grid:empty,
+.ev-skeleton-detail:empty {
+  display: none;
+}
+
+.ev-skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--ev-sand-100);
+  border: 1px solid var(--ev-color-border);
+  border-radius: var(--ev-radius-md);
+}
+
+.ev-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.62) 50%,
+    transparent 100%
+  );
+  animation: ev-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+.ev-skeleton--card {
+  height: 100%;
+  min-height: 340px;
+}
+
+.ev-skeleton__media {
+  aspect-ratio: 4 / 3;
+  border-bottom: 1px solid var(--ev-color-border);
+  background-color: rgba(157, 181, 165, 0.24);
+}
+
+.ev-skeleton__media--wide {
+  border-radius: var(--ev-radius-lg);
+}
+
+.ev-skeleton__body {
+  display: grid;
+  gap: var(--ev-space-3);
+  padding: var(--ev-space-5);
+}
+
+.ev-skeleton__line {
+  display: block;
+  height: 0.8rem;
+  border-radius: var(--ev-radius-pill);
+  background-color: rgba(157, 181, 165, 0.4);
+}
+
+.ev-skeleton__line--xl {
+  width: 78%;
+  height: 1.75rem;
+}
+
+.ev-skeleton__line--lg {
+  width: 88%;
+  height: 1.2rem;
+}
+
+.ev-skeleton__line--md {
+  width: 68%;
+}
+
+.ev-skeleton__line--sm {
+  width: 44%;
+}
+
+.ev-skeleton--detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.85fr);
+  gap: clamp(24px, 4vw, 48px);
+  align-items: start;
+}
+
+.ev-skeleton__gallery,
+.ev-skeleton__thumbs {
+  min-width: 0;
+}
+
+.ev-skeleton__thumbs {
+  display: flex;
+  gap: var(--ev-space-3);
+  margin-top: var(--ev-space-3);
+}
+
+.ev-skeleton__thumb {
+  width: 104px;
+  max-width: calc(33.333% - var(--ev-space-2));
+  aspect-ratio: 4 / 3;
+  border-radius: var(--ev-radius-sm);
+  background-color: rgba(157, 181, 165, 0.4);
+}
+
+.ev-skeleton__summary {
+  display: grid;
+  gap: var(--ev-space-4);
+  padding: var(--ev-space-5);
+}
+
+.ev-field-error:not([hidden]) {
+  margin-top: var(--ev-space-1);
+}
+
+.form-control[aria-invalid="true"],
+.form-select[aria-invalid="true"] {
+  border-color: var(--ev-accent-text);
+  box-shadow: 0 0 0 1px var(--ev-accent-text);
+}
+
+.ev-amenity-filter__count {
+  font-weight: var(--ev-weight-normal);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.ev-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ev-space-2);
+  margin: 0 0 var(--ev-space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.ev-active-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ev-space-2);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: var(--ev-space-1) var(--ev-space-3);
+  border: 1px solid var(--ev-sage-300);
+  border-radius: var(--ev-radius-pill);
+  background-color: var(--ev-sand-100);
+  color: var(--ev-forest-900);
+  font-size: var(--ev-text-xs);
+  font-weight: var(--ev-weight-medium);
+}
+
+.ev-active-filter button {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ev-active-filter button:focus-visible {
+  outline: 3px solid var(--ev-color-focus);
+  outline-offset: 2px;
+}
+
+@keyframes ev-skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (max-width: 767.98px) {
+  .ev-skeleton--detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .ev-skeleton::after {
+    animation: none;
+  }
+
   .card-estate:hover {
     transform: none;
   }

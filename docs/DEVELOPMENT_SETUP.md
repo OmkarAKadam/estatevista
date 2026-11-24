@@ -445,6 +445,19 @@ Runtime API configuration (`frontend/assets/js/core/config.js`):
 - The API client (`api.js`) uses `credentials: "include"` and keeps the CSRF
   token in memory only. It does not use cookies, `localStorage`,
   `sessionStorage`, URLs, or logs for the token.
+- Public read-only GETs may opt into bounded timeouts and one controlled retry
+  with `publicRead: true`; authentication, CSRF bootstrap, session, management
+  and mutation requests never use that path.
+- A `429` is never automatically retried. A readable `Retry-After` delay-seconds
+  or HTTP-date value is honoured in full, stored as an absolute expiry and
+  shared by all public-read channels on the page. A later response can extend
+  but never shorten an active cooldown, and long waits are chunked safely.
+  Missing, malformed or inaccessible values use the documented 60-second
+  fallback. Production CORS does not expose `Retry-After`; no CORS change is
+  made by the frontend.
+- Legacy `?type=<name>` links stay in the URL while reference data is unavailable
+  and block the search until the subtype can be resolved from authoritative
+  catalogue data or the user explicitly clears the criterion.
 
 Stage 3.7 adds the authentication experience:
 

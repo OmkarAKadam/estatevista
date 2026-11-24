@@ -376,6 +376,8 @@ These endpoints support the public property discovery experience.
 | GET | `/property-subtypes` | Public | Retrieve subtypes |
 | GET | `/amenities` | Public | Retrieve amenities |
 
+**Stage 5.2 implementation status.** All endpoints above are implemented except `/properties/featured`, which remains deliberately unmapped and denied by the security chain for anonymous and authenticated callers. No featured column or migration was introduced.
+
 ## 7.1 Search and Filtering
 
 `GET /properties`
@@ -384,20 +386,20 @@ Supported query parameters:
 
 | Parameter | Type | Description |
 |---|---|---|
-| `keyword` | String | Search title, description, or location |
+| `keyword` | String | Search title, description, city, or locality; maximum 100 characters |
 | `categoryId` | UUID | Residential or commercial category |
 | `subtypeId` | UUID | Property subtype |
-| `listingType` | String | SALE or RENT |
+| `listingType` | String | SALE or RENT (case-insensitive) |
 | `minPrice` | Decimal | Minimum price |
 | `maxPrice` | Decimal | Maximum price |
 | `city` | String | City |
 | `locality` | String | Locality |
 | `minBedrooms` | Integer | Minimum bedroom count |
 | `maxBedrooms` | Integer | Maximum bedroom count |
-| `amenityIds` | UUID list | Required amenities |
-| `sort` | String | Sorting option |
-| `page` | Integer | Page number |
-| `size` | Integer | Results per page |
+| `amenityIds` | UUID list | Required amenities; maximum 20 IDs |
+| `sort` | String | Sorting option; blank defaults to `newest` |
+| `page` | Integer | Zero-based page number |
+| `size` | Integer | Results per page; default 12, maximum 100 |
 
 Example:
 
@@ -413,6 +415,8 @@ Supported sorting:
 - `price_desc`
 
 The backend must validate query parameters and enforce reasonable page-size limits.
+
+**Stage 5.2 verified implementation notes.** Public search enforces the approved §11.10 keyword and `amenityIds` caps and returns `VALIDATION_ERROR` for violations. Invalid pages, sizes, sort values, ranges, bedroom filters, enum values, UUIDs, and numeric values use the standard error envelope. Blank string parameters are ignored, while blank numeric parameters fail Spring type conversion with `BAD_REQUEST`. Blank `sort` selects `newest`; sort names are case-sensitive; `keyword` values remain parameterized SQL `LIKE` patterns, so wildcard characters retain their existing behavior. Unknown query parameters are ignored. Public search, detail, related, recent, and reference endpoints are subject to the §11.9 HTTP rate limits and return `429 TOO_MANY_REQUESTS` with `Retry-After`.
 
 ## 7.2 Property List Response
 
@@ -1113,6 +1117,8 @@ Add a `is_featured BOOLEAN NOT NULL DEFAULT FALSE` field to the properties table
 Only authorized administrators should be able to change featured status.
 
 This is a schema clarification, not a reason to reopen the approved database design.
+
+**Stage 5.2 verification:** no `is_featured` column or Flyway V18 exists. `GET /properties/featured` remains unmapped and is denied with `401` for anonymous callers and `403` for authenticated callers of every role.
 
 ### E. WebSocket Authorization
 

@@ -49,6 +49,55 @@
     return typeof value === "number" && isFinite(value) && value > 0;
   }
 
+  function finiteNumber(value) {
+    if (value === null || value === undefined || value === "") {
+      return null;
+    }
+    var number = Number(value);
+    return isFinite(number) ? number : null;
+  }
+
+  /** Turns approved enum strings such as INDEPENDENT_HOUSE into readable labels. */
+  function humanizeEnum(value) {
+    var text = cleanText(value);
+    if (!text) {
+      return null;
+    }
+
+    var direct = TYPE_LABELS[text.toLowerCase()];
+    if (direct) {
+      return direct;
+    }
+
+    var words = text
+      .replace(/[_-]+/g, " ")
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (words.length === 0) {
+      return null;
+    }
+
+    return words
+      .map(function (word) {
+        return word.charAt(0).toUpperCase() + word.slice(1);
+      })
+      .join(" ");
+  }
+
+  function listingTypeLabel(value) {
+    var key = cleanText(value).toUpperCase();
+    if (key === "SALE") {
+      return "For sale";
+    }
+    if (key === "RENT") {
+      return "For rent";
+    }
+    return null;
+  }
+
   /** Formats whole rupees the way Indian listings usually do: ₹4.85 Cr / ₹95 L. */
   function formatPrice(value) {
     if (typeof value !== "number" || !isFinite(value) || value < 0) {
@@ -88,6 +137,18 @@
     return TYPE_LABELS[key] || null;
   }
 
+  /** Preferred card badge label: approved subtype first, then category. */
+  function displayTypeLabel(property) {
+    if (!property || typeof property !== "object") {
+      return null;
+    }
+    return (
+      humanizeEnum(property.subtype) ||
+      humanizeEnum(property.category) ||
+      typeLabel(property.type)
+    );
+  }
+
   function statusBadge(value) {
     var key = cleanText(value).toLowerCase();
     return STATUS_BADGES[key] || null;
@@ -121,23 +182,27 @@
       return null;
     }
 
-    var areaValue = Number(summary.areaValue);
+    var areaValue = finiteNumber(summary.areaValue);
+    var unit = cleanText(summary.areaUnit).toUpperCase();
     var image = cleanText(summary.primaryImageUrl);
+    var subtype = cleanText(summary.subtype);
+    var category = cleanText(summary.category);
 
     return {
       id: cleanText(summary.id),
       title: cleanText(summary.title) || "Untitled property",
       type: normalizeApiType(summary),
+      subtype: subtype,
+      category: category,
+      listingType: cleanText(summary.listingType).toUpperCase(),
       status: cleanText(summary.status).toLowerCase() || "published",
-      price: Number.isFinite(Number(summary.price)) ? Number(summary.price) : null,
+      price: finiteNumber(summary.price),
       locality: cleanText(summary.locality),
       city: cleanText(summary.city),
       areaSqft:
-        cleanText(summary.areaUnit).toUpperCase() === "SQFT" && Number.isFinite(areaValue)
-          ? areaValue
-          : null,
-      bedrooms: Number(summary.bedrooms),
-      bathrooms: Number(summary.bathrooms),
+        (unit === "SQFT" || unit === "SQ_FT") && areaValue !== null ? areaValue : null,
+      bedrooms: finiteNumber(summary.bedrooms),
+      bathrooms: finiteNumber(summary.bathrooms),
       images: image ? [image] : []
     };
   }
@@ -151,9 +216,10 @@
   }
 
   /**
-   * data.js stores root-relative paths such as
-   * "assets/images/properties/sunlit-courtyard-villa-01.webp".
-   * Bare filenames are still accepted for backwards compatibility.
+   * Approved public image fields may contain absolute URLs or root-relative
+   * paths such as "assets/images/properties/example.webp". Bare filenames are
+   * still accepted for backwards compatibility. Unexpected schemes are replaced
+   * with the local placeholder before an element ever receives the value.
    */
   function resolveImagePath(rawValue) {
     var raw = cleanText(rawValue);
@@ -277,11 +343,15 @@
     }
 
     var metaParts = [];
-    var type = typeLabel(property.type);
+    var type = displayTypeLabel(property);
+    var listingType = listingTypeLabel(property.listingType);
     var beds = countLabel(property.bedrooms, "bedroom");
     var baths = countLabel(property.bathrooms, "bathroom");
     var area = formatArea(property.areaSqft);
 
+    if (listingType) {
+      metaParts.push(listingType);
+    }
     if (beds) {
       metaParts.push(beds);
     }
@@ -315,6 +385,12 @@
     return column;
   }
 
+  /** Reusable entry point for future live-property rails outside the listings page. */
+  function buildCardFromApiSummary(summary, options) {
+    var model = fromApiSummary(summary);
+    return model ? buildCard(model, options) : null;
+  }
+
   window.EVPropertyCard = {
     PLACEHOLDER_IMAGE: PLACEHOLDER_IMAGE,
     TYPE_LABELS: TYPE_LABELS,
@@ -325,9 +401,13 @@
     formatArea: formatArea,
     countLabel: countLabel,
     typeLabel: typeLabel,
+    displayTypeLabel: displayTypeLabel,
+    listingTypeLabel: listingTypeLabel,
+    humanizeEnum: humanizeEnum,
     statusBadge: statusBadge,
     normalizeApiType: normalizeApiType,
     fromApiSummary: fromApiSummary,
+    buildCardFromApiSummary: buildCardFromApiSummary,
     locationLabel: locationLabel,
     primaryImage: primaryImage,
     resolveImagePath: resolveImagePath

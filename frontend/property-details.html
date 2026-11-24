@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Property details — EstateVista</title>
-  <meta name="description" content="View details for a fictional EstateVista property listing.">
+  <meta name="description" content="View published property details served live by the EstateVista property API.">
   <link rel="icon" href="assets/images/brand/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -120,9 +120,11 @@
         <div class="property-error" id="propertyError" hidden>
           <p class="ev-eyebrow">Listing unavailable</p>
           <h1 id="propertyErrorTitle">Property not found</h1>
-          <p id="propertyErrorMessage">The property you requested is not part of the EstateVista collection. It may have been removed, or the link may be incomplete.</p>
+          <p id="propertyErrorMessage" role="status" aria-live="polite">The property you requested is not part of the EstateVista collection. It may have been removed, or the link may be incomplete.</p>
+          <div class="ev-skeleton-detail" id="detailSkeleton" aria-hidden="true" hidden></div>
           <div class="property-error__actions">
             <a class="btn btn-primary" href="properties.html">Browse all properties</a>
+            <button class="btn btn-secondary" id="retryDetailLoad" type="button" hidden>Try again</button>
             <a class="btn btn-secondary" href="index.html">Back to the homepage</a>
           </div>
         </div>
@@ -156,6 +158,7 @@
             </svg>
           </a>
         </div>
+        <div class="ev-skeleton-grid row g-4" id="relatedSkeleton" aria-hidden="true" hidden></div>
         <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-4" id="relatedGrid"></div>
       </div>
     </section>
@@ -212,10 +215,10 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous" defer></script>
-  <script src="assets/js/data.js" defer></script>
   <script src="assets/js/main.js" defer></script>
   <script src="assets/js/property-card.js" defer></script>
   <script type="module" src="assets/js/public/property-public-api.js"></script>
+  <script src="assets/js/ui-skeletons.js" defer></script>
   <script src="assets/js/property-details.js" defer></script>
   <script type="module" src="assets/js/auth/auth-init.js"></script>
 </body>

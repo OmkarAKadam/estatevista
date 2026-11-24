@@ -89,6 +89,7 @@ public class PropertyService {
     private static final int MAX_SLUG_ATTEMPTS = 5;
     private static final int MAX_SLUG_LENGTH = 220;
     private static final int MAX_AMENITY_IDS = 20;
+    private static final int MAX_KEYWORD_LENGTH = 100;
     private static final String CATEGORY_RESIDENTIAL = "RESIDENTIAL";
     private static final String CATEGORY_COMMERCIAL = "COMMERCIAL";
     private static final String ROLE_AGENT = "AGENT";
@@ -419,6 +420,7 @@ public class PropertyService {
             BigDecimal minPrice, BigDecimal maxPrice, String city, String locality,
             Integer minBedrooms, Integer maxBedrooms, List<UUID> amenityIds,
             String sort, int page, int size) {
+        validateQueryAbuseLimits(keyword, amenityIds);
         validateRange(minPrice, maxPrice, "minPrice", "maxPrice");
         validateRange(minBedrooms, maxBedrooms, "minBedrooms", "maxBedrooms");
         validateBedroomFilter(minBedrooms, "minBedrooms");
@@ -479,6 +481,7 @@ public class PropertyService {
             UUID primaryAgentId, UUID categoryId, String city, String keyword) {
         AuthenticatedAccount actor = accounts.requireActive(authentication);
         resources.requireAdmin(actor);
+        validateKeywordLength(keyword);
         PropertyStatus parsedStatus = parseStatus(status);
         Pageable pageable = pageable(page, size, Sort.by(Sort.Direction.DESC, "createdAt")
                 .and(Sort.by(Sort.Direction.DESC, "id")));
@@ -1047,6 +1050,31 @@ public class PropertyService {
         }
         if (amenityIds.size() > MAX_AMENITY_IDS) {
             errors.add(fieldError("amenityIds", "must contain at most " + MAX_AMENITY_IDS + " IDs"));
+        }
+    }
+
+    /**
+     * Applies the approved query-abuse limits from SECURITY_ARCHITECTURE.md §11.10
+     * to public discovery. The same keyword cap is applied to the administrative
+     * list so both keyword-driven endpoints share one input boundary.
+     */
+    private static void validateQueryAbuseLimits(String keyword, List<UUID> amenityIds) {
+        List<FieldErrorDetail> errors = new ArrayList<>();
+        validateKeywordLength(keyword, errors);
+        validateAmenityIds(amenityIds, errors);
+        throwIfInvalid(errors);
+    }
+
+    private static void validateKeywordLength(String keyword) {
+        List<FieldErrorDetail> errors = new ArrayList<>();
+        validateKeywordLength(keyword, errors);
+        throwIfInvalid(errors);
+    }
+
+    private static void validateKeywordLength(String keyword, List<FieldErrorDetail> errors) {
+        if (keyword != null && keyword.trim().length() > MAX_KEYWORD_LENGTH) {
+            errors.add(fieldError("keyword",
+                    "must be at most " + MAX_KEYWORD_LENGTH + " characters"));
         }
     }
 
