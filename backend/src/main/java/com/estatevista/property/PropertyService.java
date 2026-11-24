@@ -118,6 +118,7 @@ public class PropertyService {
     private final AccountAuthorizationService accounts;
     private final ResourceAuthorizationService resources;
     private final AuditEventService audit;
+    private final PropertySummaryMapper summaryMapper;
 
     public PropertyService(
             PropertyRepository propertyRepository,
@@ -131,7 +132,8 @@ public class PropertyService {
             UserRepository userRepository,
             AccountAuthorizationService accounts,
             ResourceAuthorizationService resources,
-            AuditEventService audit) {
+            AuditEventService audit,
+            PropertySummaryMapper summaryMapper) {
         this.propertyRepository = propertyRepository;
         this.categoryRepository = categoryRepository;
         this.subtypeRepository = subtypeRepository;
@@ -144,6 +146,7 @@ public class PropertyService {
         this.accounts = accounts;
         this.resources = resources;
         this.audit = audit;
+        this.summaryMapper = summaryMapper;
     }
 
     // ------------------------------------------------------------------
@@ -619,50 +622,9 @@ public class PropertyService {
     // ------------------------------------------------------------------
 
     private Page<PropertySummaryResponse> summarize(Page<Property> properties) {
-        List<UUID> ids = properties.getContent().stream()
-                .map(Property::getId)
-                .filter(Objects::nonNull)
-                .toList();
-        Map<UUID, PropertyImage> primaryImages = ids.isEmpty()
-                ? Map.of()
-                : imageRepository.findByProperty_IdInAndIsPrimaryTrue(ids).stream()
-                        .collect(Collectors.toMap(
-                                image -> image.getProperty().getId(),
-                                Function.identity(),
-                                (first, second) -> first));
-        Map<UUID, PropertyResidentialDetails> residential = ids.isEmpty()
-                ? Map.of()
-                : residentialDetailsRepository.findAllById(ids).stream()
-                        .collect(Collectors.toMap(
-                                PropertyResidentialDetails::getPropertyId,
-                                Function.identity(),
-                                (first, second) -> first));
-        return properties.map(property -> toSummary(
-                property,
-                primaryImages.get(property.getId()),
-                residential.get(property.getId())));
-    }
-
-    private static PropertySummaryResponse toSummary(
-            Property property, PropertyImage primaryImage,
-            PropertyResidentialDetails residential) {
-        return new PropertySummaryResponse(
-                property.getId(),
-                property.getTitle(),
-                property.getSlug(),
-                property.getCategory().getName(),
-                property.getSubtype().getName(),
-                property.getListingType(),
-                property.getPrice(),
-                property.getCurrencyCode(),
-                property.getCity(),
-                property.getLocality(),
-                property.getAreaValue(),
-                property.getAreaUnit(),
-                residential == null ? null : residential.getBedrooms(),
-                residential == null ? null : residential.getBathrooms(),
-                primaryImage == null ? null : primaryImage.getImageUrl(),
-                property.getStatus());
+        Map<UUID, PropertySummaryResponse> summaries =
+                summaryMapper.mapById(properties.getContent());
+        return properties.map(property -> summaries.get(property.getId()));
     }
 
     private PropertyDetailResponse toDetail(Property property, List<Amenity> amenities) {

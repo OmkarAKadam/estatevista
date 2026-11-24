@@ -24,6 +24,7 @@ public class RateLimitProperties {
     private Limit propertyDetail = new Limit(300, 60);
     private Limit authenticatedApi = new Limit(300, 60);
     private Limit adminMutation = new Limit(60, 60);
+    private Limit favoriteMutation = new Limit(60, 60);
 
     public boolean isEnabled() {
         return enabled;
@@ -87,6 +88,14 @@ public class RateLimitProperties {
 
     public void setAdminMutation(Limit adminMutation) {
         this.adminMutation = adminMutation;
+    }
+
+    public Limit getFavoriteMutation() {
+        return favoriteMutation;
+    }
+
+    public void setFavoriteMutation(Limit favoriteMutation) {
+        this.favoriteMutation = favoriteMutation;
     }
 
     /** Shared threshold/window holder for approved Stage 4 rate-limit scopes. */

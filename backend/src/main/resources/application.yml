@@ -94,6 +94,9 @@ app:
     admin-mutation:
       max-attempts: ${APP_RATE_LIMIT_ADMIN_MUTATION_MAX_ATTEMPTS:60}
       window-seconds: ${APP_RATE_LIMIT_ADMIN_MUTATION_WINDOW_SECONDS:60}
+    favorite-mutation:
+      max-attempts: ${APP_RATE_LIMIT_FAVORITE_MUTATION_MAX_ATTEMPTS:60}
+      window-seconds: ${APP_RATE_LIMIT_FAVORITE_MUTATION_WINDOW_SECONDS:60}
   image-cleanup:
     enabled: ${APP_IMAGE_CLEANUP_ENABLED:true}
     poll-ms: ${APP_IMAGE_CLEANUP_POLL_MS:5000}

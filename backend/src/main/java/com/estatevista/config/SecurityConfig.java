@@ -151,6 +151,19 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/v1/users/me").authenticated()
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/users/me").authenticated()
+                        // Stage 6.2 favorites: explicit BUYER-only surfaces. The
+                        // literal batch status route precedes the variable one.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/favorites").hasRole("BUYER")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/favorites/status")
+                                .hasRole("BUYER")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/favorites/{propertyId}/status")
+                                .hasRole("BUYER")
+                        .requestMatchers(
+                                HttpMethod.POST, "/api/v1/favorites/{propertyId}")
+                                .hasRole("BUYER")
+                        .requestMatchers(
+                                HttpMethod.DELETE, "/api/v1/favorites/{propertyId}")
+                                .hasRole("BUYER")
                         .requestMatchers(HttpMethod.GET, appProperties.websocket().endpoint()).authenticated()
                         // Stage 4.3: method-specific assignment route must be
                         // evaluated before the broader admin prefix matcher.

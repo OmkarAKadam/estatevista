@@ -26,13 +26,15 @@ import org.springframework.security.web.servlet.util.matcher.PathPatternRequestM
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Applies the approved Stage 4 property rate limits from
- * {@code SECURITY_ARCHITECTURE.md} §11.9.
+ * Applies the approved Stage 4 property and Stage 6.2 favorites rate limits
+ * from {@code SECURITY_ARCHITECTURE.md} §11.9.
  *
  * <p>Public surfaces are keyed by socket client address; client-supplied
  * forwarded headers are never trusted. Authenticated surfaces are keyed by the
- * server-side session principal, never by a request parameter. Image uploads
- * keep their existing service-level 20/hour/user scope so one upload is counted
+ * server-side session principal, never by a request parameter. Favorite
+ * mutations consume both the shared authenticated bucket and the approved
+ * 60/minute favorite-mutation bucket in one atomic decision. Image uploads keep
+ * their existing service-level 20/hour/user scope so one upload is counted
  * once. Rejections use the standard API envelope and {@code Retry-After}.</p>
  */
 public final class PropertyRateLimitFilter extends OncePerRequestFilter {
@@ -53,6 +55,18 @@ public final class PropertyRateLimitFilter extends OncePerRequestFilter {
 
     private static final RequestMatcher IMAGE_UPLOAD = PathPatternRequestMatcher.pathPattern(
             HttpMethod.POST, "/api/v1/properties/{propertyId}/images");
+
+    private static final RequestMatcher FAVORITE_MUTATION = new OrRequestMatcher(List.of(
+            PathPatternRequestMatcher.pathPattern(
+                    HttpMethod.POST, "/api/v1/favorites/{propertyId}"),
+            PathPatternRequestMatcher.pathPattern(
+                    HttpMethod.DELETE, "/api/v1/favorites/{propertyId}")));
+
+    private static final RequestMatcher FAVORITE_READ = new OrRequestMatcher(List.of(
+            PathPatternRequestMatcher.pathPattern(HttpMethod.GET, "/api/v1/favorites"),
+            PathPatternRequestMatcher.pathPattern(HttpMethod.GET, "/api/v1/favorites/status"),
+            PathPatternRequestMatcher.pathPattern(
+                    HttpMethod.GET, "/api/v1/favorites/{propertyId}/status")));
 
     private static final RequestMatcher PROPERTY_MUTATION = new OrRequestMatcher(List.of(
             PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/v1/properties"),
@@ -90,7 +104,14 @@ public final class PropertyRateLimitFilter extends OncePerRequestFilter {
         }
 
         try {
-            rateLimitService.acquire(scope, resolveIdentity(request));
+            if (FAVORITE_MUTATION.matches(request)) {
+                rateLimitService.acquire(
+                        List.of(RateLimitService.SCOPE_AUTHENTICATED_API,
+                                RateLimitService.SCOPE_FAVORITE_MUTATION),
+                        resolveIdentity(request));
+            } else {
+                rateLimitService.acquire(scope, resolveIdentity(request));
+            }
         } catch (RateLimitExceededException exception) {
             writeRateLimitError(request, response, exception);
             return;
@@ -101,6 +122,9 @@ public final class PropertyRateLimitFilter extends OncePerRequestFilter {
     private static String resolveScope(HttpServletRequest request) {
         if (IMAGE_UPLOAD.matches(request)) {
             return null;
+        }
+        if (FAVORITE_MUTATION.matches(request) || FAVORITE_READ.matches(request)) {
+            return RateLimitService.SCOPE_AUTHENTICATED_API;
         }
         if (PUBLIC_SEARCH.matches(request)) {
             return RateLimitService.SCOPE_PUBLIC_SEARCH;

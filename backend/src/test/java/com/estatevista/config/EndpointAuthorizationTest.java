@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.estatevista.audit.AuditEventService;
 import com.estatevista.auth.AuthService;
+import com.estatevista.favorite.service.FavoriteService;
 import com.estatevista.property.PropertyService;
 import com.estatevista.security.RateLimitService;
 import com.estatevista.property.image.PropertyImageService;
@@ -68,6 +69,9 @@ class EndpointAuthorizationTest {
 
     @MockitoBean
     private PropertyImageService propertyImageService;
+
+    @MockitoBean
+    private FavoriteService favoriteService;
 
     @Test
     void adminPrefixAllowsOnlyAdminAndStillRequiresCsrfForWrites() throws Exception {

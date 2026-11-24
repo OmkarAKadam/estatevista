@@ -4,6 +4,12 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.PreparedStatement;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 import com.estatevista.audit.AuditEventService;
 import com.estatevista.common.exception.RateLimitExceededException;
@@ -35,6 +41,7 @@ public class RateLimitService {
     public static final String SCOPE_PROPERTY_DETAIL = "property_detail";
     public static final String SCOPE_AUTHENTICATED_API = "authenticated_api";
     public static final String SCOPE_ADMIN_MUTATION = "admin_mutation";
+    public static final String SCOPE_FAVORITE_MUTATION = "favorite_mutation";
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitService.class);
 
@@ -76,22 +83,62 @@ public class RateLimitService {
      */
     @Transactional
     public void acquire(String scope, String identity) {
-        if (!properties.isEnabled()) {
+        acquire(List.of(scope), identity);
+    }
+
+    /**
+     * Applies every applicable bucket together. All keys are locked in a stable
+     * order before any counter is consumed, and a rejection reports the longest
+     * blocking window among the triggered buckets.
+     */
+    @Transactional
+    public void acquire(Collection<String> scopes, String identity) {
+        if (!properties.isEnabled() || scopes == null || scopes.isEmpty()) {
             return;
         }
-        int maxAttempts = threshold(scope);
-        int windowSeconds = window(scope);
-        String key = key(scope, identity);
-
-        lock(key);
-        jdbcTemplate.update(DELETE_EXPIRED, key, windowSeconds);
-        Long active = jdbcTemplate.queryForObject(COUNT_ACTIVE, Long.class, key, windowSeconds);
-        if (active != null && active >= maxAttempts) {
-            log.warn("Rate limit rejected an attempt scope={}", scope);
-            auditEventService.recordRateLimitRejected(scope);
-            throw new RateLimitExceededException(windowSeconds);
+        LinkedHashMap<String, String> keysByScope = new LinkedHashMap<>();
+        for (String scope : scopes) {
+            if (scope != null && !scope.isBlank()) {
+                keysByScope.putIfAbsent(scope, key(scope, identity));
+            }
         }
-        jdbcTemplate.update(INSERT_EVENT, key);
+        if (keysByScope.isEmpty()) {
+            return;
+        }
+
+        List<Map.Entry<String, String>> lockedOrder = new ArrayList<>(keysByScope.entrySet());
+        lockedOrder.sort(Comparator.comparing(Map.Entry::getValue));
+        for (Map.Entry<String, String> entry : lockedOrder) {
+            lock(entry.getValue());
+        }
+
+        boolean blocked = false;
+        long longestWindow = 0L;
+        String firstBlockedScope = null;
+        for (Map.Entry<String, String> entry : keysByScope.entrySet()) {
+            String scope = entry.getKey();
+            String key = entry.getValue();
+            int windowSeconds = window(scope);
+            jdbcTemplate.update(DELETE_EXPIRED, key, windowSeconds);
+            Long active = jdbcTemplate.queryForObject(
+                    COUNT_ACTIVE, Long.class, key, windowSeconds);
+            if (active != null && active >= threshold(scope)) {
+                blocked = true;
+                longestWindow = Math.max(longestWindow, windowSeconds);
+                if (firstBlockedScope == null) {
+                    firstBlockedScope = scope;
+                }
+            }
+        }
+        if (blocked) {
+            log.warn("Rate limit rejected an attempt scopes={}", keysByScope.keySet());
+            auditEventService.recordRateLimitRejected(
+                    firstBlockedScope == null ? "unknown" : firstBlockedScope);
+            throw new RateLimitExceededException(longestWindow);
+        }
+        for (String key : keysByScope.values()) {
+            jdbcTemplate.update(INSERT_EVENT, key);
+        }
     }
 
     /**
@@ -137,6 +184,9 @@ public class RateLimitService {
         if (SCOPE_ADMIN_MUTATION.equals(scope)) {
             return Math.max(1, properties.getAdminMutation().getMaxAttempts());
         }
+        if (SCOPE_FAVORITE_MUTATION.equals(scope)) {
+            return Math.max(1, properties.getFavoriteMutation().getMaxAttempts());
+        }
         return Math.max(1, properties.getLogin().getMaxAttempts());
     }
 
@@ -158,6 +208,9 @@ public class RateLimitService {
         }
         if (SCOPE_ADMIN_MUTATION.equals(scope)) {
             return Math.max(1, properties.getAdminMutation().getWindowSeconds());
+        }
+        if (SCOPE_FAVORITE_MUTATION.equals(scope)) {
+            return Math.max(1, properties.getFavoriteMutation().getWindowSeconds());
         }
         return Math.max(1, properties.getLogin().getWindowSeconds());
     }

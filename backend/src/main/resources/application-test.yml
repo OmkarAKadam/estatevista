@@ -50,6 +50,9 @@ app:
     admin-mutation:
       max-attempts: 1000
       window-seconds: 60
+    favorite-mutation:
+      max-attempts: 1000
+      window-seconds: 60
   image-cleanup:
     # Tests drive the worker deterministically; no background poller runs.
     enabled: false
