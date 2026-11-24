@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSourceResolvable;
 import org.springframework.core.MethodParameter;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -255,6 +256,7 @@ public class GlobalExceptionHandler {
             HttpServletRequest request) {
         return ResponseEntity.status(errorCode.status())
                 .contentType(MediaType.APPLICATION_JSON)
+                .cacheControl(CacheControl.noStore())
                 .body(ApiErrorResponse.of(errorCode, message, details, requestPath(request)));
     }
 

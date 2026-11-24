@@ -83,10 +83,12 @@ class EndpointAuthorizationTest {
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/admin/probe")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user("admin").roles("ADMIN")))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         mockMvc.perform(post("/api/v1/admin/probe")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user("admin").roles("ADMIN"))
                         .with(csrf()))
                 .andExpect(status().isOk());
@@ -104,9 +106,11 @@ class EndpointAuthorizationTest {
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/agents/me/probe")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user("agent").roles("AGENT")))
                 .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/v1/agents/me/probe")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user("agent").roles("AGENT"))
                         .with(csrf()))
                 .andExpect(status().isOk());

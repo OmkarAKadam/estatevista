@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.mock.http.MockHttpInputMessage;
@@ -85,6 +86,7 @@ class GlobalExceptionHandlerTest {
     @Test
     void beanValidationFailureReturnsFieldDetails() throws Exception {
         mockMvc.perform(post("/api/v1/probe/validate")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest())
@@ -97,6 +99,7 @@ class GlobalExceptionHandlerTest {
     @Test
     void malformedJsonReturnsBadRequestEnvelopeWithoutEchoingBody() throws Exception {
         mockMvc.perform(post("/api/v1/probe/validate")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"" + SYNTHETIC_SECRET + "\""))
                 .andExpect(status().isBadRequest())
@@ -139,6 +142,7 @@ class GlobalExceptionHandlerTest {
     @Test
     void unsupportedContentTypeReturnsUnsupportedMediaTypeEnvelope() throws Exception {
         mockMvc.perform(post("/api/v1/probe/validate")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content("{\"name\":\"value\"}"))
                 .andExpect(status().isUnsupportedMediaType())
@@ -150,6 +154,7 @@ class GlobalExceptionHandlerTest {
     @Test
     void unsupportedMethodReturnsMethodNotAllowedEnvelope() throws Exception {
         mockMvc.perform(put("/api/v1/probe/validate")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isMethodNotAllowed())
@@ -212,7 +217,8 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void payloadTooLargeReturnsPayloadTooLargeEnvelope() throws Exception {
-        mockMvc.perform(post("/api/v1/probe/too-large"))
+        mockMvc.perform(post("/api/v1/probe/too-large")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500"))
                 .andExpect(status().isContentTooLarge())
                 .andExpect(jsonPath("$.error.code").value("PAYLOAD_TOO_LARGE"))
                 .andExpect(jsonPath("$.error.message").value("The request payload is too large"))

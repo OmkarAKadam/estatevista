@@ -10,7 +10,9 @@ import jakarta.servlet.http.HttpSession;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.csrf.DefaultCsrfToken;
+import org.springframework.security.web.csrf.DeferredCsrfToken;
 import org.springframework.util.Assert;
+import org.springframework.web.util.WebUtils;
 
 /**
  * Session-bound CSRF token repository that satisfies SD-53's 256-bit entropy
@@ -26,6 +28,14 @@ public class SecureCsrfTokenRepository implements CsrfTokenRepository {
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
+    private static final int SESSION_LOCK_STRIPES = 64;
+    private static final Object[] SESSION_LOCKS = new Object[SESSION_LOCK_STRIPES];
+
+    static {
+        for (int i = 0; i < SESSION_LOCK_STRIPES; i++) {
+            SESSION_LOCKS[i] = new Object();
+        }
+    }
 
     private String parameterName = "_csrf";
     private String headerName = "X-CSRF-TOKEN";
@@ -59,6 +69,46 @@ public class SecureCsrfTokenRepository implements CsrfTokenRepository {
         return new DefaultCsrfToken(this.headerName, this.parameterName, createNewToken());
     }
 
+    @Override
+    public DeferredCsrfToken loadDeferredToken(HttpServletRequest request, HttpServletResponse response) {
+        return new DeferredCsrfToken() {
+            private CsrfToken token;
+            private boolean missingToken;
+
+            @Override
+            public CsrfToken get() {
+                init();
+                return this.token;
+            }
+
+            @Override
+            public boolean isGenerated() {
+                init();
+                return this.missingToken;
+            }
+
+            private void init() {
+                if (this.token != null) {
+                    return;
+                }
+                HttpSession session = request.getSession(true);
+                Object sessionLock = sessionLock(session.getId());
+                synchronized (sessionLock) {
+                    CsrfToken existing = loadToken(request);
+                    if (existing != null) {
+                        this.token = existing;
+                        this.missingToken = false;
+                        return;
+                    }
+                    CsrfToken generated = generateToken(request);
+                    saveToken(generated, request, response);
+                    this.token = generated;
+                    this.missingToken = true;
+                }
+            }
+        };
+    }
+
     public void setParameterName(String parameterName) {
         Assert.hasLength(parameterName, "parameterName cannot be null or empty");
         this.parameterName = parameterName;
@@ -72,6 +122,11 @@ public class SecureCsrfTokenRepository implements CsrfTokenRepository {
     public void setSessionAttributeName(String sessionAttributeName) {
         Assert.hasLength(sessionAttributeName, "sessionAttributeName cannot be null or empty");
         this.sessionAttributeName = sessionAttributeName;
+    }
+
+    private static Object sessionLock(String sessionId) {
+        int index = Math.floorMod(sessionId.hashCode(), SESSION_LOCK_STRIPES);
+        return SESSION_LOCKS[index];
     }
 
     String createNewToken() {

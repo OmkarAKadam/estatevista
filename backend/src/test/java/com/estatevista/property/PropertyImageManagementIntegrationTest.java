@@ -300,16 +300,19 @@ class PropertyImageManagementIntegrationTest {
                 .andExpect(status().isForbidden());
         mockMvc.perform(multipart("/api/v1/properties/{id}/images", fixture.draft().getId())
                         .file(file("photo.png", "image/png", png(220, 220)))
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(anonymous.cookie())
                         .header(CSRF_HEADER, anonymous.csrfToken()))
                 .andExpect(status().isUnauthorized());
 
         mockMvc.perform(delete("/api/v1/properties/{id}/images/{imageId}",
                         fixture.draft().getId(), UUID.randomUUID())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(buyer.cookie()).header(CSRF_HEADER, buyer.csrfToken()))
                 .andExpect(status().isForbidden());
         mockMvc.perform(delete("/api/v1/properties/{id}/images/{imageId}",
                         fixture.draft().getId(), UUID.randomUUID())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(anonymous.cookie())
                         .header(CSRF_HEADER, anonymous.csrfToken()))
                 .andExpect(status().isUnauthorized());
@@ -323,18 +326,21 @@ class PropertyImageManagementIntegrationTest {
 
         mockMvc.perform(multipart("/api/v1/properties/{id}/images", fixture.draft().getId())
                         .file(file("photo.png", "image/png", png(220, 220)))
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         mockMvc.perform(multipart("/api/v1/properties/{id}/images", fixture.draft().getId())
                         .file(file("photo.png", "image/png", png(220, 220)))
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, "not-a-valid-token"))
                 .andExpect(status().isForbidden());
 
         UUID imageId = uploadImage(admin, fixture.draft().getId(), png(220, 220), "png");
         mockMvc.perform(delete("/api/v1/properties/{id}/images/{imageId}",
-                        fixture.draft().getId(), imageId).cookie(admin.cookie()))
+                        fixture.draft().getId(), imageId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500").cookie(admin.cookie()))
                 .andExpect(status().isForbidden());
         assertThat(fakeStorage.deleteCalls()).isZero();
     }
@@ -572,6 +578,7 @@ class PropertyImageManagementIntegrationTest {
 
         mockMvc.perform(patch("/api/v1/properties/{id}/images/{imageId}",
                         fixture.draft().getId(), third)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"sortOrder\":0,\"altText\":\"Lead image\"}"))
@@ -605,6 +612,7 @@ class PropertyImageManagementIntegrationTest {
 
         mockMvc.perform(patch("/api/v1/properties/{id}/images/{imageId}/primary",
                         fixture.draft().getId(), first)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(2))
@@ -625,6 +633,7 @@ class PropertyImageManagementIntegrationTest {
 
         MvcResult result = mockMvc.perform(delete("/api/v1/properties/{id}/images/{imageId}",
                         fixture.draft().getId(), primary)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken()))
                 .andExpect(status().isNoContent())
                 .andReturn();
@@ -653,6 +662,7 @@ class PropertyImageManagementIntegrationTest {
 
         mockMvc.perform(patch("/api/v1/properties/{id}/images/{imageId}",
                         fixture.draft().getId(), other)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"sortOrder\":0}"))
@@ -663,6 +673,7 @@ class PropertyImageManagementIntegrationTest {
 
         mockMvc.perform(patch("/api/v1/properties/{id}/images/{imageId}",
                         fixture.draft().getId(), other)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"isPrimary\":true}"))
@@ -671,18 +682,21 @@ class PropertyImageManagementIntegrationTest {
                 .andExpect(jsonPath("$.error.details[*].field").value(hasItem("isPrimary")));
         mockMvc.perform(patch("/api/v1/properties/{id}/images/{imageId}",
                         fixture.draft().getId(), other)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"altText\":\"" + "x".repeat(256) + "\"}"))
                 .andExpect(status().isBadRequest());
         mockMvc.perform(patch("/api/v1/properties/{id}/images/{imageId}",
                         fixture.draft().getId(), other)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"sortOrder\":-1}"))
                 .andExpect(status().isBadRequest());
         mockMvc.perform(patch("/api/v1/properties/{id}/images/{imageId}",
                         fixture.draft().getId(), other)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"sortOrder\":null}"))
@@ -700,6 +714,7 @@ class PropertyImageManagementIntegrationTest {
 
         mockMvc.perform(patch("/api/v1/properties/{id}/images/{imageId}",
                         fixture.draft().getId(), foreign)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"altText\":\"nope\"}"))
@@ -707,10 +722,12 @@ class PropertyImageManagementIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
         mockMvc.perform(patch("/api/v1/properties/{id}/images/{imageId}/primary",
                         fixture.draft().getId(), foreign)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken()))
                 .andExpect(status().isNotFound());
         mockMvc.perform(delete("/api/v1/properties/{id}/images/{imageId}",
                         fixture.draft().getId(), foreign)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken()))
                 .andExpect(status().isNotFound());
         assertThat(fakeStorage.deleteCalls()).isZero();
@@ -721,6 +738,7 @@ class PropertyImageManagementIntegrationTest {
         for (int index = 0; index < 2; index++) {
             mockMvc.perform(patch("/api/v1/properties/{id}/images/{imageId}/primary",
                             fixture.draft().getId(), own)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                             .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken()))
                     .andExpect(status().isOk());
         }
@@ -737,16 +755,19 @@ class PropertyImageManagementIntegrationTest {
 
         mockMvc.perform(patch("/api/v1/properties/{id}/images/{imageId}",
                         fixture.otherProperty().getId(), imageId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(agent.cookie()).header(CSRF_HEADER, agent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"altText\":\"steal\"}"))
                 .andExpect(status().isForbidden());
         mockMvc.perform(patch("/api/v1/properties/{id}/images/{imageId}/primary",
                         fixture.otherProperty().getId(), imageId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(agent.cookie()).header(CSRF_HEADER, agent.csrfToken()))
                 .andExpect(status().isForbidden());
         mockMvc.perform(delete("/api/v1/properties/{id}/images/{imageId}",
                         fixture.otherProperty().getId(), imageId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(agent.cookie()).header(CSRF_HEADER, agent.csrfToken()))
                 .andExpect(status().isForbidden());
 
@@ -800,6 +821,7 @@ class PropertyImageManagementIntegrationTest {
 
         mockMvc.perform(delete("/api/v1/properties/{id}/images/{imageId}",
                         fixture.draft().getId(), imageId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken()))
                 .andExpect(status().isNoContent());
 
@@ -831,6 +853,7 @@ class PropertyImageManagementIntegrationTest {
                 start.await();
                 return mockMvc.perform(patch("/api/v1/properties/{id}/images/{imageId}/primary",
                                 fixture.draft().getId(), target)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                                 .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken()))
                         .andReturn().getResponse().getStatus();
             }));
@@ -891,10 +914,12 @@ class PropertyImageManagementIntegrationTest {
                 .andExpect(status().isConflict());
         mockMvc.perform(delete("/api/v1/properties/{id}/images/{imageId}",
                         fixture.archived().getId(), imageId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(agent.cookie()).header(CSRF_HEADER, agent.csrfToken()))
                 .andExpect(status().isForbidden());
         mockMvc.perform(delete("/api/v1/properties/{id}/images/{imageId}",
                         fixture.archived().getId(), imageId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken()))
                 .andExpect(status().isConflict());
 
@@ -913,6 +938,7 @@ class PropertyImageManagementIntegrationTest {
         String title = "Regression listing " + UUID.randomUUID();
 
         MvcResult created = mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createJson(title, fixture.subtype().getId(),
@@ -923,6 +949,7 @@ class PropertyImageManagementIntegrationTest {
         createdPropertyIds.add(propertyId);
 
         mockMvc.perform(patch("/api/v1/properties/{id}", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"title\":\"" + title + " updated\"}"))
@@ -1268,6 +1295,7 @@ class PropertyImageManagementIntegrationTest {
                 .andExpect(status().isForbidden());
         mockMvc.perform(delete("/api/v1/properties/{id}/images/{imageId}",
                         fixture.draft().getId(), imageId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(anonymous.cookie()).header(CSRF_HEADER, anonymous.csrfToken()))
                 .andExpect(status().isUnauthorized());
 
@@ -2063,6 +2091,7 @@ class PropertyImageManagementIntegrationTest {
             throws Exception {
         return mockMvc.perform(delete("/api/v1/properties/{id}/images/{imageId}",
                         propertyId, imageId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(session.cookie()).header(CSRF_HEADER, session.csrfToken()));
     }
 

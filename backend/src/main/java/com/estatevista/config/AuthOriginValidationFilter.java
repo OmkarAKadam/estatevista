@@ -23,19 +23,23 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Exact Origin/Referer validation for CSRF-exempt authentication requests.
+ * Exact Origin/Referer validation for state-changing browser requests.
  *
- * <p>{@code POST /auth/register} is exempt from the synchronizer token because a
- * visitor has no session yet ({@code SECURITY_ARCHITECTURE.md} SD-53). The
- * approved design compensates with exact Origin/Referer validation on every
- * state-changing request, including the exempt auth POSTs. Rejecting a request
- * that presents neither header prevents a cross-site form post from silently
- * creating an account.</p>
+ * <p>Compensates for CSRF-exempt authentication POSTs and provides an
+ * independent defense-in-depth check on every other mutating request
+ * ({@code SECURITY_ARCHITECTURE.md} SD-53, SD-F1). Both the synchronizer token
+ * and the origin check must pass on state-changing requests; neither replaces
+ * the other.</p>
  *
- * <p>This filter does not replace CORS and does not validate the token on
- * non-exempt endpoints; those keep the framework CSRF protection.</p>
+ * <p>A request is rejected when it presents a disallowed, malformed, or
+ * ambiguous origin. When {@code Origin} is absent, an exact {@code Referer}
+ * origin is accepted. When neither header is present, state-changing browser
+ * requests are rejected.</p>
  */
 public class AuthOriginValidationFilter extends OncePerRequestFilter {
+
+    private static final java.util.Set<String> SAFE_METHODS =
+            java.util.Set.of("GET", "HEAD", "OPTIONS", "TRACE");
 
     private final List<String> allowedOrigins;
     private final ObjectMapper objectMapper;
@@ -55,6 +59,9 @@ public class AuthOriginValidationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
+        if (SAFE_METHODS.contains(request.getMethod())) {
+            return true;
+        }
         return !matcher.matches(request);
     }
 
@@ -63,22 +70,43 @@ public class AuthOriginValidationFilter extends OncePerRequestFilter {
             HttpServletRequest request,
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
-        String origin = request.getHeader(HttpHeaders.ORIGIN);
-        String candidate = origin != null && !origin.isBlank()
-                ? origin
-                : originOf(request.getHeader(HttpHeaders.REFERER));
+        java.util.List<String> originHeaders = java.util.Collections.list(
+                request.getHeaders(HttpHeaders.ORIGIN));
+        if (originHeaders.size() > 1) {
+            reject(request, response);
+            return;
+        }
+
+        String origin = originHeaders.isEmpty() ? null : originHeaders.get(0);
+        String candidate;
+        if (origin != null && !origin.isBlank()) {
+            candidate = origin.trim();
+        } else {
+            java.util.List<String> refererHeaders = java.util.Collections.list(
+                    request.getHeaders(HttpHeaders.REFERER));
+            if (refererHeaders.size() > 1) {
+                reject(request, response);
+                return;
+            }
+            candidate = refererHeaders.isEmpty() ? null : originOf(refererHeaders.get(0));
+        }
 
         if (candidate == null || !isAllowed(candidate)) {
-            AuditEventService audit = auditEventService == null
-                    ? null
-                    : auditEventService.getIfAvailable();
-            if (audit != null) {
-                audit.recordOriginRejected(request);
-            }
-            writeForbidden(request, response);
+            reject(request, response);
             return;
         }
         filterChain.doFilter(request, response);
+    }
+
+    private void reject(HttpServletRequest request, HttpServletResponse response)
+            throws IOException {
+        AuditEventService audit = auditEventService == null
+                ? null
+                : auditEventService.getIfAvailable();
+        if (audit != null) {
+            audit.recordOriginRejected(request);
+        }
+        writeForbidden(request, response);
     }
 
     private boolean isAllowed(String origin) {
@@ -112,6 +140,7 @@ public class AuthOriginValidationFilter extends OncePerRequestFilter {
         response.setStatus(ErrorCode.FORBIDDEN.status().value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
         objectMapper.writeValue(
                 response.getOutputStream(),
                 ApiErrorResponse.of(

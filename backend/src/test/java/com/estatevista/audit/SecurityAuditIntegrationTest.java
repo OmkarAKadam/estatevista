@@ -207,6 +207,7 @@ class SecurityAuditIntegrationTest {
 
         String logoutRequestId = newRequestId("logout");
         mockMvc.perform(post("/api/v1/auth/logout")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(sessionCookie)
                         .header("X-CSRF-TOKEN", logoutToken)
                         .header(CorrelationIdFilter.HEADER, logoutRequestId))

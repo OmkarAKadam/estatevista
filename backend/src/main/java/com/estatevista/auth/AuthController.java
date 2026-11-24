@@ -30,6 +30,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -48,16 +49,19 @@ public class AuthController {
     private final AuthService authService;
     private final RateLimitService rateLimitService;
     private final AuditEventService auditEventService;
+    private final CsrfTokenRepository csrfTokenRepository;
     private final SecurityContextRepository securityContextRepository =
             new HttpSessionSecurityContextRepository();
 
     public AuthController(
             AuthService authService,
             RateLimitService rateLimitService,
-            AuditEventService auditEventService) {
+            AuditEventService auditEventService,
+            CsrfTokenRepository csrfTokenRepository) {
         this.authService = authService;
         this.rateLimitService = rateLimitService;
         this.auditEventService = auditEventService;
+        this.csrfTokenRepository = csrfTokenRepository;
     }
 
     @PostMapping("/register")
@@ -110,8 +114,9 @@ public class AuthController {
         // Rotate any pre-existing anonymous session after a fully trusted
         // authentication. Spring Security's sessionFixation() strategy is not
         // triggered by a controller-managed authentication, so the rotation is
-        // applied explicitly here. changeSessionId() preserves session
-        // attributes (including the CSRF token) while replacing the identifier.
+        // applied explicitly here. changeSessionId() preserves session attributes
+        // while replacing the identifier; the CSRF token is regenerated below so
+        // the pre-authentication token cannot be reused after login (SD-F2).
         if (httpRequest.getSession(false) != null) {
             httpRequest.changeSessionId();
         }
@@ -123,15 +128,18 @@ public class AuthController {
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, httpRequest, httpResponse);
+
+        CsrfToken regenerated = csrfTokenRepository.generateToken(httpRequest);
+        csrfTokenRepository.saveToken(regenerated, httpRequest, httpResponse);
+        httpRequest.setAttribute(CsrfToken.class.getName(), regenerated);
+        httpRequest.setAttribute(regenerated.getParameterName(), regenerated);
+
         rateLimitService.reset(RateLimitService.SCOPE_LOGIN, rateLimitIdentity);
         auditEventService.recordLoginSuccess(user.id());
 
-        String token = csrfToken == null ? null : csrfToken.getToken();
         ResponseEntity.BodyBuilder response = ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore());
-        if (token != null) {
-            response.header(CSRF_HEADER, token);
-        }
+        response.header(CSRF_HEADER, regenerated.getToken());
         return response.body(ApiResponse.success("Login successful", user));
     }
 

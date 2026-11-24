@@ -245,6 +245,7 @@ class SessionAuthenticationIntegrationTest {
                 .andExpect(jsonPath("$.data.email").value("fixation@example.com"));
 
         mockMvc.perform(post("/api/v1/auth/logout")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(afterLoginCookie)
                         .header("X-CSRF-TOKEN", rotatedToken))
                 .andExpect(status().isOk())
@@ -261,17 +262,20 @@ class SessionAuthenticationIntegrationTest {
         assertThat(loginCsrfToken).isNotBlank();
         assertThat(login.getResponse().getContentAsString()).doesNotContain(loginCsrfToken);
 
-        mockMvc.perform(post("/api/v1/auth/logout").cookie(sessionCookie))
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500").cookie(sessionCookie))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
 
         mockMvc.perform(post("/api/v1/auth/logout")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(sessionCookie)
                         .with(csrf().useInvalidToken()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
 
         MvcResult logout = mockMvc.perform(post("/api/v1/auth/logout")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(sessionCookie)
                         .header("X-CSRF-TOKEN", loginCsrfToken))
                 .andExpect(status().isOk())

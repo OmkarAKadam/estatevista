@@ -84,6 +84,7 @@ class UserControllerTest {
     @Test
     void updateRequiresACsrfToken() throws Exception {
         mockMvc.perform(patch("/api/v1/users/me")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user(USER_ID.toString()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"firstName\":\"Janet\"}"))
@@ -96,6 +97,7 @@ class UserControllerTest {
     @Test
     void authenticatedUpdateWithCsrfSucceeds() throws Exception {
         mockMvc.perform(patch("/api/v1/users/me")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user(USER_ID.toString()))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -138,6 +140,7 @@ class UserControllerTest {
                 .thenThrow(new ApiException(ErrorCode.UNAUTHORIZED, "Authentication is required"));
 
         mockMvc.perform(patch("/api/v1/users/me")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user(USER_ID.toString()))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -149,6 +152,7 @@ class UserControllerTest {
     @Test
     void updateWithoutCsrfIsRejectedEvenWhenAnonymous() throws Exception {
         mockMvc.perform(patch("/api/v1/users/me")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"firstName\":\"Janet\"}"))
@@ -160,6 +164,7 @@ class UserControllerTest {
         String json = "{\"" + field + "\":\"" + value + "\"}";
 
         mockMvc.perform(patch("/api/v1/users/me")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user(USER_ID.toString()))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)

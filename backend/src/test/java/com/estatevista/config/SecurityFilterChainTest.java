@@ -108,13 +108,28 @@ class SecurityFilterChainTest {
 
     @Test
     void mutatingRequestWithoutCsrfTokenReturnsForbiddenEnvelope() throws Exception {
-        mockMvc.perform(post("/api/v1/probe/write").with(user("probe")))
+        mockMvc.perform(post("/api/v1/probe/write")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
+                        .with(user("probe")))
                 .andExpect(status().isForbidden())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
 
         verify(auditEventService, times(1)).recordCsrfFailure(any());
         verify(auditEventService, times(0)).recordAccessDenied(any());
+    }
+
+    @Test
+    void privateApiAndDeniedResponsesUseNoStore() throws Exception {
+        mockMvc.perform(get("/api/v1/users/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
+
+        mockMvc.perform(post("/api/v1/probe/write")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
+                        .with(user("probe")))
+                .andExpect(status().isForbidden())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
     }
 
     @Test
@@ -174,12 +189,35 @@ class SecurityFilterChainTest {
     }
 
     @Test
+    void multipleOriginHeadersAreRejected() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
+                        .header(HttpHeaders.ORIGIN, "https://evil.example.com")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void multipleRefererHeadersAreRejectedWhenOriginMissing() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .header(HttpHeaders.REFERER, "http://localhost:5500/register")
+                        .header(HttpHeaders.REFERER, "https://evil.example.com/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+    }
+
+    @Test
     void currentUserEndpointsRequireAuthentication() throws Exception {
         mockMvc.perform(get("/api/v1/users/me"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
 
         mockMvc.perform(patch("/api/v1/users/me")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"firstName\":\"Janet\"}"))
@@ -190,6 +228,7 @@ class SecurityFilterChainTest {
     @Test
     void authenticatedProfileUpdateStillRequiresCsrf() throws Exception {
         mockMvc.perform(patch("/api/v1/users/me")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user("33333333-3333-3333-3333-333333333333"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"firstName\":\"Janet\"}"))
@@ -273,6 +312,7 @@ class SecurityFilterChainTest {
 
         mockMvc.perform(patch("/api/v1/admin/properties/{propertyId}/assignment",
                         "33333333-3333-3333-3333-333333333333")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user(admin).roles("ADMIN"))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -281,6 +321,7 @@ class SecurityFilterChainTest {
 
         mockMvc.perform(patch("/api/v1/admin/properties/{propertyId}/assignment",
                         "33333333-3333-3333-3333-333333333333")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user(agent).roles("AGENT"))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -290,6 +331,7 @@ class SecurityFilterChainTest {
 
         mockMvc.perform(patch("/api/v1/admin/properties/{propertyId}/assignment",
                         "33333333-3333-3333-3333-333333333333")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user(admin).roles("ADMIN"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
@@ -298,6 +340,7 @@ class SecurityFilterChainTest {
 
         mockMvc.perform(patch("/api/v1/admin/properties/{propertyId}/assignment",
                         "33333333-3333-3333-3333-333333333333")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
@@ -337,15 +380,19 @@ class SecurityFilterChainTest {
                 "/api/v1/property-categories",
                 "/api/v1/property-subtypes",
                 "/api/v1/amenities")) {
-            mockMvc.perform(post(path).with(csrf()))
+            mockMvc.perform(post(path)
+                            .header(HttpHeaders.ORIGIN, "http://localhost:5500")
+                            .with(csrf()))
                     .andExpect(status().isUnauthorized())
                     .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
             mockMvc.perform(put(path)
+                            .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                             .with(user("11111111-1111-1111-1111-111111111111").roles("ADMIN"))
                             .with(csrf()))
                     .andExpect(status().isForbidden())
                     .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
             mockMvc.perform(delete(path)
+                            .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                             .with(user("11111111-1111-1111-1111-111111111111").roles("ADMIN"))
                             .with(csrf()))
                     .andExpect(status().isForbidden())

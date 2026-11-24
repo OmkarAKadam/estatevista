@@ -123,7 +123,7 @@ class ApplicationIntegrationTest {
                 .andExpect(header().string(
                         HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"))
                 .andExpect(header().string(
-                        HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, "X-CSRF-TOKEN"));
+                        HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, "X-CSRF-TOKEN, Retry-After"));
 
         mockMvc.perform(options("/api/v1/health")
                         .header(HttpHeaders.ORIGIN, "http://evil.example.com")
@@ -134,7 +134,8 @@ class ApplicationIntegrationTest {
 
     @Test
     void tokenlessMutatingRequestIsRejectedBeforeAuthorization() throws Exception {
-        mockMvc.perform(post("/api/v1/health"))
+        mockMvc.perform(post("/api/v1/health")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500"))
                 .andExpect(status().isForbidden())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));

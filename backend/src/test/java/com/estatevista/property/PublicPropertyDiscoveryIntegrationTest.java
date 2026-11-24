@@ -634,7 +634,8 @@ class PublicPropertyDiscoveryIntegrationTest {
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/properties/featured").cookie(adminSession.cookie()))
                 .andExpect(status().isForbidden());
-        mockMvc.perform(post("/api/v1/properties/featured").cookie(adminSession.cookie())
+        mockMvc.perform(post("/api/v1/properties/featured")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500").cookie(adminSession.cookie())
                         .header(CSRF_HEADER, adminSession.csrfToken()))
                 .andExpect(status().isForbidden());
 
@@ -662,20 +663,24 @@ class PublicPropertyDiscoveryIntegrationTest {
                 unique("Regression Locality"), unique("Regression City"));
 
         mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
-        mockMvc.perform(post("/api/v1/properties").cookie(adminSession.cookie())
+        mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500").cookie(adminSession.cookie())
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
-        mockMvc.perform(post("/api/v1/properties").cookie(buyerSession.cookie())
+        mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500").cookie(buyerSession.cookie())
                         .header(CSRF_HEADER, buyerSession.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
 
         MvcResult created = mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(adminSession.cookie())
                         .header(CSRF_HEADER, adminSession.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -688,12 +693,14 @@ class PublicPropertyDiscoveryIntegrationTest {
         createdPropertyIds.add(propertyId);
 
         mockMvc.perform(patch("/api/v1/properties/{id}", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(otherAgentSession.cookie())
                         .header(CSRF_HEADER, otherAgentSession.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"title\":\"Unassigned change\"}"))
                 .andExpect(status().isForbidden());
         mockMvc.perform(delete("/api/v1/properties/{id}", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(adminSession.cookie())
                         .header(CSRF_HEADER, adminSession.csrfToken()))
                 .andExpect(status().isOk())

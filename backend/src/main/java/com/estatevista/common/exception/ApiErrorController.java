@@ -6,6 +6,7 @@ import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.http.HttpServletRequest;
 
 import org.springframework.boot.webmvc.error.ErrorController;
+import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,6 +32,7 @@ public class ApiErrorController implements ErrorController {
         ErrorCode errorCode = ErrorCode.fromStatus(rawStatus);
         return ResponseEntity.status(errorCode.status())
                 .contentType(MediaType.APPLICATION_JSON)
+                .cacheControl(CacheControl.noStore())
                 .body(ApiErrorResponse.of(
                         errorCode,
                         null,

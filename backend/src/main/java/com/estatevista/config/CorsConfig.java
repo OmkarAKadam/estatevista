@@ -24,7 +24,7 @@ public class CorsConfig {
     private static final List<String> ALLOWED_HEADERS =
             List.of("Content-Type", "X-CSRF-TOKEN");
 
-    private static final List<String> EXPOSED_HEADERS = List.of("X-CSRF-TOKEN");
+    private static final List<String> EXPOSED_HEADERS = List.of("X-CSRF-TOKEN", "Retry-After");
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource(AppProperties properties) {

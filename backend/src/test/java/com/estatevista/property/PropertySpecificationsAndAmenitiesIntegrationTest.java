@@ -177,6 +177,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
                 residentialDetails(3, 2), List.of(fixture.amenityOne().getId()));
 
         JsonNode data = readData(mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -205,6 +206,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
                 commercialDetails(), List.of(fixture.amenityTwo().getId()));
 
         JsonNode data = readData(mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -244,6 +246,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
                 fixture.agent().getId(), residentialDetails(2, 2), null), "subtypeId");
 
         mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -294,6 +297,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
                 List.of(fixture.amenityOne().getId())));
 
         mockMvc.perform(patch("/api/v1/properties/{id}", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -317,6 +321,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
                 fixture.agent().getId(), commercialDetails(), null));
 
         mockMvc.perform(patch("/api/v1/properties/{id}", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -338,6 +343,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
         String newTitle = unique("Patched Title");
 
         JsonNode data = readData(mockMvc.perform(patch("/api/v1/properties/{id}", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -366,6 +372,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
         JsonNode data = readData(mockMvc.perform(
                         org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                                 .put("/api/v1/properties/{id}", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                                 .cookie(admin.cookie())
                                 .header(CSRF_HEADER, admin.csrfToken())
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -397,6 +404,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
                 fixture.agent().getId(), residentialDetails(2, 2), null));
 
         mockMvc.perform(patch("/api/v1/properties/{id}", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -411,6 +419,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
         assertThat(countDetails("property_commercial_details", propertyId)).isEqualTo(1L);
 
         mockMvc.perform(patch("/api/v1/properties/{id}", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -432,6 +441,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
                 fixture.agent().getId(), commercialDetails(), null));
 
         mockMvc.perform(patch("/api/v1/properties/{id}", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -473,6 +483,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
                 List.of(fixture.amenityOne().getId())));
 
         JsonNode afterPatch = readData(mockMvc.perform(patch("/api/v1/properties/{id}", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -488,6 +499,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
         JsonNode afterPut = readData(mockMvc.perform(
                         org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                                 .put("/api/v1/properties/{id}", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                                 .cookie(admin.cookie())
                                 .header(CSRF_HEADER, admin.csrfToken())
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -506,6 +518,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
         Session admin = login(fixture.admin().getEmail());
 
         JsonNode amenities = readData(mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -529,6 +542,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
         Session admin = login(fixture.admin().getEmail());
 
         mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -567,6 +581,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
         Session otherAgent = login(fixture.otherAgent().getEmail());
 
         mockMvc.perform(patch("/api/v1/properties/{id}", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(otherAgent.cookie())
                         .header(CSRF_HEADER, otherAgent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -665,6 +680,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
 
         JsonNode reassigned = readData(mockMvc.perform(
                         patch("/api/v1/admin/properties/{id}/assignment", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                                 .cookie(admin.cookie())
                                 .header(CSRF_HEADER, admin.csrfToken())
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -677,6 +693,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
 
         Session newAgent = login(fixture.otherAgent().getEmail());
         mockMvc.perform(patch("/api/v1/properties/{id}", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(newAgent.cookie())
                         .header(CSRF_HEADER, newAgent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -690,6 +707,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
 
         Session oldAgent = login(fixture.agent().getEmail());
         mockMvc.perform(patch("/api/v1/properties/{id}", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(oldAgent.cookie())
                         .header(CSRF_HEADER, oldAgent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -792,6 +810,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
 
     private UUID createProperty(Session admin, String body) throws Exception {
         JsonNode data = readData(mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -806,6 +825,7 @@ class PropertySpecificationsAndAmenitiesIntegrationTest {
     private void assertCreateValidationError(Session admin, String body, String field)
             throws Exception {
         mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)

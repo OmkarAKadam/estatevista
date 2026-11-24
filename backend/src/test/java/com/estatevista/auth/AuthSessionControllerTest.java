@@ -236,11 +236,15 @@ class AuthSessionControllerTest {
 
     @Test
     void logoutRequiresAuthenticationAndCsrf() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/logout").with(csrf()))
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
+                        .with(csrf()))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
 
-        mockMvc.perform(post("/api/v1/auth/logout").with(user(USER_ID.toString())))
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
+                        .with(user(USER_ID.toString())))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
     }
@@ -248,6 +252,7 @@ class AuthSessionControllerTest {
     @Test
     void authenticatedLogoutWithValidCsrfSucceeds() throws Exception {
         mockMvc.perform(post("/api/v1/auth/logout")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user(USER_ID.toString()))
                         .with(csrf()))
                 .andExpect(status().isOk())
@@ -256,6 +261,44 @@ class AuthSessionControllerTest {
                 .andExpect(jsonPath("$.message").value("Logout successful"));
 
         verify(auditEventService).recordLogout(USER_ID);
+    }
+
+    @Test
+    void loginRegeneratesCsrfTokenAndRejectsPreLoginToken() throws Exception {
+        MvcResult csrfResult = mockMvc.perform(get("/api/v1/auth/csrf"))
+                .andExpect(status().isOk())
+                .andReturn();
+        String preLoginToken = csrfResult.getResponse().getHeader("X-CSRF-TOKEN");
+        assertThat(preLoginToken).isNotBlank();
+        var session = csrfResult.getRequest().getSession(false);
+
+        when(authService.authenticate(any())).thenReturn(USER);
+
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .session((org.springframework.mock.web.MockHttpSession) session)
+                        .header(HttpHeaders.ORIGIN, ORIGIN)
+                        .header("X-CSRF-TOKEN", preLoginToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validLoginBody()))
+                .andExpect(status().isOk())
+                .andExpect(header().exists("X-CSRF-TOKEN"))
+                .andReturn();
+
+        String postLoginToken = loginResult.getResponse().getHeader("X-CSRF-TOKEN");
+        assertThat(postLoginToken).isNotBlank().isNotEqualTo(preLoginToken);
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .session((org.springframework.mock.web.MockHttpSession) session)
+                        .header(HttpHeaders.ORIGIN, ORIGIN)
+                        .header("X-CSRF-TOKEN", preLoginToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .session((org.springframework.mock.web.MockHttpSession) session)
+                        .header(HttpHeaders.ORIGIN, ORIGIN)
+                        .header("X-CSRF-TOKEN", postLoginToken))
+                .andExpect(status().isOk());
     }
 
     private static String validLoginBody() {

@@ -185,6 +185,7 @@ class PropertyCrudIntegrationTest {
         String title = unique("Created Listing");
 
         MvcResult result = mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -246,6 +247,7 @@ class PropertyCrudIntegrationTest {
                 fixture.amenity().getId(), unique("Locality"), unique("City"));
 
         mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(buyer.cookie())
                         .header(CSRF_HEADER, buyer.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -254,6 +256,7 @@ class PropertyCrudIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
 
         mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(agent.cookie())
                         .header(CSRF_HEADER, agent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -273,6 +276,7 @@ class PropertyCrudIntegrationTest {
         String withRootUnknown = body.replace("\"title\": \"",
                 "\"status\": \"PUBLISHED\",\n  \"title\": \"");
         mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -284,6 +288,7 @@ class PropertyCrudIntegrationTest {
         String withNestedUnknown = body.replace("\"locality\": \"",
                 "\"secret\": true,\n    \"locality\": \"");
         mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -296,6 +301,7 @@ class PropertyCrudIntegrationTest {
                 fixture.commercialSubtype().getId(), fixture.agent().getId(),
                 fixture.amenity().getId(), unique("Locality"), unique("City"));
         mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -645,6 +651,7 @@ class PropertyCrudIntegrationTest {
         String newTitle = unique("Patched Title");
 
         mockMvc.perform(patch("/api/v1/properties/{id}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(agent.cookie())
                         .header(CSRF_HEADER, agent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -672,6 +679,7 @@ class PropertyCrudIntegrationTest {
         String originalTitle = property.getTitle();
 
         mockMvc.perform(patch("/api/v1/properties/{id}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(buyer.cookie())
                         .header(CSRF_HEADER, buyer.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -679,6 +687,7 @@ class PropertyCrudIntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         mockMvc.perform(patch("/api/v1/properties/{id}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(otherAgent.cookie())
                         .header(CSRF_HEADER, otherAgent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -699,6 +708,7 @@ class PropertyCrudIntegrationTest {
                 unique("Locality"), new BigDecimal("1000.00"), null, (short) 1, false, null);
 
         mockMvc.perform(put("/api/v1/properties/{id}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(agent.cookie())
                         .header(CSRF_HEADER, agent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -712,6 +722,7 @@ class PropertyCrudIntegrationTest {
 
         String newTitle = unique("Replaced Title");
         mockMvc.perform(put("/api/v1/properties/{id}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(agent.cookie())
                         .header(CSRF_HEADER, agent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -735,6 +746,7 @@ class PropertyCrudIntegrationTest {
                 unique("Locality"), new BigDecimal("1000.00"), null, (short) 1, false, null);
 
         mockMvc.perform(patch("/api/v1/properties/{id}", archived.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -749,6 +761,7 @@ class PropertyCrudIntegrationTest {
                 {"commercialDetails":{"parkingSpaces":1}}
                 """;
         mockMvc.perform(patch("/api/v1/properties/{id}", draft.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(agent.cookie())
                         .header(CSRF_HEADER, agent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -762,6 +775,7 @@ class PropertyCrudIntegrationTest {
                 {"status":"PUBLISHED"}
                 """;
         mockMvc.perform(patch("/api/v1/properties/{id}", draft.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(agent.cookie())
                         .header(CSRF_HEADER, agent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -783,6 +797,7 @@ class PropertyCrudIntegrationTest {
                 (short) 2, true, fixture.amenity());
 
         mockMvc.perform(delete("/api/v1/properties/{id}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken()))
                 .andExpect(status().isOk())
@@ -816,11 +831,13 @@ class PropertyCrudIntegrationTest {
                 (short) 2, false, null);
 
         mockMvc.perform(delete("/api/v1/properties/{id}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(agent.cookie())
                         .header(CSRF_HEADER, agent.csrfToken()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         mockMvc.perform(delete("/api/v1/properties/{id}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(buyer.cookie())
                         .header(CSRF_HEADER, buyer.csrfToken()))
                 .andExpect(status().isForbidden())
@@ -844,22 +861,26 @@ class PropertyCrudIntegrationTest {
         // CSRF runs before authorization, so a tokenless mutation is rejected
         // before the anonymous authentication entry point can return 401.
         mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createBody))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(createBody))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         mockMvc.perform(patch("/api/v1/properties/{id}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(patchJson(unique("No Session"))))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         mockMvc.perform(delete("/api/v1/properties/{id}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
@@ -895,6 +916,7 @@ class PropertyCrudIntegrationTest {
                 .andExpect(jsonPath("$.meta").doesNotExist());
         // Stage 4.6: the status route is mapped, so a missing property is a 404.
         mockMvc.perform(patch("/api/v1/properties/{id}/status", UUID.randomUUID())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -1073,6 +1095,7 @@ class PropertyCrudIntegrationTest {
 
     private UUID createPropertyWithBody(Session admin, String body) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -1087,6 +1110,7 @@ class PropertyCrudIntegrationTest {
     private void assertCreateValidationError(Session admin, String body, String field)
             throws Exception {
         mockMvc.perform(post("/api/v1/properties")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)

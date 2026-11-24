@@ -254,6 +254,7 @@ class PropertyAssignmentIntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         mockMvc.perform(patch("/api/v1/admin/properties/{propertyId}/assignment", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .header(CSRF_HEADER, "anonymous-token")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
@@ -273,12 +274,14 @@ class PropertyAssignmentIntegrationTest {
         String body = assignmentJson(fixture.otherAgent().getId());
 
         mockMvc.perform(patch("/api/v1/admin/properties/{propertyId}/assignment", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         mockMvc.perform(patch("/api/v1/admin/properties/{propertyId}/assignment", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, "invalid-token")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -385,12 +388,14 @@ class PropertyAssignmentIntegrationTest {
         Session admin = login(fixture.admin().getEmail());
 
         mockMvc.perform(patch("/api/v1/properties/{propertyId}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(previousAgent.cookie())
                         .header(CSRF_HEADER, previousAgent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"title\":\"" + unique("Before") + "\"}"))
                 .andExpect(status().isOk());
         mockMvc.perform(patch("/api/v1/properties/{propertyId}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(newAgent.cookie())
                         .header(CSRF_HEADER, newAgent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -402,6 +407,7 @@ class PropertyAssignmentIntegrationTest {
                 .andExpect(status().isOk());
 
         mockMvc.perform(patch("/api/v1/properties/{propertyId}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(previousAgent.cookie())
                         .header(CSRF_HEADER, previousAgent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -410,6 +416,7 @@ class PropertyAssignmentIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         String newTitle = unique("Allowed After");
         mockMvc.perform(patch("/api/v1/properties/{propertyId}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(newAgent.cookie())
                         .header(CSRF_HEADER, newAgent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -425,6 +432,7 @@ class PropertyAssignmentIntegrationTest {
         Session otherAgent = login(fixture.otherAgent().getEmail());
 
         mockMvc.perform(patch("/api/v1/properties/{propertyId}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(otherAgent.cookie())
                         .header(CSRF_HEADER, otherAgent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -432,6 +440,7 @@ class PropertyAssignmentIntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         mockMvc.perform(put("/api/v1/properties/{propertyId}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(otherAgent.cookie())
                         .header(CSRF_HEADER, otherAgent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -453,6 +462,7 @@ class PropertyAssignmentIntegrationTest {
                 """.formatted(unique("Smuggled"), fixture.otherAgent().getId());
 
         mockMvc.perform(patch("/api/v1/properties/{propertyId}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(agent.cookie())
                         .header(CSRF_HEADER, agent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -461,6 +471,7 @@ class PropertyAssignmentIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.error.details[*].field").value(hasItem("primaryAgentId")));
         mockMvc.perform(put("/api/v1/properties/{propertyId}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -550,6 +561,7 @@ class PropertyAssignmentIntegrationTest {
         Session agent = login(fixture.agent().getEmail());
 
         mockMvc.perform(patch("/api/v1/properties/{propertyId}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(agent.cookie())
                         .header(CSRF_HEADER, agent.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -557,6 +569,7 @@ class PropertyAssignmentIntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         mockMvc.perform(patch("/api/v1/properties/{propertyId}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -785,6 +798,7 @@ class PropertyAssignmentIntegrationTest {
     private MockHttpServletRequestBuilder assignmentRequest(
             Session session, UUID propertyId, String body) {
         return patch("/api/v1/admin/properties/{propertyId}/assignment", propertyId)
+                .header(HttpHeaders.ORIGIN, ORIGIN)
                 .cookie(session.cookie())
                 .header(CSRF_HEADER, session.csrfToken())
                 .contentType(MediaType.APPLICATION_JSON)

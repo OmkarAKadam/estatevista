@@ -15,6 +15,7 @@ import com.estatevista.common.response.ApiErrorResponse;
 import tools.jackson.databind.ObjectMapper;
 
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -147,6 +148,7 @@ public final class PropertyRateLimitFilter extends OncePerRequestFilter {
         response.setStatus(ErrorCode.TOO_MANY_REQUESTS.status().value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
         response.setHeader(
                 "Retry-After", String.valueOf(exception.getRetryAfterSeconds()));
         objectMapper.writeValue(

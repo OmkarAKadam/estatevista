@@ -67,4 +67,39 @@ class SecureCsrfTokenRepositoryTest {
         assertThat(token.getParameterName()).isEqualTo("_custom");
         assertThat(Base64.getUrlDecoder().decode(token.getToken())).hasSize(32);
     }
+
+    @Test
+    void concurrentDeferredTokenBootstrapReturnsSingleToken() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setSession(new org.springframework.mock.web.MockHttpSession());
+        org.springframework.mock.web.MockHttpServletResponse response =
+                new org.springframework.mock.web.MockHttpServletResponse();
+
+        int threads = 8;
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(threads);
+        java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(threads);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.Future<CsrfToken>[] futures = new java.util.concurrent.Future[threads];
+
+        for (int i = 0; i < threads; i++) {
+            futures[i] = executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                return repository.loadDeferredToken(request, response).get();
+            });
+        }
+        ready.await();
+        start.countDown();
+
+        Set<String> tokens = new HashSet<>();
+        for (java.util.concurrent.Future<CsrfToken> future : futures) {
+            tokens.add(future.get(5, java.util.concurrent.TimeUnit.SECONDS).getToken());
+        }
+        executor.shutdown();
+
+        assertThat(tokens).hasSize(1);
+        CsrfToken stored = repository.loadToken(request);
+        assertThat(stored).isNotNull();
+        assertThat(tokens.iterator().next()).isEqualTo(stored.getToken());
+    }
 }

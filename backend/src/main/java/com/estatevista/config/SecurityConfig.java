@@ -20,6 +20,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -35,9 +36,11 @@ import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.web.csrf.CsrfFilter;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.CorsFilter;
 
 /**
@@ -83,9 +86,15 @@ public class SecurityConfig {
     }
 
     @Bean
+    public CsrfTokenRepository csrfTokenRepository() {
+        return new SecureCsrfTokenRepository();
+    }
+
+    @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            SecurityContextRepository securityContextRepository) throws Exception {
+            SecurityContextRepository securityContextRepository,
+            CsrfTokenRepository csrfTokenRepository) throws Exception {
         AuthenticationEntryPoint authenticationEntryPoint = (request, response, exception) ->
                 writeJsonError(request, response, ErrorCode.UNAUTHORIZED, null);
         AccessDeniedHandler accessDeniedHandler = (request, response, exception) -> {
@@ -105,8 +114,14 @@ public class SecurityConfig {
 
         List<String> allowedOrigins = AllowedOrigins.requireExplicit(
                 appProperties.cors().allowedOrigins(), "app.cors.allowed-origins");
+        RequestMatcher stateChangingApiRequest = request -> {
+            String uri = request.getRequestURI();
+            String contextPath = request.getContextPath();
+            String path = uri.startsWith(contextPath) ? uri.substring(contextPath.length()) : uri;
+            return path.startsWith("/api/");
+        };
         AuthOriginValidationFilter originFilter = new AuthOriginValidationFilter(
-                allowedOrigins, objectMapper, registrationPost, auditEventService);
+                allowedOrigins, objectMapper, stateChangingApiRequest, auditEventService);
 
         CsrfTokenRequestAttributeHandler csrfRequestHandler = new CsrfTokenRequestAttributeHandler();
         csrfRequestHandler.setCsrfRequestAttributeName(null);
@@ -114,7 +129,7 @@ public class SecurityConfig {
         http
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf
-                        .csrfTokenRepository(new SecureCsrfTokenRepository())
+                        .csrfTokenRepository(csrfTokenRepository)
                         .csrfTokenRequestHandler(csrfRequestHandler)
                         .ignoringRequestMatchers(registrationPost))
                 .headers(headers -> headers
@@ -209,6 +224,7 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .addFilterBefore(originFilter, CorsFilter.class)
+                .addFilterAfter(new PrivateResponseNoStoreFilter(), CorsFilter.class)
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler));
@@ -223,6 +239,7 @@ public class SecurityConfig {
         response.setStatus(errorCode.status().value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
         objectMapper.writeValue(
                 response.getOutputStream(),
                 ApiErrorResponse.of(

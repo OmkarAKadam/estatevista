@@ -41,6 +41,7 @@ const MAX_TIMER_DELAY_MS = 2147483647;
 
 let csrfToken = null;
 let csrfRequest = null;
+let csrfBootstrapGeneration = 0;
 let sharedPublicReadCooldown = null;
 
 /**
@@ -77,7 +78,9 @@ export function hasCsrfToken() {
 }
 
 export function clearCsrfToken() {
+  csrfBootstrapGeneration += 1;
   csrfToken = null;
+  csrfRequest = null;
 }
 
 function buildUrl(path) {
@@ -516,7 +519,7 @@ async function publicReadRequest(path, init, options) {
   throw deadlineError();
 }
 
-async function requestCsrfToken() {
+async function requestCsrfToken(generation) {
   let response;
   try {
     response = await fetch(requestUrl("/auth/csrf"), {
@@ -526,11 +529,22 @@ async function requestCsrfToken() {
       cache: "no-store"
     });
   } catch {
-    throw networkError();
+    if (generation === csrfBootstrapGeneration) {
+      throw networkError();
+    }
+    return;
   }
 
-  captureCsrfToken(response);
+  const token = response.headers.get(CSRF_HEADER);
   const payload = await parseBody(response);
+
+  if (generation !== csrfBootstrapGeneration) {
+    return;
+  }
+
+  if (token && token.trim().length > 0) {
+    csrfToken = token.trim();
+  }
 
   if (!response.ok) {
     throw apiErrorFromResponse(response, payload);
@@ -546,20 +560,29 @@ async function requestCsrfToken() {
 
 /**
  * Obtain the session-bound CSRF token when it is not already in memory.
- * Concurrent callers share one bootstrap request.
+ * Concurrent callers share one bootstrap request. Forced refreshes start a new
+ * bootstrap generation so stale responses cannot overwrite a newer token.
  */
 export function ensureCsrfToken({ force = false } = {}) {
   if (csrfToken && !force) {
     return Promise.resolve();
   }
-  if (csrfRequest) {
+  if (csrfRequest && !force) {
     return csrfRequest;
   }
 
-  csrfRequest = requestCsrfToken().finally(() => {
-    csrfRequest = null;
+  const generation = ++csrfBootstrapGeneration;
+  if (force) {
+    csrfToken = null;
+  }
+
+  const request = requestCsrfToken(generation).finally(() => {
+    if (csrfRequest === request) {
+      csrfRequest = null;
+    }
   });
-  return csrfRequest;
+  csrfRequest = request;
+  return request;
 }
 
 /**

@@ -217,6 +217,7 @@ class RegistrationIntegrationTest {
         User user = registerAndLoad("csrf@example.com");
 
         mockMvc.perform(patch("/api/v1/users/me")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user(user.getId().toString()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"firstName\":\"Changed\"}"))
@@ -233,6 +234,7 @@ class RegistrationIntegrationTest {
         String originalHash = user.getPasswordHash();
 
         mockMvc.perform(patch("/api/v1/users/me")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user(user.getId().toString()))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -266,6 +268,7 @@ class RegistrationIntegrationTest {
         User user = registerAndLoad("protected@example.com");
 
         mockMvc.perform(patch("/api/v1/users/me")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .with(user(user.getId().toString()))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)

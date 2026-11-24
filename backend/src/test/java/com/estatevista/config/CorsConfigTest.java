@@ -33,7 +33,7 @@ class CorsConfigTest {
                 .containsExactlyInAnyOrder("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS");
         assertThat(api.getAllowedHeaders())
                 .containsExactly("Content-Type", "X-CSRF-TOKEN");
-        assertThat(api.getExposedHeaders()).containsExactly("X-CSRF-TOKEN");
+        assertThat(api.getExposedHeaders()).containsExactly("X-CSRF-TOKEN", "Retry-After");
         assertThat(actuator).isNotNull();
         assertThat(actuator.getAllowedOrigins())
                 .containsExactly("http://localhost:5500", "https://app.example.com");

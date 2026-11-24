@@ -432,6 +432,7 @@ class PropertyLifecycleAndModerationIntegrationTest {
         Session admin = login(fixture.admin().getEmail());
 
         mockMvc.perform(patch("/api/v1/properties/{id}/status", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(anonymous.cookie())
                         .header(CSRF_HEADER, anonymous.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -439,6 +440,7 @@ class PropertyLifecycleAndModerationIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
         mockMvc.perform(patch("/api/v1/properties/{id}/status", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(statusJson("PUBLISHED")))
@@ -489,6 +491,7 @@ class PropertyLifecycleAndModerationIntegrationTest {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
         mockMvc.perform(patch("/api/v1/properties/not-a-uuid/status")
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie())
                         .header(CSRF_HEADER, admin.csrfToken())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -790,11 +793,13 @@ class PropertyLifecycleAndModerationIntegrationTest {
         Session agent = login(fixture.agent().getEmail());
 
         mockMvc.perform(delete("/api/v1/properties/{id}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(agent.cookie()).header(CSRF_HEADER, agent.csrfToken()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
 
         mockMvc.perform(delete("/api/v1/properties/{id}", property.getId())
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                         .cookie(admin.cookie()).header(CSRF_HEADER, admin.csrfToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("ARCHIVED"))
@@ -1045,6 +1050,7 @@ class PropertyLifecycleAndModerationIntegrationTest {
     private MockHttpServletRequestBuilder statusRequest(
             Session session, UUID propertyId, String body) {
         return patch("/api/v1/properties/{id}/status", propertyId)
+                        .header(HttpHeaders.ORIGIN, "http://localhost:5500")
                 .cookie(session.cookie())
                 .header(CSRF_HEADER, session.csrfToken())
                 .contentType(MediaType.APPLICATION_JSON)
