@@ -475,7 +475,12 @@ Summary of the planned setup:
 - Production branch: **main**.
 - GitHub integration so pushes to `main` trigger deployments.
 - `window.ESTATEVISTA_CONFIG.apiBaseUrl` must be injected into the deployed
-  HTML; there is no frontend-to-API proxy.
+  HTML as an absolute HTTPS URL ending in `/api/v1`; there is no
+  frontend-to-API proxy.
+- Public read timing is bounded by the optional `publicRequestTimeoutMs`
+  (default 15,000 ms) and `publicRequestDeadlineMs` (default 30,000 ms) runtime
+  settings. See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the validated configuration
+  shape.
 
 The custom `404.html` handles unmatched routes. Its local asset, favicon, script
 and navigation references use root-relative paths, so they still resolve when

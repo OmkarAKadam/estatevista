@@ -10,7 +10,15 @@
  * values are omitted, amenity IDs are sent as repeated `amenityIds` parameters,
  * and the backend `meta` object is preserved as the pagination source of truth.
  */
-import { apiRequest } from "../core/api.js";
+import {
+  apiRequest,
+  describeApiFailure,
+  parseRetryAfter,
+  createRateLimitCooldown,
+  isCancellation,
+  isOfflineHint,
+  isTimeout
+} from "../core/api.js";
 
 /* Backend UUID columns accept any canonical 8-4-4-4-12 hexadecimal value,
    including seeded catalogue IDs with a zero version/variant nibble. */
@@ -184,15 +192,23 @@ async function listPublishedProperties(criteria = {}, options = {}) {
     }
   });
 
-  const payload = await apiRequest(`/properties?${query.toString()}`, { signal: options.signal });
+  const payload = await apiRequest(`/properties?${query.toString()}`, {
+    signal: options.signal,
+    publicRead: true
+  });
   return {
     items: asArray(unwrap(payload)),
     meta: normalizeMeta(payload.meta)
   };
 }
 
-async function getPublishedDetail(id) {
-  const property = unwrap(await apiRequest(`/properties/${encodeURIComponent(requireUuid(id, "property identifier"))}`));
+async function getPublishedDetail(id, options = {}) {
+  const property = unwrap(
+    await apiRequest(`/properties/${encodeURIComponent(requireUuid(id, "property identifier"))}`, {
+      signal: options.signal,
+      publicRead: true
+    })
+  );
   if (!property || typeof property !== "object") {
     const error = new Error("Missing property detail");
     error.name = "InvalidApiResponseError";
@@ -201,18 +217,24 @@ async function getPublishedDetail(id) {
   return property;
 }
 
-async function listPublishedImages(id) {
+async function listPublishedImages(id, options = {}) {
   return asArray(
-    unwrap(await apiRequest(`/properties/${encodeURIComponent(requireUuid(id, "property identifier"))}/images`))
+    unwrap(
+      await apiRequest(`/properties/${encodeURIComponent(requireUuid(id, "property identifier"))}/images`, {
+        signal: options.signal,
+        publicRead: true
+      })
+    )
   );
 }
 
-async function getRelatedProperties(id, { size = 3 } = {}) {
+async function getRelatedProperties(id, { size = 3, signal } = {}) {
   const query = new URLSearchParams({ page: "0", size: String(size) });
   return asArray(
     unwrap(
       await apiRequest(
-        `/properties/${encodeURIComponent(requireUuid(id, "property identifier"))}/related?${query.toString()}`
+        `/properties/${encodeURIComponent(requireUuid(id, "property identifier"))}/related?${query.toString()}`,
+        { signal, publicRead: true }
       )
     )
   );
@@ -221,15 +243,19 @@ async function getRelatedProperties(id, { size = 3 } = {}) {
 /* Reference catalogues are public and read-only. The listings page fetches
    each one once per page load; callers may pass a signal for cancellation. */
 async function listPropertyCategories(options = {}) {
-  return asArray(unwrap(await apiRequest("/property-categories", { signal: options.signal })));
+  return asArray(
+    unwrap(await apiRequest("/property-categories", { signal: options.signal, publicRead: true }))
+  );
 }
 
 async function listPropertySubtypes(options = {}) {
-  return asArray(unwrap(await apiRequest("/property-subtypes", { signal: options.signal })));
+  return asArray(
+    unwrap(await apiRequest("/property-subtypes", { signal: options.signal, publicRead: true }))
+  );
 }
 
 async function listAmenities(options = {}) {
-  return asArray(unwrap(await apiRequest("/amenities", { signal: options.signal })));
+  return asArray(unwrap(await apiRequest("/amenities", { signal: options.signal, publicRead: true })));
 }
 
 window.EVPublicPropertyApi = {
@@ -241,7 +267,13 @@ window.EVPublicPropertyApi = {
   getRelatedProperties,
   listPropertyCategories,
   listPropertySubtypes,
-  listAmenities
+  listAmenities,
+  describeApiFailure,
+  parseRetryAfter,
+  createRateLimitCooldown,
+  isCancellation,
+  isOfflineHint,
+  isTimeout
 };
 
 window.dispatchEvent(new CustomEvent("ev-public-property-api-ready"));

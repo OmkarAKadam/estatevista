@@ -71,7 +71,7 @@
               <input type="search" class="form-control" id="filterSearch" name="keyword"
                      maxlength="100" placeholder="Keyword or location"
                      aria-describedby="filterSearchHelp">
-              <small id="filterSearchHelp" class="form-text text-muted">Search published titles, descriptions, cities and localities.</small>
+              <small id="filterSearchHelp" class="form-text text-muted">Search published titles, descriptions, cities and localities. Results update after you stop typing.</small>
             </div>
             <div class="col-6 col-md-3 col-lg-2">
               <label for="filterCategory" class="form-label small">Category</label>
@@ -113,8 +113,9 @@
               <label for="filterMaxPrice" class="form-label small">Max price</label>
               <input type="number" class="form-control form-control-sm" id="filterMaxPrice"
                      name="maxPrice" min="0" step="0.01" placeholder="Any"
-                     aria-describedby="filterPriceHelp">
+                     aria-describedby="filterPriceHelp filterPriceError">
               <small id="filterPriceHelp" class="form-text text-muted">INR. Minimum must not exceed maximum.</small>
+              <small class="ev-field-error text-danger d-block" id="filterPriceError" role="alert" hidden></small>
             </div>
             <div class="col-6 col-md-4 col-lg-2">
               <label for="filterCity" class="form-label small">City</label>
@@ -136,13 +137,14 @@
               <label for="filterMaxBedrooms" class="form-label small">Max bedrooms</label>
               <input type="number" class="form-control form-control-sm" id="filterMaxBedrooms"
                      name="maxBedrooms" min="0" step="1" placeholder="Any"
-                     aria-describedby="filterBedroomsHelp">
+                     aria-describedby="filterBedroomsHelp filterBedroomsError">
               <small id="filterBedroomsHelp" class="form-text text-muted">Minimum must not exceed maximum.</small>
+              <small class="ev-field-error text-danger d-block" id="filterBedroomsError" role="alert" hidden></small>
             </div>
 
             <div class="col-12">
               <fieldset class="ev-amenity-filter">
-                <legend class="form-label small">Amenities</legend>
+                <legend class="form-label small">Amenities <span class="ev-amenity-filter__count text-muted" id="amenityCount" aria-live="polite">(0 selected)</span></legend>
                 <div class="ev-amenity-filter__list" id="filterAmenities">
                   <span class="text-muted small">Loading amenities…</span>
                 </div>
@@ -152,9 +154,12 @@
 
             <div class="col-12">
               <p class="ev-filter-note text-muted small mb-0" id="filterNotice" role="status" aria-live="polite" hidden></p>
+              <button type="button" class="btn btn-outline-secondary btn-sm mt-2" id="retryReferences" hidden>
+                Retry category and amenity lists
+              </button>
             </div>
 
-            <div class="col-12 d-flex flex-wrap gap-2">
+            <div class="col-12 d-flex flex-wrap gap-2 ev-filter-actions">
               <button type="submit" class="btn btn-primary" id="applyFilters">
                 Apply filters
               </button>
@@ -175,10 +180,13 @@
 
         <h2 class="visually-hidden" id="propertyResultsHeading">Property results</h2>
 
-        <p class="ev-results-count text-muted mt-4 mb-3" id="resultsCount" role="status" aria-live="polite"></p>
+        <ul class="ev-active-filters mt-4" id="activeFilterChips" aria-label="Active search filters"></ul>
+
+        <p class="ev-results-count text-muted mb-3" id="resultsCount" role="status" aria-live="polite"></p>
 
         <div class="ev-notice" id="loadingState" role="status" aria-live="polite" hidden>
           <p class="ev-notice__note mb-0">Loading published properties…</p>
+          <div class="ev-skeleton-grid row g-3 mt-2" id="listingSkeletons" aria-hidden="true"></div>
         </div>
 
         <div class="ev-notice ev-notice--error" id="errorState" role="alert" hidden>
@@ -273,6 +281,7 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous" defer></script>
   <script src="assets/js/main.js" defer></script>
   <script src="assets/js/property-card.js" defer></script>
+  <script src="assets/js/ui-skeletons.js" defer></script>
   <script type="module" src="assets/js/public/property-public-api.js"></script>
   <script src="assets/js/properties.js" defer></script>
   <script type="module" src="assets/js/auth/auth-init.js"></script>

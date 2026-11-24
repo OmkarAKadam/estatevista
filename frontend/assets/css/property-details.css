@@ -52,6 +52,8 @@
 
 #propertyDetail[hidden],
 #propertyError[hidden],
+#detailSkeleton[hidden],
+#relatedSkeleton[hidden],
 .related-properties[hidden] {
   display: none !important;
 }
@@ -357,4 +359,16 @@
   .property-gallery__thumb {
     transition: none;
   }
+}
+
+/* Stage 5.6 uses a single decorative skeleton while the independent detail,
+   image and related requests settle. Real content carries the live region. */
+#detailSkeleton .ev-skeleton {
+  margin-block: clamp(24px, 4vw, 40px) var(--ev-detail-pad);
+  border: 0;
+  background-color: transparent;
+}
+
+#relatedSkeleton .ev-skeleton--card {
+  min-height: 300px;
 }

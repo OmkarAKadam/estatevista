@@ -1,5 +1,5 @@
 /**
- * EstateVista — server-side property listing behaviour (Stage 5.3).
+ * EstateVista — server-side property listing behaviour (Stages 5.3 and 5.6).
  *
  * All discovery work is performed by GET /api/v1/properties. This page only:
  * validates and serialises criteria, synchronises shareable URL state, renders
@@ -11,6 +11,7 @@
 
   /* The card renderer is shared with property-details.html (related listings). */
   var CARD = window.EVPropertyCard;
+  var SKELETONS = window.EVSkeletons;
 
   if (!CARD) {
     return;
@@ -53,16 +54,26 @@
     categories: [],
     subtypes: [],
     amenities: [],
+    status: { categories: "idle", subtypes: "idle", amenities: "idle" },
     loaded: false,
     failed: false,
     promise: null
   };
+  var REFERENCE_CATALOGUES = [
+    { key: "categories", label: "category", loader: "listPropertyCategories" },
+    { key: "subtypes", label: "subtype", loader: "listPropertySubtypes" },
+    { key: "amenities", label: "amenity", loader: "listAmenities" }
+  ];
   var state = defaultState();
   var lastMeta = null;
   var activeController = null;
   var requestSequence = 0;
   var keywordTimer = null;
   var pendingWarning = "";
+  var cooldown = null;
+  var cooldownSource = "";
+  var lastErrorWasRateLimit = false;
+  var lastErrorWasOffline = false;
 
   /* ---------------------------------------------------------------- helpers */
 
@@ -123,6 +134,167 @@
     }
     elements.filterNotice.textContent = pendingWarning;
     elements.filterNotice.hidden = pendingWarning === "";
+  }
+
+  function isRateLimit(error) {
+    return Boolean(error && (error.reason === "rate_limit" || error.status === 429));
+  }
+
+  function describe(error) {
+    if (api && typeof api.describeApiFailure === "function") {
+      return api.describeApiFailure(error);
+    }
+    return error && error.code === "NETWORK_ERROR"
+      ? "The property service could not be reached. Please retry."
+      : "Property listings could not be loaded. Please try again.";
+  }
+
+  function isCancelled(error) {
+    if (api && typeof api.isCancellation === "function") {
+      return api.isCancellation(error);
+    }
+    return Boolean(error && error.name === "AbortError");
+  }
+
+  function setRetryState(active, message) {
+    [elements.retry, elements.referenceRetry].forEach(function (button) {
+      if (!button) {
+        return;
+      }
+      button.disabled = active;
+      if (active) {
+        button.setAttribute("aria-disabled", "true");
+      } else {
+        button.removeAttribute("aria-disabled");
+      }
+      if (message) {
+        button.setAttribute("title", message);
+      } else {
+        button.removeAttribute("title");
+      }
+    });
+    if (elements.retry) {
+      elements.retry.textContent = active ? "Retry after cooldown" : "Try again";
+    }
+    if (elements.referenceRetry) {
+      elements.referenceRetry.textContent = active
+        ? "Waiting for request limit"
+        : "Retry unavailable lists";
+    }
+  }
+
+  function renderReferenceRetryState() {
+    if (!elements.referenceRetry) {
+      return;
+    }
+    var failed = failedCatalogues();
+    elements.referenceRetry.hidden = failed.length === 0;
+    elements.referenceRetry.disabled = Boolean(cooldown && cooldown.active());
+    elements.referenceRetry.textContent = elements.referenceRetry.disabled
+      ? "Waiting for request limit"
+      : "Retry " + failed.map(function (item) { return item.label; }).join(" and ") + " list" +
+        (failed.length === 1 ? "" : "s");
+  }
+
+  function ensureCooldown() {
+    if (cooldown || !api || typeof api.createRateLimitCooldown !== "function") {
+      return;
+    }
+
+    cooldown = api.createRateLimitCooldown(function (active) {
+      if (active) {
+        setRetryState(true, "Waiting for the request limit to reset");
+        renderReferenceRetryState();
+        return;
+      }
+
+      lastErrorWasRateLimit = false;
+      setRetryState(false, "");
+      renderReferenceRetryState();
+      if (cooldownSource === "listing" && elements.error && !elements.error.hidden) {
+        elements.errorMessage.textContent = "The request limit has reset. You can try again now.";
+      }
+      if (cooldownSource === "reference") {
+        addWarning("The request limit has reset. Unavailable lists can be retried now.");
+        renderFilterNotice();
+      }
+      cooldownSource = "";
+    });
+  }
+
+  function beginCooldown(error, source) {
+    ensureCooldown();
+    if (!cooldown) {
+      return;
+    }
+    lastErrorWasRateLimit = true;
+    cooldownSource = source || "listing";
+    cooldown.start(error && Number.isFinite(error.retryAfterMs) ? error.retryAfterMs : undefined);
+    setRetryState(true, "Waiting for the request limit to reset");
+    renderReferenceRetryState();
+  }
+
+  function clearListingSkeleton() {
+    if (SKELETONS && typeof SKELETONS.clear === "function") {
+      SKELETONS.clear(elements.skeletons);
+    } else if (elements.skeletons) {
+      elements.skeletons.replaceChildren();
+    }
+  }
+
+  function clearFieldValidation() {
+    [
+      [elements.minPrice, elements.priceError],
+      [elements.maxPrice, elements.priceError],
+      [elements.minBedrooms, elements.bedroomsError],
+      [elements.maxBedrooms, elements.bedroomsError]
+    ].forEach(function (pair) {
+      if (pair[0]) {
+        pair[0].removeAttribute("aria-invalid");
+      }
+    });
+    [elements.priceError, elements.bedroomsError].forEach(function (node) {
+      if (node) {
+        node.textContent = "";
+        node.hidden = true;
+      }
+    });
+  }
+
+  function setRangeValidation(left, right, node, leftResult, rightResult, rangeError) {
+    var messages = [];
+    var leftInvalid = false;
+    var rightInvalid = false;
+
+    if (leftResult.error) {
+      messages.push(leftResult.error);
+      leftInvalid = true;
+    }
+    if (rightResult.error) {
+      messages.push(rightResult.error);
+      rightInvalid = true;
+    }
+    if (rangeError) {
+      messages.push(rangeError);
+      leftInvalid = true;
+      rightInvalid = true;
+    }
+
+    if (node) {
+      node.textContent = messages.join(" ");
+      node.hidden = messages.length === 0;
+    }
+    [left, right].forEach(function (field, index) {
+      if (!field) {
+        return;
+      }
+      var invalid = index === 0 ? leftInvalid : rightInvalid;
+      if (invalid) {
+        field.setAttribute("aria-invalid", "true");
+      } else {
+        field.removeAttribute("aria-invalid");
+      }
+    });
   }
 
   function waitForPublicApi() {
@@ -381,33 +553,110 @@
       });
   }
 
-  function loadReferences() {
+  function activeCatalogues(keys) {
+    if (Array.isArray(keys) && keys.length > 0) {
+      return REFERENCE_CATALOGUES.filter(function (entry) {
+        return keys.indexOf(entry.key) !== -1;
+      });
+    }
+    return REFERENCE_CATALOGUES;
+  }
+
+  function failedCatalogues() {
+    return REFERENCE_CATALOGUES.filter(function (entry) {
+      var status = references.status[entry.key];
+      return status === "failed" || status === "stale";
+    });
+  }
+
+  function catalogUnavailable(key) {
+    return (
+      (references.status[key] === "failed" || references.status[key] === "stale") &&
+      Array.isArray(references[key]) &&
+      references[key].length === 0
+    );
+  }
+
+  /**
+   * Each catalogue settles independently. A failed request never erases data
+   * already held in memory, so unrelated filters and a later targeted retry
+   * keep working.
+   */
+  function loadReferences(options) {
+    options = options || {};
     if (references.promise) {
       return references.promise;
     }
 
-    references.promise = Promise.all([
-      api.listPropertyCategories(),
-      api.listPropertySubtypes(),
-      api.listAmenities()
-    ])
-      .then(function (results) {
-        references.categories = normalizeReferences(results[0]);
-        references.subtypes = normalizeReferences(results[1]);
-        references.amenities = normalizeReferences(results[2]);
-        references.loaded = true;
-        references.failed = false;
-      })
-      .catch(function () {
-        references.categories = [];
-        references.subtypes = [];
-        references.amenities = [];
-        references.loaded = true;
-        references.failed = true;
-        addWarning(
-          "Category, subtype and amenity lists are unavailable; those filters were cleared. Other filters still work."
-        );
+    var catalogues = activeCatalogues(options.keys);
+    catalogues.forEach(function (entry) {
+      references.status[entry.key] = "loading";
+    });
+    renderReferenceRetryState();
+
+    var tasks = catalogues.map(function (entry) {
+      return api[entry.loader]().then(
+        function (items) { return { ok: true, key: entry.key, items: items }; },
+        function (error) { return { ok: false, key: entry.key, error: error }; }
+      );
+    });
+
+    references.promise = Promise.allSettled(tasks).then(function (results) {
+      var unavailable = [];
+      var rateLimited = false;
+      var rateLimitError = null;
+
+      results.forEach(function (result, index) {
+        var outcome = result.status === "fulfilled" ? result.value : {
+          ok: false,
+          key: catalogues[index].key,
+          error: result.reason
+        };
+
+        if (!outcome) {
+          return;
+        }
+        if (outcome.ok) {
+          references[outcome.key] = normalizeReferences(outcome.items);
+          references.status[outcome.key] = "ready";
+          return;
+        }
+
+        if (isRateLimit(outcome.error)) {
+          rateLimited = true;
+          if (!rateLimitError) {
+            rateLimitError = outcome.error;
+          }
+        }
+        if (Array.isArray(references[outcome.key]) && references[outcome.key].length > 0) {
+          references.status[outcome.key] = "stale";
+          unavailable.push(outcome.key + " (retained)");
+        } else {
+          references.status[outcome.key] = "failed";
+          unavailable.push(outcome.key);
+        }
       });
+
+      references.loaded = true;
+      references.failed = failedCatalogues().length > 0;
+
+      if (unavailable.length > 0) {
+        addWarning(
+          "Some reference lists are unavailable (" + unavailable.join(", ") +
+          "). Other filters still work; use the retry action when available."
+        );
+      }
+      if (rateLimited) {
+        addWarning("The request limit was reached while loading filter lists.");
+      }
+
+      if (rateLimited) {
+        beginCooldown(rateLimitError, "reference");
+      }
+      renderReferenceRetryState();
+      references.promise = null;
+      return rateLimited;
+    });
 
     return references.promise;
   }
@@ -429,24 +678,24 @@
   }
 
   function applyReferencesToState() {
+    if (!references.loaded) {
+      return;
+    }
+
     var legacyType = state._legacyType;
+    if (catalogUnavailable("subtypes")) {
+      if (legacyType) {
+        addWarning("The saved property type will be applied when the subtype list is available.");
+      }
+      return;
+    }
     delete state._legacyType;
 
-    if (references.failed) {
-      if (state.categoryId || state.subtypeId || state.amenityIds.length > 0 || legacyType) {
-        addWarning("Saved reference-based filters were cleared because the reference lists are unavailable.");
+    if (catalogUnavailable("categories")) {
+      if (state.categoryId) {
+        addWarning("The saved category was kept and will be checked when the category list is available.");
       }
-      state.categoryId = "";
-      state.subtypeId = "";
-      state.amenityIds = [];
-      return;
-    }
-    if (!references.loaded) {
-      state._legacyType = legacyType;
-      return;
-    }
-
-    if (state.categoryId && !findReference(references.categories, state.categoryId)) {
+    } else if (state.categoryId && !findReference(references.categories, state.categoryId)) {
       addWarning("The saved category was not recognised and was removed.");
       state.categoryId = "";
     }
@@ -462,12 +711,18 @@
       }
     }
 
-    var before = state.amenityIds.length;
-    state.amenityIds = state.amenityIds.filter(function (id) {
-      return Boolean(findReference(references.amenities, id));
-    });
-    if (state.amenityIds.length < before) {
-      addWarning("Saved amenities that are no longer available were removed.");
+    if (catalogUnavailable("amenities")) {
+      if (state.amenityIds.length > 0) {
+        addWarning("Saved amenities were kept and will be checked when the amenity list is available.");
+      }
+    } else {
+      var before = state.amenityIds.length;
+      state.amenityIds = state.amenityIds.filter(function (id) {
+        return Boolean(findReference(references.amenities, id));
+      });
+      if (state.amenityIds.length < before) {
+        addWarning("Saved amenities that are no longer available were removed.");
+      }
     }
 
     if (legacyType && !state.subtypeId) {
@@ -504,9 +759,9 @@
     select.replaceChildren();
     appendOption(select, "All categories", "");
 
-    if (!references.loaded) {
+    if (references.status.categories === "loading") {
       unavailableOption(select, "Loading categories…");
-    } else if (references.failed) {
+    } else if (catalogUnavailable("categories")) {
       unavailableOption(select, "Categories unavailable");
     } else {
       references.categories.forEach(function (item) {
@@ -523,9 +778,9 @@
     select.replaceChildren();
     appendOption(select, "All subtypes", "");
 
-    if (!references.loaded) {
+    if (references.status.subtypes === "loading") {
       unavailableOption(select, "Loading subtypes…");
-    } else if (references.failed) {
+    } else if (catalogUnavailable("subtypes")) {
       unavailableOption(select, "Subtypes unavailable");
     } else {
       references.subtypes
@@ -560,20 +815,31 @@
     });
   }
 
+  function updateAmenityCount() {
+    if (!elements.amenityCount || !elements.amenities) {
+      return;
+    }
+    var count = elements.amenities.querySelectorAll('input[name="amenityIds"]:checked').length;
+    elements.amenityCount.textContent = "(" + count + " selected)";
+  }
+
   function renderAmenities() {
     var container = elements.amenities;
     container.replaceChildren();
 
-    if (!references.loaded) {
+    if (references.status.amenities === "loading") {
       container.appendChild(el("span", "text-muted small", "Loading amenities…"));
+      updateAmenityCount();
       return;
     }
-    if (references.failed) {
+    if (catalogUnavailable("amenities")) {
       container.appendChild(el("span", "text-muted small", "Amenities unavailable."));
+      updateAmenityCount();
       return;
     }
     if (references.amenities.length === 0) {
       container.appendChild(el("span", "text-muted small", "No amenities are available."));
+      updateAmenityCount();
       return;
     }
 
@@ -596,6 +862,7 @@
           }
         }
         enforceAmenityCap();
+        updateAmenityCount();
         applyFormChanges();
       });
       label.appendChild(checkbox);
@@ -604,6 +871,7 @@
     });
 
     enforceAmenityCap();
+    updateAmenityCount();
   }
 
   function setField(id, value) {
@@ -693,6 +961,100 @@
       list.appendChild(el("dd", null, item.value));
     });
     summary.hidden = items.length === 0;
+    renderActiveFilters();
+  }
+
+  function activeFilterItems() {
+    var items = [];
+
+    function add(key, label, value) {
+      if (value !== null && value !== undefined && String(value) !== "") {
+        items.push({ key: key, label: label, value: String(value) });
+      }
+    }
+
+    add("keyword", "Keyword", state.keyword);
+    var category = findReference(references.categories, state.categoryId);
+    add("categoryId", "Category", category ? category.name : "");
+    var subtype = findReference(references.subtypes, state.subtypeId);
+    add("subtypeId", "Subtype", subtype ? subtype.name : "");
+    add("listingType", "Listing", state.listingType ? CARD.listingTypeLabel(state.listingType) : "");
+
+    if (state.minPrice !== null || state.maxPrice !== null) {
+      var price = [
+        state.minPrice !== null ? "min " + CARD.formatPrice(state.minPrice) : "",
+        state.maxPrice !== null ? "max " + CARD.formatPrice(state.maxPrice) : ""
+      ].filter(Boolean).join(" / ");
+      add("price", "Price", price);
+    }
+    add("city", "City", state.city);
+    add("locality", "Locality", state.locality);
+
+    if (state.minBedrooms !== null || state.maxBedrooms !== null) {
+      var bedrooms = [
+        state.minBedrooms !== null ? "min " + state.minBedrooms : "",
+        state.maxBedrooms !== null ? "max " + state.maxBedrooms : ""
+      ].filter(Boolean).join(" / ");
+      add("bedrooms", "Bedrooms", bedrooms);
+    }
+
+    state.amenityIds.forEach(function (id) {
+      var amenity = findReference(references.amenities, id);
+      add("amenityId:" + id, "Amenity", amenity ? amenity.name : "Unavailable amenity");
+    });
+
+    if (state.sort !== "newest") {
+      add("sort", "Sort", SORT_LABELS[state.sort]);
+    }
+    return items;
+  }
+
+  function removeFilterChip(key, value) {
+    if (key.indexOf("amenityId:") === 0) {
+      var id = key.slice("amenityId:".length);
+      state.amenityIds = state.amenityIds.filter(function (item) { return item !== id; });
+    } else if (key === "price") {
+      state.minPrice = null;
+      state.maxPrice = null;
+    } else if (key === "bedrooms") {
+      state.minBedrooms = null;
+      state.maxBedrooms = null;
+    } else if (key === "categoryId") {
+      state.categoryId = "";
+      state.subtypeId = "";
+    } else if (key === "sort") {
+      state.sort = "newest";
+    } else if (Object.prototype.hasOwnProperty.call(state, key)) {
+      state[key] = "";
+    }
+
+    delete state._legacyType;
+    state.page = 0;
+    pendingWarning = "";
+    renderFilterNotice();
+    clearFieldValidation();
+    populateForm();
+    load({ historyMode: "pushState" });
+  }
+
+  function renderActiveFilters() {
+    if (!elements.activeFilters) {
+      return;
+    }
+    var items = activeFilterItems();
+    elements.activeFilters.replaceChildren();
+
+    items.forEach(function (item) {
+      var chip = el("li", "ev-active-filter", item.label + ": " + item.value);
+      var remove = el("button", null, "\u00D7");
+      remove.type = "button";
+      remove.setAttribute("aria-label", "Remove " + item.label + " filter");
+      remove.addEventListener("click", function () {
+        removeFilterChip(item.key, item.value);
+      });
+      chip.appendChild(remove);
+      elements.activeFilters.appendChild(chip);
+    });
   }
 
   function readNumberField(field, label, integer, maximum) {
@@ -732,13 +1094,16 @@
       }
     });
 
+    var priceRangeError = "";
+    var bedroomRangeError = "";
     if (
       !errors.length &&
       minPrice.value !== null &&
       maxPrice.value !== null &&
       minPrice.value > maxPrice.value
     ) {
-      errors.push("Minimum price must not exceed maximum price.");
+      priceRangeError = "Minimum price must not exceed maximum price.";
+      errors.push(priceRangeError);
     }
     if (
       !errors.length &&
@@ -746,8 +1111,26 @@
       maxBedrooms.value !== null &&
       minBedrooms.value > maxBedrooms.value
     ) {
-      errors.push("Minimum bedrooms must not exceed maximum bedrooms.");
+      bedroomRangeError = "Minimum bedrooms must not exceed maximum bedrooms.";
+      errors.push(bedroomRangeError);
     }
+
+    setRangeValidation(
+      elements.minPrice,
+      elements.maxPrice,
+      elements.priceError,
+      minPrice,
+      maxPrice,
+      priceRangeError
+    );
+    setRangeValidation(
+      elements.minBedrooms,
+      elements.maxBedrooms,
+      elements.bedroomsError,
+      minBedrooms,
+      maxBedrooms,
+      bedroomRangeError
+    );
 
     var city = clean(elements.city.value, 100);
     var locality = clean(elements.locality.value, 120);
@@ -821,9 +1204,17 @@
     elements.grid.hidden = true;
     elements.grid.setAttribute("aria-busy", "true");
     elements.count.textContent = "Loading published properties…";
+    lastErrorWasRateLimit = false;
+    lastErrorWasOffline = false;
+    setRetryState(false, "");
+    if (SKELETONS && typeof SKELETONS.cards === "function") {
+      SKELETONS.cards(elements.skeletons, PAGE_SIZE, "col");
+    }
+    renderReferenceRetryState();
   }
 
   function showError(message) {
+    clearListingSkeleton();
     elements.loading.hidden = true;
     elements.error.hidden = false;
     elements.empty.hidden = true;
@@ -832,6 +1223,7 @@
     elements.pagination.hidden = true;
     elements.errorMessage.textContent = message;
     elements.count.textContent = "Property listings unavailable";
+    renderReferenceRetryState();
   }
 
   function renderCount(meta, visible) {
@@ -986,6 +1378,7 @@
     }
 
     var visible = renderCards(Array.isArray(result.items) ? result.items : []);
+    clearListingSkeleton();
     elements.grid.setAttribute("aria-busy", "false");
     elements.loading.hidden = true;
     elements.error.hidden = true;
@@ -1010,6 +1403,10 @@
 
   function load(options) {
     options = options || {};
+    if (cooldown && cooldown.active() && cooldownSource === "listing") {
+      renderReferenceRetryState();
+      return;
+    }
     if (options.historyMode) {
       writeUrl(options.historyMode);
     }
@@ -1049,14 +1446,16 @@
         handleResult(result, sequence);
       })
       .catch(function (error) {
-        if (!error || error.name === "AbortError" || sequence !== requestSequence) {
+        if (!error || isCancelled(error) || sequence !== requestSequence) {
           return;
         }
-        showError(
-          error && error.code === "NETWORK_ERROR"
-            ? "The property service could not be reached. Please retry."
-            : "Property listings could not be loaded. Check your filters and retry."
+        if (isRateLimit(error)) {
+          beginCooldown(error, "listing");
+        }
+        lastErrorWasOffline = Boolean(
+          api && typeof api.isOfflineHint === "function" && api.isOfflineHint()
         );
+        showError(describe(error));
       });
   }
 
@@ -1068,19 +1467,22 @@
     renderFilterNotice();
     state = defaultState();
     lastMeta = null;
+    clearFieldValidation();
     populateForm();
     renderSummary();
     load({ historyMode: "pushState" });
   }
 
-  function prepareAndLoad() {
-    return loadReferences()
+  function prepareAndLoad(options) {
+    options = options || {};
+    return loadReferences({ keys: options.keys })
       .then(function () {
         applyReferencesToState();
         renderFilterNotice();
         populateForm();
         renderSummary();
         writeUrl("replaceState");
+        renderReferenceRetryState();
         load();
       });
   }
@@ -1089,6 +1491,7 @@
     waitForPublicApi()
       .then(function (client) {
         api = client;
+        ensureCooldown();
         return prepareAndLoad();
       })
       .catch(function () {
@@ -1096,16 +1499,37 @@
       });
   }
 
+  function retryReferences() {
+    var failed = failedCatalogues();
+    if (!api || failed.length === 0) {
+      return;
+    }
+    if (cooldown && cooldown.active()) {
+      renderReferenceRetryState();
+      return;
+    }
+
+    references.promise = null;
+    references.loaded = false;
+    references.failed = false;
+    failed.forEach(function (entry) {
+      references.status[entry.key] = "loading";
+    });
+    renderReferenceRetryState();
+    prepareAndLoad({ keys: failed.map(function (entry) { return entry.key; }) });
+  }
+
   function retry() {
     if (!api) {
       start();
       return;
     }
-    if (references.failed) {
-      references.promise = null;
-      references.loaded = false;
-      references.failed = false;
-      prepareAndLoad();
+    if (cooldown && cooldown.active()) {
+      renderReferenceRetryState();
+      return;
+    }
+    if (failedCatalogues().length > 0) {
+      retryReferences();
       return;
     }
     load();
@@ -1150,11 +1574,39 @@
     });
 
     elements.retry.addEventListener("click", retry);
+    if (elements.referenceRetry) {
+      elements.referenceRetry.addEventListener("click", retryReferences);
+    }
+
+    window.addEventListener("offline", function () {
+      lastErrorWasOffline = true;
+      requestSequence += 1;
+      if (activeController) {
+        activeController.abort();
+        activeController = null;
+      }
+      showError(
+        api && typeof api.describeApiFailure === "function"
+          ? api.describeApiFailure({ code: "OFFLINE" }, { offlineHint: true })
+          : "You appear to be offline. Your search criteria are preserved; reconnect and try again."
+      );
+    });
+
+    window.addEventListener("online", function () {
+      if (!lastErrorWasOffline) {
+        return;
+      }
+      lastErrorWasOffline = false;
+      if (elements.error && !elements.error.hidden) {
+        retry();
+      }
+    });
 
     window.addEventListener("popstate", function () {
       cancelKeywordTimer();
       pendingWarning = "";
       state = readUrlState();
+      clearFieldValidation();
       if (!references.loaded) {
         start();
         return;
@@ -1182,7 +1634,12 @@
       minBedrooms: document.getElementById("filterMinBedrooms"),
       maxBedrooms: document.getElementById("filterMaxBedrooms"),
       amenities: document.getElementById("filterAmenities"),
+      amenityCount: document.getElementById("amenityCount"),
+      priceError: document.getElementById("filterPriceError"),
+      bedroomsError: document.getElementById("filterBedroomsError"),
       filterNotice: document.getElementById("filterNotice"),
+      referenceRetry: document.getElementById("retryReferences"),
+      activeFilters: document.getElementById("activeFilterChips"),
       clear: document.getElementById("clearFilters"),
       clearSummary: document.getElementById("clearSummaryFilters"),
       resetEmpty: document.getElementById("resetEmptyFilters"),
@@ -1190,6 +1647,7 @@
       summaryList: document.getElementById("searchSummaryList"),
       count: document.getElementById("resultsCount"),
       loading: document.getElementById("loadingState"),
+      skeletons: document.getElementById("listingSkeletons"),
       error: document.getElementById("errorState"),
       errorMessage: document.getElementById("errorMessage"),
       retry: document.getElementById("retryLoad"),
@@ -1209,6 +1667,7 @@
     populateForm();
     renderSummary();
     wireForm();
+    renderReferenceRetryState();
     start();
   }
 

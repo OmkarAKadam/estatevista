@@ -153,9 +153,10 @@
 
         <div class="row g-4" id="latestGrid" aria-busy="false"></div>
 
-        <p class="latest__empty" id="latestLoading" role="status" aria-live="polite" hidden>
-          Loading published properties…
-        </p>
+        <div class="latest__loading" id="latestLoading" role="status" aria-live="polite" hidden>
+          <p class="latest__empty">Loading published properties…</p>
+          <div class="ev-skeleton-grid row g-4" id="latestSkeletons" aria-hidden="true"></div>
+        </div>
 
         <p class="latest__empty" id="latestEmpty" role="status" aria-live="polite" hidden>
           No published properties are available yet. <a href="properties.html">Browse the collection</a> when listings are added.
@@ -459,6 +460,7 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous" defer></script>
   <script src="assets/js/main.js" defer></script>
   <script src="assets/js/property-card.js" defer></script>
+  <script src="assets/js/ui-skeletons.js" defer></script>
   <script src="assets/js/home.js" defer></script>
   <script type="module" src="assets/js/public/property-public-api.js"></script>
   <script type="module" src="assets/js/auth/auth-init.js"></script>

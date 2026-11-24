@@ -1,5 +1,5 @@
 /**
- * EstateVista — homepage behaviour (Stage 5.5).
+ * EstateVista — homepage behaviour (Stages 5.5 and 5.6).
  *
  * The property rail is a live PUBLIC search result:
  * GET /api/v1/properties?sort=newest&page=0&size=3
@@ -8,21 +8,28 @@
  * never selects, filters, sorts, or fabricates properties locally, and it never
  * consults demonstration data. Only this section is affected by API failures;
  * the rest of the homepage remains usable.
+ *
+ * Stage 5.6 adds decorative skeletons, shared failure classification and a
+ * bounded rate-limit cooldown without changing the approved public query.
  */
 (function () {
   "use strict";
 
   var CARD = window.EVPropertyCard;
+  var SKELETONS = window.EVSkeletons;
   var HOME_PAGE_SIZE = 3;
   var API_READY_TIMEOUT_MS = 5000;
 
   var grid = null;
   var loading = null;
+  var skeletonHost = null;
   var empty = null;
   var errorPanel = null;
   var errorMessage = null;
   var retry = null;
   var api = null;
+  var cooldown = null;
+  var lastErrorWasRateLimit = false;
   var activeController = null;
   var requestSequence = 0;
 
@@ -51,6 +58,86 @@
   function show(node) {
     if (node) {
       node.hidden = false;
+    }
+  }
+
+  function isRateLimit(error) {
+    return Boolean(error && (error.reason === "rate_limit" || error.status === 429));
+  }
+
+  function isCancelled(error) {
+    if (api && typeof api.isCancellation === "function") {
+      return api.isCancellation(error);
+    }
+    return Boolean(error && error.name === "AbortError");
+  }
+
+  function describe(error) {
+    if (api && typeof api.describeApiFailure === "function") {
+      return api.describeApiFailure(error);
+    }
+    if (error && error.code === "NETWORK_ERROR") {
+      return "The property service could not be reached. Please retry.";
+    }
+    return "Published properties could not be loaded. Please try again.";
+  }
+
+  function setRetryState(active, message) {
+    if (!retry) {
+      return;
+    }
+    retry.disabled = active;
+    if (active) {
+      retry.setAttribute("aria-disabled", "true");
+    } else {
+      retry.removeAttribute("aria-disabled");
+    }
+    retry.textContent = active ? "Retry after cooldown" : "Try again";
+    if (message) {
+      retry.setAttribute("title", message);
+    } else {
+      retry.removeAttribute("title");
+    }
+  }
+
+  function ensureCooldown() {
+    if (cooldown || !api || typeof api.createRateLimitCooldown !== "function") {
+      return;
+    }
+
+    cooldown = api.createRateLimitCooldown(function (active) {
+      if (active) {
+        setRetryState(true, "Waiting for the request limit to reset");
+        return;
+      }
+      setRetryState(false, "");
+      if (lastErrorWasRateLimit && errorPanel && !errorPanel.hidden) {
+        setText(
+          errorMessage,
+          "The request limit has reset. You can try again now."
+        );
+      }
+    });
+  }
+
+  function beginCooldown(error) {
+    ensureCooldown();
+    if (!cooldown) {
+      return;
+    }
+    lastErrorWasRateLimit = true;
+    cooldown.start(Number.isFinite(error && error.retryAfterMs) ? error.retryAfterMs : undefined);
+    setRetryState(
+      cooldown.active(),
+      "Waiting for the request limit to reset"
+    );
+  }
+
+  function clearSkeleton() {
+    if (SKELETONS && typeof SKELETONS.clear === "function") {
+      SKELETONS.clear(skeletonHost);
+    } else if (skeletonHost) {
+      skeletonHost.replaceChildren();
     }
   }
 
@@ -92,12 +179,16 @@
     hide(empty);
     hide(errorPanel);
     show(loading);
+    if (SKELETONS && typeof SKELETONS.cards === "function") {
+      SKELETONS.cards(skeletonHost, HOME_PAGE_SIZE, "col-md-6 col-lg-4");
+    }
     if (grid) {
       grid.setAttribute("aria-busy", "true");
     }
   }
 
   function setEmpty() {
+    clearSkeleton();
     hide(loading);
     hide(errorPanel);
     show(empty);
@@ -108,6 +199,7 @@
   }
 
   function setError(message) {
+    clearSkeleton();
     hide(loading);
     hide(empty);
     hide(grid);
@@ -116,6 +208,16 @@
     if (grid) {
       grid.setAttribute("aria-busy", "false");
     }
+  }
+
+  function showApiError(error) {
+    if (isRateLimit(error)) {
+      beginCooldown(error);
+    } else {
+      lastErrorWasRateLimit = false;
+      setRetryState(false, "");
+    }
+    setError(describe(error));
   }
 
   function renderItems(items) {
@@ -138,6 +240,7 @@
       return false;
     }
 
+    clearSkeleton();
     grid.replaceChildren(fragment);
     hide(loading);
     hide(empty);
@@ -152,6 +255,10 @@
       return;
     }
 
+    if (cooldown && cooldown.active()) {
+      return;
+    }
+
     var sequence = ++requestSequence;
     if (activeController) {
       activeController.abort();
@@ -162,7 +269,7 @@
     setLoading();
 
     if (!api) {
-      setError("Published properties could not be loaded. Please try again.");
+      setError("Property services are unavailable. Please try again.");
       return;
     }
 
@@ -187,14 +294,10 @@
         }
       })
       .catch(function (error) {
-        if (sequence !== requestSequence || (error && error.name === "AbortError")) {
+        if (sequence !== requestSequence || isCancelled(error)) {
           return;
         }
-        setError(
-          error && error.code === "NETWORK_ERROR"
-            ? "The property service could not be reached. Please retry."
-            : "Published properties could not be loaded. Please try again."
-        );
+        showApiError(error);
       });
   }
 
@@ -202,6 +305,7 @@
     waitForPublicApi()
       .then(function (client) {
         api = client;
+        ensureCooldown();
         load();
       })
       .catch(function () {
@@ -257,13 +361,18 @@
   function init() {
     grid = byId("latestGrid");
     loading = byId("latestLoading");
+    skeletonHost = byId("latestSkeletons");
     empty = byId("latestEmpty");
     errorPanel = byId("latestError");
     errorMessage = byId("latestErrorMessage");
     retry = byId("retryLatest");
+    setRetryState(false, "");
 
     if (retry) {
       retry.addEventListener("click", function () {
+        if (retry.disabled) {
+          return;
+        }
         if (!api) {
           start();
           return;

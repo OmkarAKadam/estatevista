@@ -121,6 +121,7 @@
           <p class="ev-eyebrow">Listing unavailable</p>
           <h1 id="propertyErrorTitle">Property not found</h1>
           <p id="propertyErrorMessage" role="status" aria-live="polite">The property you requested is not part of the EstateVista collection. It may have been removed, or the link may be incomplete.</p>
+          <div class="ev-skeleton-detail" id="detailSkeleton" aria-hidden="true" hidden></div>
           <div class="property-error__actions">
             <a class="btn btn-primary" href="properties.html">Browse all properties</a>
             <button class="btn btn-secondary" id="retryDetailLoad" type="button" hidden>Try again</button>
@@ -157,6 +158,7 @@
             </svg>
           </a>
         </div>
+        <div class="ev-skeleton-grid row g-4" id="relatedSkeleton" aria-hidden="true" hidden></div>
         <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-4" id="relatedGrid"></div>
       </div>
     </section>
@@ -216,6 +218,7 @@
   <script src="assets/js/main.js" defer></script>
   <script src="assets/js/property-card.js" defer></script>
   <script type="module" src="assets/js/public/property-public-api.js"></script>
+  <script src="assets/js/ui-skeletons.js" defer></script>
   <script src="assets/js/property-details.js" defer></script>
   <script type="module" src="assets/js/auth/auth-init.js"></script>
 </body>

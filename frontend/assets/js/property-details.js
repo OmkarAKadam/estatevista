@@ -11,12 +11,23 @@
   "use strict";
 
   var CARD = window.EVPropertyCard;
+  var SKELETONS = window.EVSkeletons;
 
   /* Canonical backend UUID shape, including seeded zero-version identifiers. */
   var UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   var activeId = "";
+  var activeApi = null;
+  var activeDetail = null;
   var requestSequence = 0;
+  var detailSequence = 0;
+  var imageSequence = 0;
+  var relatedSequence = 0;
+  var detailController = null;
+  var imageController = null;
+  var relatedController = null;
+  var cooldown = null;
+  var lastErrorWasRateLimit = false;
 
   function byId(id) {
     return document.getElementById(id);
@@ -83,6 +94,110 @@
         { once: true }
       );
     });
+  }
+
+  function isRateLimit(error) {
+    return Boolean(error && (error.reason === "rate_limit" || error.status === 429));
+  }
+
+  function isCancelled(error) {
+    if (window.EVPublicPropertyApi && typeof window.EVPublicPropertyApi.isCancellation === "function") {
+      return window.EVPublicPropertyApi.isCancellation(error);
+    }
+    return Boolean(error && error.name === "AbortError");
+  }
+
+  function describe(error) {
+    if (window.EVPublicPropertyApi && typeof window.EVPublicPropertyApi.describeApiFailure === "function") {
+      return window.EVPublicPropertyApi.describeApiFailure(error);
+    }
+    return "The property service is not available right now. Please try again later.";
+  }
+
+  function clearDetailSkeleton() {
+    var skeleton = byId("detailSkeleton");
+    if (SKELETONS && typeof SKELETONS.clear === "function") {
+      SKELETONS.clear(skeleton);
+    } else if (skeleton) {
+      skeleton.replaceChildren();
+    }
+    if (skeleton) {
+      skeleton.hidden = true;
+    }
+  }
+
+  function clearRelatedSkeleton() {
+    var skeleton = byId("relatedSkeleton");
+    if (SKELETONS && typeof SKELETONS.clear === "function") {
+      SKELETONS.clear(skeleton);
+    } else if (skeleton) {
+      skeleton.replaceChildren();
+    }
+    if (skeleton) {
+      skeleton.hidden = true;
+    }
+  }
+
+  function cancelControllers() {
+    [detailController, imageController, relatedController].forEach(function (controller) {
+      if (controller) {
+        controller.abort();
+      }
+    });
+    detailController = null;
+    imageController = null;
+    relatedController = null;
+  }
+
+  function setRetryState(active, message) {
+    var retry = byId("retryDetailLoad");
+    if (!retry) {
+      return;
+    }
+    retry.disabled = active;
+    if (active) {
+      retry.setAttribute("aria-disabled", "true");
+      retry.textContent = "Retry after cooldown";
+    } else {
+      retry.removeAttribute("aria-disabled");
+      retry.textContent = "Try again";
+    }
+    if (message) {
+      retry.setAttribute("title", message);
+    } else {
+      retry.removeAttribute("title");
+    }
+  }
+
+  function ensureCooldown() {
+    if (cooldown || !window.EVPublicPropertyApi || typeof window.EVPublicPropertyApi.createRateLimitCooldown !== "function") {
+      return;
+    }
+
+    cooldown = window.EVPublicPropertyApi.createRateLimitCooldown(function (active) {
+      if (active) {
+        setRetryState(true, "Waiting for the request limit to reset");
+        return;
+      }
+      setRetryState(false, "");
+      var errorPanel = byId("propertyError");
+      if (lastErrorWasRateLimit && errorPanel && !errorPanel.hidden) {
+        setText(
+          "propertyErrorMessage",
+          "The request limit has reset. You can try again now."
+        );
+      }
+    });
+  }
+
+  function beginCooldown(error) {
+    ensureCooldown();
+    if (!cooldown) {
+      return;
+    }
+    lastErrorWasRateLimit = true;
+    cooldown.start(error && Number.isFinite(error.retryAfterMs) ? error.retryAfterMs : undefined);
+    setRetryState(cooldown.active(), "Waiting for the request limit to reset");
   }
 
   /**
@@ -536,6 +651,10 @@
       error.removeAttribute("aria-busy");
     }
 
+    activeDetail = null;
+    clearDetailSkeleton();
+    clearRelatedSkeleton();
+    lastErrorWasRateLimit = false;
     setRetryVisible(false);
     setText("breadcrumbCurrent", title);
     setText("detailTitle", title);
@@ -578,7 +697,12 @@
       error.removeAttribute("aria-busy");
     }
 
-    setRetryVisible(canRetry === true);
+    activeDetail = null;
+    clearDetailSkeleton();
+    clearRelatedSkeleton();
+    if (!lastErrorWasRateLimit) {
+      setRetryVisible(canRetry === true);
+    }
     setText("breadcrumbCurrent", title);
     setText("propertyErrorTitle", title);
     setText("propertyErrorMessage", message);
@@ -610,7 +734,17 @@
       error.setAttribute("aria-busy", "true");
     }
 
+    lastErrorWasRateLimit = false;
+    var skeleton = byId("detailSkeleton");
+    if (skeleton) {
+      skeleton.hidden = false;
+      if (SKELETONS && typeof SKELETONS.detail === "function") {
+        SKELETONS.detail(skeleton);
+      }
+    }
+    clearRelatedSkeleton();
     setRetryVisible(false);
+    setRetryState(false, "");
     setText("breadcrumbCurrent", "Loading property");
     setText("propertyErrorTitle", "Loading property details");
     setText(
@@ -620,37 +754,96 @@
     document.title = "Loading property \u2014 EstateVista";
   }
 
+  /** Optional image request: own controller/sequence, failure yields fallback. */
+  function fetchImages(id, sequence) {
+    if (!activeApi) {
+      return Promise.resolve([]);
+    }
+    var localSequence = ++imageSequence;
+    var controller = new AbortController();
+    imageController = controller;
+
+    return activeApi.listPublishedImages(id, { signal: controller.signal })
+      .then(function (images) {
+        if (sequence !== requestSequence || localSequence !== imageSequence) {
+          return [];
+        }
+        return images;
+      })
+      .catch(function (error) {
+        if (isCancelled(error) || sequence !== requestSequence || localSequence !== imageSequence) {
+          return [];
+        }
+        // The detail response already provides an approved image fallback.
+        return [];
+      });
+  }
+
+  /** Optional related request: hidden skeleton, no effect on the main detail. */
+  function loadRelated(id, sequence) {
+    if (!activeApi) {
+      return;
+    }
+    var localSequence = ++relatedSequence;
+    var controller = new AbortController();
+    relatedController = controller;
+    var skeleton = byId("relatedSkeleton");
+
+    if (skeleton && SKELETONS && typeof SKELETONS.related === "function") {
+      skeleton.hidden = false;
+      SKELETONS.related(skeleton);
+    }
+
+    activeApi.getRelatedProperties(id, { size: 3, signal: controller.signal })
+      .then(function (related) {
+        if (sequence !== requestSequence || localSequence !== relatedSequence) {
+          return;
+        }
+        clearRelatedSkeleton();
+        renderRelated(related);
+      })
+      .catch(function (error) {
+        if (isCancelled(error) || sequence !== requestSequence || localSequence !== relatedSequence) {
+          return;
+        }
+        clearRelatedSkeleton();
+        renderRelated([]);
+      });
+  }
+
   /** Fetches a valid UUID; optional requests never block the main detail view. */
   function loadDetail(id) {
     activeId = id;
     var sequence = ++requestSequence;
-
+    ++detailSequence;
+    cancelControllers();
     showLoading();
 
     return waitForPublicApi()
       .then(function (api) {
-        return api.getPublishedDetail(id).then(function (detail) {
-          return api
-            .listPublishedImages(id)
-            .catch(function () {
-              return [];
-            })
-            .then(function (images) {
+        activeApi = api;
+        var controller = new AbortController();
+        detailController = controller;
+
+        return api.getPublishedDetail(id, { signal: controller.signal })
+          .then(function (detail) {
+            if (sequence !== requestSequence) {
+              return;
+            }
+            /* Render with the detail response first, then replace the gallery
+               if the independent images request completes successfully. */
+            return fetchImages(id, sequence).then(function (images) {
               if (sequence !== requestSequence) {
-                return null;
+                return;
               }
+              activeDetail = detail;
               render(toViewModel(detail, images));
-              return api
-                .getRelatedProperties(id)
-                .then(renderRelated)
-                .catch(function () {
-                  renderRelated([]);
-                });
+              loadRelated(id, sequence);
             });
-        });
+          });
       })
       .catch(function (error) {
-        if (sequence !== requestSequence) {
+        if (sequence !== requestSequence || isCancelled(error)) {
           return;
         }
 
@@ -663,9 +856,13 @@
           return;
         }
 
+        if (isRateLimit(error)) {
+          beginCooldown(error);
+        }
+
         showError(
           "Property details unavailable",
-          "The property service is not available right now. Please try again later or browse other published properties.",
+          describe(error),
           true
         );
       });

@@ -37,6 +37,29 @@ There is no frontend-to-API proxy and no production hostname committed to the
 repository; injecting the approved API host is a deployment prerequisite, not
 an optional tuning step.
 
+The injected value must be an absolute `http(s)` URL with the exact `/api/v1`
+path, no credentials, query string or fragment. HTTPS is required for every
+non-local hostname, and the frontend origin must remain in the backend's exact
+CORS allow-list. Example:
+
+```html
+<script>
+  window.ESTATEVISTA_CONFIG = {
+    apiBaseUrl: "https://api.example.com/api/v1",
+    webSocketUrl: "wss://api.example.com/ws",
+    publicRequestTimeoutMs: 15000,
+    publicRequestDeadlineMs: 30000
+  };
+</script>
+```
+
+`publicRequestTimeoutMs` and `publicRequestDeadlineMs` are optional. They are
+bounded to 1,000–60,000 ms and default to 15,000 ms per attempt and 30,000 ms
+for all automatic public-read retries. Invalid runtime configuration produces a
+safe service message instead of a request to an unapproved origin. Do not use
+these settings to work around an unavailable API; fix the deployment or backend
+instead.
+
 ---
 
 ## Prerequisites
