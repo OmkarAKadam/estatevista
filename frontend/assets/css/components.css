@@ -968,6 +968,56 @@
   margin: 0;
 }
 
+.ev-notice--error {
+  border-left-color: var(--ev-accent-text);
+  background-color: var(--ev-color-surface-alt);
+}
+
+/* Property discovery filters: compact, scrollable, and keyboard usable.
+   The amenity list is bounded so twenty options never stretch the page. */
+.ev-amenity-filter {
+  margin: 0;
+  padding: var(--ev-space-3);
+  border: 1px solid var(--ev-color-border);
+  border-radius: var(--ev-radius-sm);
+}
+
+.ev-amenity-filter legend {
+  float: none;
+  width: auto;
+  padding: 0 var(--ev-space-1);
+}
+
+.ev-amenity-filter__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--ev-space-1) var(--ev-space-3);
+  max-height: 11rem;
+  overflow-y: auto;
+  padding: var(--ev-space-1);
+}
+
+.ev-amenity-filter__option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ev-space-2);
+  margin: 0;
+  font-size: var(--ev-text-sm);
+}
+
+.ev-amenity-filter__option input {
+  margin-top: 0.2rem;
+  flex: 0 0 auto;
+}
+
+.ev-filter-note:not([hidden]) {
+  margin-top: var(--ev-space-2);
+}
+
+#propertyGrid[hidden] {
+  display: none !important;
+}
+
 /* A button that must sit on a forest or photographic surface. */
 .btn-on-dark {
   --bs-btn-color: var(--ev-forest-900);
