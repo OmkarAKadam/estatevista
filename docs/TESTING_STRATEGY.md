@@ -8,6 +8,8 @@
 | Full-suite command | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\postgres-test-cluster.ps1 -Action verify` |
 | Result at last validation | 83 tests, 0 failures, 0 errors, 0 skipped |
 
+**Historical baseline note:** The Stage 2 status and 83-test result above are retained as history. The current cross-stage backend evidence is the Stage 5.8 closure report: `452/452` tests passed with V1–V17 migrations. That result is historical evidence only; the Stage 6.1 documentation reconciliation did not rerun the backend suite and does not claim Stage 6 tests were executed.
+
 This document describes the automated tests that exist, how they are executed,
 and what they do not prove. It does not claim production readiness and does not
 invent a coverage gate that has not been approved.
@@ -214,3 +216,26 @@ These gaps are explicit and are not represented as passing checks.
    rationale and a baseline; do not add an arbitrary number.
 7. When CI is first pushed, record the run URL and result in the next validation
    report.
+
+## 10. Stage 6 approved acceptance matrix
+
+The owner-approved architecture is recorded in `docs/STAGE_6_DECISION_REGISTER.md`.
+The matrix below defines future verification obligations; it does not claim any
+Stage 6 test has been written, executed, or passed.
+
+| Decision | Required verification when implemented |
+|---|---|
+| 1 — Inquiry lifecycle | All statuses and transitions, invalid-transition `409`, idempotent same-status `200` with no audit/timestamp change, `resolved_at` rules, audit records without content, serialized concurrency, buyer read-only status, active AGENT/ADMIN authority, and no transcript access. |
+| 2 — Duplicate inquiry | One active `NEW`/`IN_PROGRESS` inquiry per buyer/property; inactive statuses allow a new inquiry; duplicate active submission returns `409`; concurrent submissions cannot bypass the Stage 6.4 partial unique index; no merge/overwrite/delete. |
+| 3 — Favorite mutations | `201` new, `200` existing published, `204` existing/nonexistent removal, `404` nonexistent/non-public add, principal-derived buyer, preserved unique constraint, safe concurrency, and no soft delete. |
+| 4 — Favorite retention/privacy | Retention through non-public property states, generic unavailable placeholder with no unpublished fields, continued removal, republish restoration, and no automatic deletion. |
+| 5 — Favorite API/state sync | Approved route set, 100-UUID comma-separated batch cap, duplicate de-duplication, nonexistent/non-public batch state as `isFavorite:false`, one batch request per collection, paginated favorites page, no public personalized flags, bounded queries without N+1, stale-response control, in-memory reset, and private `no-store` responses. |
+| 6 — Assignment/deactivation | Immutable historical `assigned_agent_id`, current eligible active assignment on new inquiries, deactivation denial, reactivated-agent access, admin inactive-agent management, transactional rechecks, and retained history. |
+| 7 — API contracts | Standard envelope, exact DTO field sets, `400/401/403/404/409/429`, equivalent generic `404` for unauthorized/missing records, subject ≤200, message ≤5,000, rejected client identity/status fields, exact pagination/sort/status filters, and deterministic UUID tiebreak. |
+| 8 — Rate limits | Overlapping `300/min/user`, `60/min/admin`, `60/min/user` favorite mutations, `5/min` and `30/hour` inquiry submissions, shared-bucket semantics, server-derived identity, `429` envelope, longest-block `Retry-After`, CORS exposure of that header, and no automatic mutation retry. |
+| 9 — Frontend scope | Functional inquiry CTA replacing the illustrative link, auth prompt, buyer-only submission, role-aware controls, buyer read-only status, accessible loading/empty/error/validation/success states, shared Vanilla JS client, safe DOM rendering, no browser storage of inquiry content, no chat UI/handlers/FK, and no `retryOnCsrfFailure` on mutations. |
+| 10 — V18 gate | No V18 file in Stage 6.1; V1–V17 unchanged; in Stage 6.4 verify data inspection, clean V1→V18, V17→V18, Flyway validation, status CHECK, partial unique index, concurrency behavior, and updated migration inventory tests. |
+| 11 — Security schedule | Stage 6.2 evidence for F-1, F-2, F-4, and F-7 before mutations; F-3 Stage 7; F-5 Stage 8; F-6 Stage 9; F-8 partially open with remaining obligations in Stage 8/9. Scheduling is not resolution. |
+| 12 — Boundaries | No chat, dashboard/account management, deployment, featured endpoint, or other Stage 7–9 work is tested as part of Stage 6 acceptance. |
+
+V1–V14 in §9 rule 3 remains the historical Stage 2 wording. The Stage 5.8 baseline is V1–V17, and the authorized V18 is Stage 6.4-only. The historical `452/452` result does not satisfy any new Stage 6 verification row above.

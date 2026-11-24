@@ -160,6 +160,8 @@ Authenticated buyers can:
 
 Favorites must be associated with the buyer's account and persist across sessions.
 
+**Stage 6 scope note:** Owner-approved favorite behavior is recorded in `docs/STAGE_6_DECISION_REGISTER.md` §3 Decisions 3–5 and §5.1. New favorites require a `PUBLISHED` property; existing favorites are retained through non-public property states with a generic unavailable presentation, remain removable, and are listed with approved pagination and batched card-state requests.
+
 ### 6.5 Inquiry Management
 
 Buyers can submit inquiries regarding specific properties.
@@ -172,6 +174,8 @@ The platform will:
 - Maintain inquiry status and timestamps.
 
 The exact inquiry status workflow will be defined in the functional requirements document.
+
+**Stage 6 scope note:** The inquiry workflow is now approved for Stage 6 architecture in `docs/STAGE_6_DECISION_REGISTER.md` §3 Decisions 1, 2, and 6–9. Stage 6 provides buyer submission and read-only status history, historically assigned AGENT and ADMIN status management, one active inquiry per buyer/property, immutable assignment history, and no chat surface or inquiry↔conversation FK. This scoped approval does not approve the whole draft UI/UX specification.
 
 ### 6.6 Property-Specific Chat
 
@@ -415,6 +419,8 @@ The frontend will remain based on Vanilla JavaScript. React will not be introduc
 | PD-10 | Support both residential and commercial properties. | Approved |
 | PD-11 | Keep the frontend based on Vanilla JavaScript. | Approved |
 
+Stage 6 decisions D1–D12 are approved only in `docs/STAGE_6_DECISION_REGISTER.md`. They are Stage 6 architecture decisions, are not additional `PD-…` items, and do not change PD-01–PD-11 or this document's Draft status.
+
 ## 15. Assumptions and Pending Decisions
 
 The following details require further specification in subsequent Stage 1 activities:
@@ -431,6 +437,8 @@ The following details require further specification in subsequent Stage 1 activi
 - Account suspension and deletion policies.
 
 Authentication session and token strategy is no longer a pending product decision. It is settled as a technical design by `SECURITY_ARCHITECTURE.md` SD-01 (server-side session with an opaque host-only `HttpOnly` cookie; no JWT) and is recorded in `SYSTEM_ARCHITECTURE.md` §9.3 and `API_SPECIFICATION.md` §3. Implementation and deployment prerequisites remain outstanding and are not claimed here.
+
+The Stage 6 inquiry workflow item above is resolved for Stage 6 architecture by `docs/STAGE_6_DECISION_REGISTER.md`; no other pending item in this section is changed by that approval.
 
 These items are not considered approved merely because they appear in this document.
 

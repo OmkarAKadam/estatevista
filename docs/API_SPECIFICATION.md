@@ -6,7 +6,7 @@
 **API Version:** v1  
 **Backend:** Java + Spring Boot  
 **Database:** PostgreSQL  
-**Status:** Proposed baseline — §25 records APPROVED clarifications; headers reconciled during Stage 1.6; Stage 1.9 audit corrections applied
+**Status:** Proposed baseline — §25 records APPROVED clarifications; headers reconciled during Stage 1.6; Stage 1.9 audit corrections applied; Stage 6 Favorites and Inquiry decisions are recorded in `docs/STAGE_6_DECISION_REGISTER.md` and surfaced in §§9–10, §17, §19, §23, and §25.4 without changing this document's overall status
 
 ---
 
@@ -492,18 +492,21 @@ Maximum file size, allowed formats, and image count remain pending configuration
 
 # 9. Favorites APIs
 
+All paths in this section are relative to `/api/v1`.
+
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | POST | `/favorites/{propertyId}` | Buyer | Add favorite |
 | DELETE | `/favorites/{propertyId}` | Buyer | Remove favorite |
-| GET | `/favorites` | Buyer | Retrieve own favorites |
+| GET | `/favorites` | Buyer | Retrieve own paginated favorites |
 | GET | `/favorites/{propertyId}/status` | Buyer | Check favorite status |
+| GET | `/favorites/status?propertyIds=...` | Buyer | Check up to 100 favorite states in one request |
 
 ## 9.1 Add Favorite
 
 `POST /favorites/{propertyId}`
 
-Success: `201 Created`
+Success: `201 Created` for a new favorite or `200 OK` for an existing favorite on a `PUBLISHED` property.
 
 ```json
 {
@@ -516,7 +519,54 @@ Success: `201 Created`
 }
 ```
 
-The backend must prevent duplicate buyer-property relationships.
+Buyer identity is derived only from the authenticated principal. The backend must preserve the `UNIQUE(buyer_id, property_id)` database constraint and handle concurrent duplicate additions safely. Adding a nonexistent or non-public property returns generic `404`; this restriction takes precedence over duplicate-add success. No soft-delete flag is introduced.
+
+## 9.2 Remove Favorite
+
+`DELETE /favorites/{propertyId}`
+
+Success: `204 No Content` with no body for both an existing and a nonexistent favorite. Only the authenticated buyer's relationship is removed. A retained favorite for a non-public property remains removable.
+
+## 9.3 Favorite Retention and Placeholder
+
+New favorites may reference only `PUBLISHED` properties. Existing favorites remain stored when a property becomes `DRAFT`, `UNAVAILABLE`, `SOLD`, `RENTED`, or `ARCHIVED`; they are never automatically deleted. A non-public favorite returns only:
+
+```json
+{
+  "propertyId": "uuid",
+  "createdAt": "2026-11-24T10:30:00Z",
+  "availability": "UNAVAILABLE",
+  "placeholder": "Property no longer available"
+}
+```
+
+No unpublished title, price, description, image, address, agent detail, or internal lifecycle status is exposed. When the property becomes `PUBLISHED` again, the normal approved public-summary presentation is restored without creating a new favorite row.
+
+## 9.4 Favorite List, Pagination, and Status
+
+`GET /favorites?page=0&size=12&sort=newest`
+
+The default size is 12, the maximum is 100, and `sort` accepts only `newest` (default) and `oldest`. Ordering uses `createdAt` with a deterministic UUID tiebreak. Each published entry contains `propertyId`, `createdAt`, and the approved public property summary from §7.2; a non-public entry uses the restricted object in §9.3. The response retains the standard `data` plus `meta` envelope.
+
+`GET /favorites/{propertyId}/status` returns `{ "propertyId": "uuid", "isFavorite": false }` inside `data`.
+
+`GET /favorites/status?propertyIds=<uuid1>,<uuid2>` is the approved batched status route. `propertyIds` is a single comma-separated list of canonical lowercase UUIDs; missing, empty, malformed, or more than 100 supplied values return `400`. Exact duplicates are de-duplicated after validation and returned once in first-occurrence order. The response is:
+
+```json
+{
+  "success": true,
+  "data": {
+    "favorites": [
+      { "propertyId": "uuid", "isFavorite": true },
+      { "propertyId": "uuid", "isFavorite": false }
+    ]
+  }
+}
+```
+
+The route reports only the authenticated buyer's state. Nonexistent and non-public identifiers produce `isFavorite: false`; no property existence or unpublished information is disclosed. Private favorite responses set `Cache-Control: no-store`. Homepage and listing cards use one batched request per displayed collection; the favorites page remains paginated, and no personalized favorite flag is added to public property responses. Bounded `buyer_id`/`property_id IN (...)` queries are required, with no per-card N+1 behavior. Stale in-flight responses are ignored; in-memory state is reset on logout, account change, and expired-session detection.
+
+Stage 6 contract authority: `docs/STAGE_6_DECISION_REGISTER.md` §5.1.
 
 # 10. Inquiry APIs
 
@@ -562,6 +612,33 @@ The buyer identity and assigned agent must be derived from authenticated backend
 The original agent assignment must be retained on the inquiry.
 
 Administrative access to an inquiry is limited to the inquiry record, its metadata, and its message. It does not grant access to any conversation or message transcript (API §25.1.E; UI D-16).
+
+## 10.2 Stage 6 Approved Inquiry Contract
+
+All paths in this section are relative to `/api/v1`. The table above is reconciled into the following single authoritative endpoint inventory; repeated buyer-route descriptions in other sections are superseded by it.
+
+| Method | Endpoint | Authority | Success behavior |
+|---|---|---|---|
+| POST | `/properties/{propertyId}/inquiries` | Authenticated BUYER | `201` new inquiry with `NEW` status |
+| GET | `/inquiries/me` | Buyer owner | `200` paginated buyer inquiry history |
+| GET | `/inquiries/{inquiryId}` | Buyer owner, historically assigned AGENT, or ADMIN | `200` inquiry detail |
+| GET | `/agents/me/inquiries` | Authenticated AGENT | `200` paginated historically assigned inquiries |
+| GET | `/admin/inquiries` | ADMIN | `200` paginated inquiry metadata |
+| PATCH | `/inquiries/{inquiryId}/status` | Historically assigned active AGENT or ADMIN | `200` updated inquiry detail |
+
+No buyer close, withdraw, reopen, or modify route is approved. Buyer inquiry status is read-only.
+
+**Request and DTO rules.** `subject` is optional, may be omitted or `null`, and is at most 200 characters when supplied. `message` is required, nonblank after trimming, and at most 5,000 characters. Client-supplied `buyerId`, `agentId`, `assignedAgentId`, owner, actor, `status`, `resolvedAt`, or initial-status fields are rejected with `400`. Actor and assignment values are derived server-side. A new inquiry requires a `PUBLISHED` property and an eligible active assigned AGENT; those conditions are rechecked transactionally during creation. The buyer and agent values are derived from `AuthenticatedAccount`, and the original `assigned_agent_id` is never rewritten by later property reassignment.
+
+Inquiry detail `data` contains `id`, `propertyId`, `propertyTitle` or generic unavailable placeholder, `buyerId`, `assignedAgentId`, `subject`, `message`, `status`, `resolvedAt`, `createdAt`, and `updatedAt`. List responses exclude `message` but otherwise use the same fields within the standard `data` plus `meta` envelope. Admin detail access does not include conversations or message transcripts.
+
+**Status transitions.** The approved statuses are `NEW`, `IN_PROGRESS`, `RESOLVED`, and `CLOSED`. Permitted transitions are `NEW → IN_PROGRESS`, `NEW → CLOSED`, `IN_PROGRESS → RESOLVED`, `IN_PROGRESS → CLOSED`, and `RESOLVED → CLOSED`; `CLOSED` is terminal. An invalid transition returns `409`. Repeating the current status is an idempotent `200` with unchanged `resolvedAt`, `updatedAt`, and no duplicate audit record. Entering `RESOLVED` sets `resolvedAt`, which is retained afterward; direct closure leaves it `null`. Every real transition creates an `INQUIRY_STATUS_CHANGED` audit record with IDs, actor, before/after status, time, and correlation ID, but no inquiry content. Concurrent status changes must be serialized or otherwise protected against invalid transitions and lost updates.
+
+**Duplicate policy.** At most one active inquiry may exist per buyer/property pair. `NEW` and `IN_PROGRESS` are active; `RESOLVED` and `CLOSED` are inactive and permit a new inquiry. Duplicate active submissions return `409`. A PostgreSQL partial unique index is mandatory; service checks alone are insufficient. Existing inquiries are never silently merged, overwritten, or deleted.
+
+**Pagination, sorting, and errors.** Inquiry lists use `page=0`, `size=20` default, maximum `100`, `sort=newest` default, and `sort=oldest`; `status` accepts `NEW`, `IN_PROGRESS`, `RESOLVED`, or `CLOSED`. Ordering uses `createdAt` with a deterministic UUID tiebreak. Unsupported sort fields, invalid statuses, and invalid pagination return `400`. Unauthorized and nonexistent records both return the same generic `404` standard envelope. No private-existence hint, SQL detail, stack trace, inquiry content in URLs/logs/toasts, or other user's private data is exposed.
+
+Stage 6 contract authority: `docs/STAGE_6_DECISION_REGISTER.md` §5.2.
 
 # 11. Conversation APIs
 
@@ -823,6 +900,8 @@ All API errors must follow a consistent structure.
 
 The API must not expose internal stack traces, SQL errors, database credentials, or sensitive implementation details.
 
+Stage 6 Favorites and Inquiries use this standard envelope with `400` for invalid requests, `401` for unauthenticated requests, `403` for role-level denial, `404` for both missing and unauthorized resources, `409` for business-state conflicts, and `429` for rate-limit exceeded. Unauthorized and nonexistent resources are indistinguishable to callers. `429` responses include `Retry-After` reflecting every blocking limit, and that header must be exposed to approved browser origins through CORS during Stage 6.2 implementation. Private error/denial responses use `Cache-Control: no-store` under the Stage 6.2 security prerequisites recorded in `docs/STAGE_6_DECISION_REGISTER.md` §9.
+
 # 18. Validation Requirements
 
 The backend must validate all incoming requests.
@@ -868,6 +947,17 @@ Rules:
 - Invalid sort fields must be rejected.
 - Sorting must use an explicit allowlist.
 - Large message histories must use pagination.
+
+## 19.1 Stage 6 Endpoint-Specific Contracts
+
+Owner-approved Stage 6 values refine the generic framework for favorites and inquiries:
+
+| Surface | Default page | Default size | Maximum size | Default sort | Allowed sort | Additional filter |
+|---|---:|---:|---:|---|---|---|
+| `/favorites` | 0 | 12 | 100 | `newest` | `newest`, `oldest` | none |
+| Inquiry lists | 0 | 20 | 100 | `newest` | `newest`, `oldest` | `status` |
+
+Every list uses `createdAt` with a deterministic UUID secondary ordering. Invalid page, size, sort, or status values return `400`. Exact route coverage and response DTOs are in §§9–10 and `docs/STAGE_6_DECISION_REGISTER.md` §5.
 
 # 20. WebSocket and STOMP Architecture
 
@@ -1013,14 +1103,15 @@ The following details require final decisions during their corresponding impleme
 | Property Assignment | Every property is created with one primary agent; there is no unassigned state |
 | Property Images | Upload limits and supported formats. Image deletion uses the approved durable outbox: metadata and cleanup task commit together; provider cleanup is eventual and retried by a backend worker (project-owner-approved ADR: `STAGE_4_IMAGE_DELETION_OUTBOX_ADR.md`; register index in `STAGE_4_DECISION_REGISTER.md` §10). |
 | Search | Full-text search and geographic search implementation |
-| Inquiries | Final workflow and status transitions |
+| Favorites | Stage 6 mutation, retention, pagination, and batch-status decisions are approved in §9 and `docs/STAGE_6_DECISION_REGISTER.md` §5.1; implementation and verification remain. |
+| Inquiries | Stage 6 status transitions, duplicate policy, actor authority, pagination, and DTO rules are approved in §10.2 and `docs/STAGE_6_DECISION_REGISTER.md` §5.2; implementation and verification remain. Retention duration remains deferred. |
 | Conversations | Handling conversations when an agent is deactivated |
 | Chat | Editing, deletion, attachments, and delivery acknowledgements |
 | Chat Pagination | Cursor-based versus page-based history retrieval |
 | Notifications | Email delivery and notification preferences |
 | Dashboard | Final metrics and aggregation requirements |
 | Audit | Retention period and exact audited operations |
-| API Rate Limits | Endpoint-specific limits |
+| API Rate Limits | Stage 6 favorites/inquiry route limits are approved in `docs/SECURITY_ARCHITECTURE.md` §11.9 and `docs/STAGE_6_DECISION_REGISTER.md` §5.4; other endpoint-specific limits remain deferred. |
 | API Documentation | OpenAPI/Swagger configuration |
 
 These decisions must be approved before implementing the corresponding functionality.
@@ -1210,7 +1301,7 @@ Authorized participants may retrieve historical references through authenticated
 
 All decisions listed in Section 23 remain deferred unless explicitly resolved by this review.
 
-Session authentication, the CSRF header contract, the password-reset token mechanics, agent activation, and public property visibility are resolved as designs (Security Architecture SD-01, SD-05, SD-11, SD-12, SD-53, and C-10/D-08); their implementation, email-provider, token-migration, hostname, and test prerequisites remain. The Spring Session migration exists, and the SD-53 recheck against Spring Security 7.1.2 is recorded in `DEVELOPMENT_SETUP.md` §12. Detailed status transitions, upload limits, notification delivery, and chat enhancements must be finalized before their respective implementations.
+Session authentication, the CSRF header contract, the password-reset token mechanics, agent activation, and public property visibility are resolved as designs (Security Architecture SD-01, SD-05, SD-11, SD-12, SD-53, and C-10/D-08); their implementation, email-provider, token-migration, hostname, and test prerequisites remain. The Spring Session migration exists, and the SD-53 recheck against Spring Security 7.1.2 is recorded in `DEVELOPMENT_SETUP.md` §12. Stage 6 favorites and inquiry contracts are resolved by the owner decisions in `docs/STAGE_6_DECISION_REGISTER.md`, with no implementation or verification claimed here. Detailed status transitions for conversations, upload limits, notification delivery, and chat enhancements must be finalized before their respective implementations.
 
 ## 25.5 Final Approval
 

@@ -1422,6 +1422,8 @@ The approved API exposes two adjacent actions:
 
 **Chat flow (settled).** “Start a chat” calls `POST /properties/{propertyId}/conversations` **without** `initialMessage` to create or retrieve the buyer-property conversation, then opens the chat page. The first message is sent separately through `/app/chat.send`, exactly like every later message (API §25.1.A). If the buyer typed a first message in the dialog, the chat composer is prefilled with it and the buyer confirms the send; it is never bundled into conversation creation. The `initialMessage` field was removed from API §11.1 in the Stage 1.6 correction pass and is not used by the UI.
 
+**Stage 6 scope note.** For Stage 6, the illustrative contact CTA is replaced with a functional inquiry workflow only. No chat UI, STOMP handler, conversation-creation action, or inquiry↔conversation FK is introduced in Stage 6, and an inquiry is not a prerequisite for chat. The owner-approved decision is recorded in `docs/STAGE_6_DECISION_REGISTER.md` §3 Decision 9; the two-channel proposal above is historical draft text for this document and is superseded for Stage 6 scope. Approval of that scope does not approve this draft document as a whole.
+
 **Visitor behaviour.** Clicking “Contact agent” or “Save” while signed out opens an auth prompt: “Sign in to contact the agent” with Log in and Register actions carrying `returnUrl` back to the property. Do not collect the message before authentication and then discard it; preserve the draft in `sessionStorage` only if this is explicitly approved.
 
 **Traceability.** FR-DISC-002, FR-DISC-003, FR-PROP-002, FR-FAV-001, FR-INQ-001, FR-CHAT-001.
@@ -1675,6 +1677,8 @@ two-column content at ≥992px:
 - Error on remove: restore the card, show an inline error with Retry.
 
 **Accessibility.** The favorite button has an accessible name that includes the property title and state (“Remove {title} from favorites”). The card grid is a labelled list.
+
+**Stage 6 scope note.** The favorites page uses `GET /favorites?page=0&size=12&sort=newest` with only `newest` and `oldest` sorting, maximum size `100`. Existing favorites for non-public properties are retained and shown with the generic unavailable placeholder; no automatic API removal is assumed. Collection card state comes from one batched `GET /favorites/status?propertyIds=...` request per displayed collection, and stale responses must not overwrite newer state. See `docs/STAGE_6_DECISION_REGISTER.md` §3 Decisions 3–5.
 
 **Traceability.** FR-FAV-001 … FR-FAV-005.
 
@@ -2679,6 +2683,8 @@ Message states for own messages:
 - Duplicate inquiry handling: `FR-VAL-005` applies to unique records; the API may allow multiple inquiries for one property. Do not block a second inquiry unless the backend rejects it; if rejected with `409`, explain the existing inquiry and link to it.
 - If the buyer is not signed in, the dialog is not shown; the auth prompt is shown instead.
 
+**Stage 6 scope note.** The approved Stage 6 contract controls over this draft: `subject` is optional, may be omitted or `null`, and is at most 200 characters when supplied; `message` is required, nonblank after trimming, and at most 5,000 characters. At most one active inquiry (`NEW` or `IN_PROGRESS`) may exist per buyer/property, and a duplicate active submission returns `409`. See `docs/STAGE_6_DECISION_REGISTER.md` §3 Decisions 1–2 and §5.2.
+
 ### 12.11 Validation copy standards
 
 | Situation | Copy pattern |
@@ -3368,6 +3374,8 @@ Rules:
 - For duplicate conversations, the API returns the existing conversation; route to it instead of creating a second.
 - For duplicate inquiries, follow the server response and explain the existing inquiry if rejected.
 
+**Stage 6 scope note.** An existing favorite on a `PUBLISHED` property returns `200` and is rendered as saved; an add for a nonexistent or non-public property returns generic `404`. Favorite removal returns `204` whether or not a row existed. Optimistic UI must not overwrite authoritative status from stale in-flight reads, and Stage 6 mutations must not set `retryOnCsrfFailure`. See `docs/STAGE_6_DECISION_REGISTER.md` §3 Decisions 3, 5, and 9.
+
 ### 16.9 Offline and degraded behaviour
 
 - Detect offline with `navigator.onLine` plus failed requests. Do not trust the flag alone.
@@ -3970,6 +3978,14 @@ The unresolved items change interface behaviour, implementation detail, or docum
 
 ---
 
+### 20.7 Stage 6 owner-approved UI scope
+
+`docs/STAGE_6_DECISION_REGISTER.md` records owner approval on 24 November 2026 for Stage 6 UI scope only. Its scoped rules control over historical draft text where they conflict: the functional inquiry CTA replaces the illustrative contact CTA; only authenticated BUYER accounts submit inquiries; anonymous users receive an auth prompt; AGENT/ADMIN accounts receive no buyer mutation controls; buyer inquiry status is read-only; loading, empty, error, validation, and success states are accessible. The shared Vanilla JavaScript client is reused, untrusted content is rendered with safe DOM APIs, and inquiry content is never stored in browser storage or exposed in URLs/logs/error toasts. Stage 6 has no chat UI, STOMP handler, conversation-creation UI, or inquiry↔conversation FK.
+
+This cross-reference resolves D-09, D-10, D-11, and D-29 for Stage 6 only and adds no new UI/UX `D-01…D-47` item. It does not approve this draft document, change its review status, alter approval counts or sign-off fields, or reopen any Stage 1–5 decision.
+
+---
+
 ## 21. Stage 1.6 Completion Checklist
 
 ### 21.1 Required coverage
@@ -4077,7 +4093,7 @@ These gaps are documented and classified in §20. No Blocking item remains; the 
 | Approved | **No** (this document); the former Blocking decisions D-08, D-14, D-20, and D-21 are settled by Security Architecture v0.5 |
 | Next action | User review and approval of this specification; the remaining items are Non-blocking or Out of Scope |
 
-This document has not been approved. It must not be cited as an approved baseline until the review below is complete.
+This document has not been approved. It must not be cited as an approved baseline until the review below is complete. Owner approval recorded in `docs/STAGE_6_DECISION_REGISTER.md` applies only to the Stage 6 favorites/inquiries scope in §20.7 and does not approve this document, add a sign-off, or change the review record below.
 
 ### 22.2 Review record
 
@@ -4105,6 +4121,7 @@ This document has not been approved. It must not be cited as an approved baselin
 | 1.3 | 9 Nov 2026 | Stage 1.6 correction pass | Settled D-01 (upstream header metadata reconciled) and D-47 (`FRD.md` FR-PROP-001 corrected); removed them from the unresolved register; updated counts to 40 unresolved (4 Blocking, 33 Non-blocking, 3 Out of Scope) plus 7 settled; removed the unassigned-property state and queue because every property has a primary agent; added the required primary-agent field to the administrator create form |
 | 1.4 | 11 Nov 2026 | Stage 1.6 approval reconciliation | Settled D-08 (only `PUBLISHED` publicly retrievable), D-14 (agent activation), D-20 (server-side session authentication), and D-21 (password reset) from Security Architecture v0.5; removed them from the unresolved register; updated counts to 36 unresolved (0 Blocking, 33 Non-blocking, 3 Out of Scope) plus 11 settled; aligned the §7.3 public-detail visibility treatment and the `SYSTEM_ARCHITECTURE.md` ARC status in the related-documents table |
 | 1.5 | 12 Nov 2026 | Stage 1.9 documentation audit | Removed stale deferrals for authentication, CSRF, reset-token lifetime, and agent activation; aligned §1.2, §5.3, §7.7–7.9, §10.4, §17.2, §17.5, and §18.3 with SD-01/SD-05/SD-11/SD-12 and D-14/D-20/D-21. Unresolved register unchanged at 36 items; status remains Draft — Pending Review and Approval; no approval or stakeholder sign-off added |
+| — | 24 Nov 2026 | Stage 6 documentation reconciliation | Added §20.7 and scoped Stage 6 notes for inquiry CTA/validation, favorite retention/state, conflict handling, and API client behavior. Document version, status, unresolved counts, review outcomes, and sign-off fields are unchanged. |
 
 ### 22.4 Approval sign-off
 

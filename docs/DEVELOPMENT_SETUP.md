@@ -455,6 +455,14 @@ Runtime API configuration (`frontend/assets/js/core/config.js`):
   Missing, malformed or inaccessible values use the documented 60-second
   fallback. Production CORS does not expose `Retry-After`; no CORS change is
   made by the frontend.
+
+**Stage 6 scope note.** The Stage 3.7 sentence above records the historical
+frontend-only state. For Stage 6.2, `docs/STAGE_6_DECISION_REGISTER.md` §5.4
+requires `Retry-After` to be exposed to approved browser origins through the
+approved CORS exposure configuration so the shared client can honour the
+server's cooldown. This documentation reconciliation makes no CORS, deployment,
+or runtime configuration change; the fallback behavior above remains the safe
+client behavior when a header is inaccessible.
 - Legacy `?type=<name>` links stay in the URL while reference data is unavailable
   and block the search until the subtype can be resolved from authoritative
   catalogue data or the user explicitly clears the criterion.

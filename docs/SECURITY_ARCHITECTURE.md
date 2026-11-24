@@ -28,6 +28,7 @@
 | [`DATABASE_DESIGN.md`](DATABASE_DESIGN.md) | Entities, ownership fields, constraints, retention, approved §23 clarifications |
 | [`API_SPECIFICATION.md`](API_SPECIFICATION.md) | REST endpoints, WebSocket destinations, error contract, approved §25 clarifications |
 | [`UI_UX_SPECIFICATION.md`](UI_UX_SPECIFICATION.md) | Interface security behaviour, role visibility, chat privacy, and deferred decisions D-01–D-47 (D-01, D-02, D-03, D-04, D-08, D-14, D-17, D-20, D-21, D-33, and D-47 settled) |
+| [`STAGE_6_DECISION_REGISTER.md`](STAGE_6_DECISION_REGISTER.md) | Authoritative Stage 6 favorites/inquiries architecture addendum approved by the project owner on 24 November 2026; no blanket reapproval of this document or the draft UI specification |
 
 ### 1.2 Status and interpretation
 
@@ -83,6 +84,10 @@ Version 0.5 supersedes 0.4. Version 0.4 is retained in Section 22.4 and remains 
 7. **No inflated status.** No decision is marked Implemented or Verified, and no test is claimed as executed. Approval of a design is not evidence of implementation or deployment readiness.
 
 The 0.3 CSRF architecture is preserved unchanged: a session-bound synchronizer token, server-side storage, memory-only frontend token, no CSRF cookie, `X-CSRF-TOKEN` response and request header, rotation, narrow exemptions, and Origin/Referer validation.
+
+### 1.5 Stage 6 addendum scope
+
+`docs/STAGE_6_DECISION_REGISTER.md` records owner-approved Stage 6 favorites/inquiries decisions. It supplements the controls in this document and is cross-referenced in §§10.4.5, 11.9, 18.8, and 22.8. It does not reapprove this document, change Version 0.5 status, authorize implementation, approve the draft UI/UX specification, mark F-1–F-8 resolved, or alter any Stage 1–5 decision. Scoped implementation evidence cited for SD-53 remains specific to that control and does not convert this design document into an implementation or verification record.
 
 ---
 
@@ -677,7 +682,7 @@ CORS is not an authorization control and does not replace CSRF protection. A dis
 8. `SameSite=Lax` is defence in depth, not a replacement for the synchronizer token.
 9. Never put the CSRF token in a URL, query string, or WebSocket query parameter.
 10. Never place the CSRF token in a cookie. Do not use `CookieCsrfTokenRepository`; it implements double-submit and would reintroduce the cookie-tossing weakness (Section 8.5.8).
-11. On a `403` that the frontend identifies as a CSRF failure, it may re-bootstrap once with `GET /auth/me` and retry the request once. If the retry also fails, it clears state and signs the user out. It must not loop.
+11. On a `403` that the frontend identifies as a CSRF failure, a safe/public `GET` may re-bootstrap once with `GET /auth/me` and retry once. A mutating request must not be automatically retried and must not set `retryOnCsrfFailure`; after a CSRF failure the user receives a safe error and may retry manually only after a fresh bootstrap. If bootstrap fails, clear state and sign the user out. It must not loop.
 12. Do not disable CSRF for CORS, for a proxy, or to "make the frontend work". If the token cannot be delivered to the approved origin, fix the CORS/header exposure (Section 8.5.5) rather than removing the control.
 
 #### 8.5.7 Token lifecycle
@@ -699,6 +704,8 @@ The following lifecycle is normative for the frontend and backend. "Bootstrap" m
 | **Multiple tabs** | Each tab has its own in-memory token for the same server-side session. The token value is normally identical because it is session-bound. | Tabs do not share tokens through storage. After a rotation, a stale tab receives `403`, re-bootstraps once, and retries once. |
 | **Bootstrap failure** | Returns `401` when unauthenticated, `5xx` on server failure. | On `401`, show login. On `5xx`, show a safe error and do not attempt mutations; do not invent a token. |
 | **Token absent or invalid** | `403`; no action; audit event. | Re-bootstrap once, retry once, then sign out. |
+
+**Stage 6 limitation.** Every retry sentence in this table applies only to safe/public `GET` requests. Favorites and inquiry mutations must not use automatic CSRF-failure retry or `retryOnCsrfFailure`; the UI must present a recoverable error after a fresh bootstrap. F-2 (login token regeneration), F-7 (concurrent bootstrap/token-version hardening), and F-1 (exact Origin/Referer validation) remain OPEN prerequisites before Stage 6 mutations. F-4 requires `no-store` on generic errors and denial responses before those mutations.
 
 The token is never written to `localStorage`, `sessionStorage`, IndexedDB, a cookie, a URL, or an application log. The auth/API modules are the only frontend code that handles it (Section 20.9).
 
@@ -1127,7 +1134,7 @@ Legend: **Yes** = allowed within the stated scope; **Own** = only the authentica
 | Submit an inquiry | No | Yes | No | No | Buyer initiates on a property; agent derived from current assignment |
 | View own inquiries | No | Own | No | No | Buyer-only |
 | View assigned-property inquiries | No | No | Assigned | Yes | Historical inquiry `assigned_agent_id`; admin sees all |
-| Update inquiry status | No | No | Assigned | Yes | Authorized agent/admin; transitions TBD (D-09) |
+| Update inquiry status | No | No | Assigned | Yes | Authorized active AGENT/admin; Stage 6 transition matrix approved in `STAGE_6_DECISION_REGISTER.md` §3 Decision 1; buyer status read-only |
 | Create a conversation | No | Yes | No | No | Buyer only; one per buyer-property; current assigned agent captured |
 | View own conversations | No | Own | Assigned | No | Buyer is participant; agent is original `assigned_agent_id`; admin has no list |
 | View conversation details/messages | No | Participant | Participant | No | Buyer or original assigned agent only; admin is not a participant |
@@ -1223,16 +1230,19 @@ For every public property endpoint above, **eligible** means `properties.status 
 
 | Method | Endpoint | Allowed | Ownership / condition | Failure |
 |---|---|---|---|---|
-| POST | `/favorites/{propertyId}` | Buyer | `buyer_id` from session; property eligible | `401`, `403`, `404`, `409` |
-| DELETE | `/favorites/{propertyId}` | Buyer | `buyer_id` from session | `401`, `403`, `404` |
-| GET | `/favorites` | Buyer | Own only | `401`, `403` |
-| GET | `/favorites/{propertyId}/status` | Buyer | Own only | `401`, `403` |
-| POST | `/properties/{propertyId}/inquiries` | Buyer | Buyer from session; property eligible; no client agent ID | `400`, `401`, `403`, `404`, `409` |
-| GET | `/inquiries/me` | Buyer | Own only | `401`, `403` |
-| GET | `/inquiries/{inquiryId}` | Buyer / Authorized Agent / Admin | Buyer owner; agent historical assignee; admin any | `401`, `403`, `404` |
-| GET | `/agents/me/inquiries` | Agent | Historical `assigned_agent_id` | `401`, `403` |
-| GET | `/admin/inquiries` | Admin | All inquiry metadata; no conversation messages | `401`, `403` |
-| PATCH | `/inquiries/{inquiryId}/status` | Authorized Agent / Admin | Historical assignee or admin; transition allowlist | `400`, `401`, `403`, `404`, `409` |
+| POST | `/favorites/{propertyId}` | Buyer | `buyer_id` from principal; `201` new, `200` existing on `PUBLISHED`, `404` nonexistent/non-public | `400`, `401`, `403`, `404`, `429` |
+| DELETE | `/favorites/{propertyId}` | Buyer | `buyer_id` from principal; `204` existing or nonexistent | `400`, `401`, `403`, `429` |
+| GET | `/favorites` | Buyer | Own paginated summaries only; `no-store` | `400`, `401`, `403`, `429` |
+| GET | `/favorites/{propertyId}/status` | Buyer | Own state only; no property existence disclosure | `400`, `401`, `403`, `429` |
+| GET | `/favorites/status?propertyIds=...` | Buyer | Single comma-separated list of 1–100 UUIDs; own state only; `no-store` | `400`, `401`, `403`, `429` |
+| POST | `/properties/{propertyId}/inquiries` | Buyer | Buyer and active current agent from server; `PUBLISHED` property; no client identity/status fields | `400`, `401`, `403`, `404`, `409`, `429` |
+| GET | `/inquiries/me` | Buyer | Own only | `400`, `401`, `403`, `429` |
+| GET | `/inquiries/{inquiryId}` | Buyer / Authorized Agent / Admin | Buyer owner; agent historical assignee; admin any; no transcript | `401`, `404`, `429` |
+| GET | `/agents/me/inquiries` | Agent | Historical `assigned_agent_id` | `400`, `401`, `403`, `429` |
+| GET | `/admin/inquiries` | Admin | All inquiry metadata; no conversation messages | `400`, `401`, `403`, `429` |
+| PATCH | `/inquiries/{inquiryId}/status` | Authorized active Agent / Admin | Historical assignee or admin; approved transition matrix; serialized concurrency | `400`, `401`, `404`, `409`, `429` |
+
+Stage 6 clarification: all paths are under `/api/v1`; favorite batch state must not disclose nonexistent or unpublished properties; unauthorized and nonexistent favorite/inquiry records return equivalent generic `404` responses with the standard envelope and no private-existence hint. Buyer inquiry status is read-only, and no buyer close/withdraw/reopen route is approved. Client-supplied `buyerId`, `agentId`, `assignedAgentId`, owner, actor, `status`, `resolvedAt`, or initial-status fields are rejected. Full DTO and pagination contracts are in `API_SPECIFICATION.md` §§9–10 and `STAGE_6_DECISION_REGISTER.md` §5.
 
 #### 10.4.6 Conversations, messages, and notifications
 
@@ -1411,7 +1421,7 @@ Frontend behaviour: `401` clears local auth state and redirects to login with a 
 4. **Re-check account status.** A session for a deactivated account must be revoked; if a filter re-checks status, it must fail closed.
 5. **Reject unknown fields.** Prefer DTOs that do not contain protected fields. If a shared DTO is used, explicitly ignore or reject `role`, `accountStatus`, `primaryAgentId`, `assignedAgentId`, `createdBy`, `updatedBy`, `senderId`, `buyerId`, and audit fields.
 6. **Do not trust path IDs for ownership.** A path ID identifies the target; the principal identifies the actor. Both are required.
-7. **Use transactions and uniqueness.** Conversation creation and favorite creation must tolerate concurrent duplicate attempts via database constraints and a safe `409`.
+7. **Use transactions and uniqueness.** Conversation creation must tolerate concurrent duplicate attempts through its database constraint and return the existing conversation with `200`. Favorite creation must tolerate concurrent duplicate attempts through the existing `UNIQUE(buyer_id, property_id)` constraint: `201` for a new favorite and `200` for an existing favorite on a `PUBLISHED` property, with generic `404` for a nonexistent or non-public property. Duplicate favorite creation does not return `409` (Stage 6 Decision 3 and §5.1 of `STAGE_6_DECISION_REGISTER.md`).
 8. **Do not cache authorization decisions.** Cache only immutable reference data. Re-evaluate role, status, assignment, and participation on each request.
 9. **Audit denials selectively.** Log authorization failures with principal, route, target type, correlation ID, and reason code; do not log request bodies containing private content.
 10. **Test the matrix, not just the happy path.** Every role × endpoint × ownership combination in Section 10.4 must have a negative test (Section 17).
@@ -1562,6 +1572,19 @@ Rate limits protect authentication, expensive reads, uploads, and messaging. The
 | WebSocket connections | 5 concurrent connections/user | Reject or close oldest |
 | Admin mutations | 60/minute/admin | `429` |
 
+### 11.9.1 Stage 6 favorites and inquiry limits
+
+| Route or surface | Limits applied |
+|---|---|
+| All authenticated `/favorites/**` reads and mutations | `300/minute/user` plus the favorite-mutation limit below where applicable |
+| All authenticated inquiry reads and `/properties/{propertyId}/inquiries` | `300/minute/user` plus submission limits below |
+| `POST`/`DELETE /favorites/{propertyId}` | `60/minute/user` plus `300/minute/user` |
+| `POST /properties/{propertyId}/inquiries` | `5/minute/buyer`, `30/hour/buyer`, plus `300/minute/user` |
+| `PATCH /inquiries/{inquiryId}/status` by ADMIN | `60/minute/admin` plus `300/minute/user`; agent execution uses authenticated-user buckets |
+| Existing authentication, property, search, detail, and upload routes | All previously approved limits remain unchanged |
+
+All applicable buckets apply together. Reuse or extend approved shared buckets so no independent bucket permits bypassing an existing limit. Identity is derived from the authenticated principal server-side. `429` uses the standard error envelope and `Retry-After` equal to the longest remaining block among all triggered buckets; `Retry-After` must be exposed to approved browser origins. No automatic mutation retry is permitted. Stage 6 route coverage does not close F-8; its remaining obligations remain assigned to Stage 8/9.
+
 Implementation:
 
 - Use a servlet filter or Spring Security filter for HTTP limits and a STOMP interceptor for WebSocket limits.
@@ -1704,11 +1727,11 @@ Do not expose `Server`, framework version, or internal build details in headers 
 | `PUT` | Full replacement semantics per API; still validate and authorize |
 | `PATCH` | Partial update with a field allowlist; reject protected fields |
 | `DELETE` | Archive property or remove a relationship per API §25.1.C; idempotent where practical |
-| Duplicate favorite | Unique constraint; return `409` or treat as already saved per the approved UI (UI §17.9) |
+| Duplicate favorite | Preserve the V8 unique constraint; Stage 6 returns `201` for a new favorite and `200` for an existing favorite on a `PUBLISHED` property, `404` for non-public/nonexistent add, and `204` for removal. No soft delete. |
 | Duplicate conversation | Unique constraint; return the existing conversation with `200` (API §25.1.A) |
 | Duplicate message | No approved idempotency key yet (D-23); client retries may duplicate; document the risk and add an idempotency key only after approval |
 | Concurrent assignment | Use optimistic locking/versioning (approved) or a transaction with a fresh read; return `409` on conflict |
-| Concurrent status change | Re-read state inside the transaction; return `409` for an illegal or same-status transition and `422` only for unmet publication prerequisites (D-06) |
+| Concurrent inquiry status change | Re-read and serialize state inside the transaction; `409` only for an illegal transition; repeating the current status is an idempotent success with no timestamp or audit change. Stage 6 business conflicts use `409`, not `422`. |
 
 ### 11.16 API inventory and deny-by-default
 
@@ -2583,7 +2606,7 @@ Rules:
 | Properties | `PROPERTY_CREATED`, `PROPERTY_UPDATED`, `PROPERTY_STATUS_CHANGED`, `PROPERTY_ARCHIVED` | Property ID, changed fields/status, actor |
 | Assignment | `PROPERTY_AGENT_ASSIGNED`, `PROPERTY_AGENT_REASSIGNED` | Property ID, previous/new agent ID, actor |
 | Images | `PROPERTY_IMAGE_UPLOADED`, `PROPERTY_IMAGE_UPDATED`, `PROPERTY_IMAGE_DELETED`, `PROPERTY_IMAGE_PRIMARY_CHANGED` | Property/image ID, actor, result |
-| Inquiries | `INQUIRY_STATUS_CHANGED` | Inquiry ID, before/after status, actor |
+| Inquiries | `INQUIRY_STATUS_CHANGED` | Real transitions only: inquiry ID, actor, before/after status, time, correlation ID, and `resolvedAt` change where applicable; never subject or message. Repeating the current status is idempotent and creates no audit row. |
 | Conversations | `CONVERSATION_STATUS_CHANGED` | Conversation ID, before/after status, actor (no message content) |
 | Audit access | `AUDIT_LOG_ACCESSED` (optional) | Admin ID, filters, request ID; no record contents |
 | Security | `SECURITY_ACCESS_DENIED`, `SECURITY_CSRF_FAILURE`, `SECURITY_RATE_LIMIT_TRIGGERED`, `SECURITY_WS_AUTH_FAILURE` | Actor (if known), route/destination, reason code, IP, request ID |
@@ -3262,6 +3285,42 @@ On 11 November 2026 the project owner delegated technical approval authority to 
 
 The 33 controls that were Proposed in 0.4 are approved by the same delegated authority where they are consistent with the approved stack and requirements. Each remains an implementation obligation with the acceptance evidence in Section 17; none is Implemented or Verified.
 
+### 18.8 Stage 6 favorites and inquiries decision addendum
+
+The project owner approved all Stage 6 architectural decision groups on 24 November 2026. The authoritative record is `docs/STAGE_6_DECISION_REGISTER.md`; this section is a security cross-reference only. No status in §18.2 is re-approved, and no control becomes Implemented or Verified by this addendum.
+
+| Section L identifier | Security disposition |
+|---|---|
+| SD-INQ-01 / D-09 | **RESOLVED** — approved status matrix, actor authority, `409` invalid transitions, real-transition audit, and concurrency protection. |
+| SD-INQ-02 / D-10 | **RESOLVED** — buyer status read-only; close/withdraw/reopen superseded. |
+| SD-INQ-03 | **RESOLVED** — one active inquiry per buyer/property, `409` duplicate, mandatory V18 partial unique index. |
+| SD-INQ-04 | **RESOLVED** — ADMIN may perform permitted transitions; no transcript access. |
+| SD-INQ-05 | **RESOLVED** — exact pagination/sort/filter contracts in API §§9–10 and Stage 6 register §5. |
+| SD-INQ-06 | **RESOLVED** — unauthorized and missing records use equivalent generic `404`; no enumeration. |
+| SD-FAV-01 | **RESOLVED** — `201` new, `200` existing published, `204` remove, `404` non-public/nonexistent add; no soft delete. |
+| SD-FAV-02 | **RESOLVED** — retain non-public favorites with generic placeholder and no unpublished data. |
+| SD-FAV-03 / D-29 | **RESOLVED** — individual and batched favorite-status routes; no personalized public property flags. |
+| SD-FAV-04 | **RESOLVED** — paginated favorites list and one batched state request per collection; no N+1 or full-collection download. |
+| SD-ACC-01 | **RESOLVED** — immutable historical assignment, deactivation denial, reactivated-agent access, admin inactive-agent management, per-request revalidation. |
+| SD-RATE-01 | **RESOLVED** — exact overlapping limits and `429`/`Retry-After` behavior in §11.9.1. |
+| SD-UI-01 / D-11 | **RESOLVED FOR STAGE 6 ONLY** — inquiry-only UI, no chat surface/handlers/FK; draft UI document not blanket-approved. |
+| SD-STG7-01 | **DEFERRED — STAGE 7** — no inquiry↔conversation relationship in Stage 6. |
+
+F-1…F-8 schedule (scheduled is not resolved):
+
+| Finding | Approved milestone and status |
+|---|---|
+| F-1 — Exact Origin/Referer validation | Stage 6.2 before new mutations; **OPEN — mandatory prerequisite** |
+| F-2 — CSRF token regeneration after login | Stage 6.2 before new mutations; **OPEN — mandatory prerequisite** |
+| F-3 — WebSocket session invalidation | Stage 7 before chat completion; **OPEN — deferred** |
+| F-4 — Generic error/denial `no-store` | Stage 6.2; **OPEN — mandatory prerequisite** |
+| F-5 — Absolute/admin timeout and session limits | Stage 8; **OPEN — deferred** |
+| F-6 — Configurable logout cookie name | Stage 9; **OPEN — deferred** |
+| F-7 — Concurrent CSRF bootstrap/token-version hardening | Stage 6.2; **OPEN — mandatory prerequisite** |
+| F-8 — Rate limits, audit timestamps, proactive revocation | Stage 6 route coverage; remaining obligations Stage 8/9; **PARTIALLY ADDRESSED — OPEN** |
+
+F-8 remaining obligations are independent verification of `last_login_at` capture, remaining audit-timestamp behavior, and proactive revocation/expiry behavior. Every resolved finding requires implementation evidence and independent verification. This addendum preserves server-side sessions, session-bound CSRF, exact-origin CORS, deny-by-default authorization, and per-request account revalidation. No JWT, wildcard CORS, new CSRF exemption, automatic mutation retry, client-derived identity, blanket UI approval, security weakening, blanket document reapproval, or finding closure is approved.
+
 ---
 
 ## 19. Requirements Traceability Matrix
@@ -3408,7 +3467,7 @@ The 33 controls that were Proposed in 0.4 are approved by the same delegated aut
 - **All 11 PD IDs** and **all 16 ARC IDs** are mapped. ARC-010–ARC-013 are approved as the architectural provider selections (C-05); ARC-016 is resolved by SD-01.
 - **Gap:** no FR ID exists for email verification, account deletion, MFA, CSRF, or session management. Those controls are derived from PRD security requirements, the database/auth deferrals, and this architecture; they are tracked as SD items and as the ST-CSRF test set, not as invented FR IDs.
 - **Resolved:** FR-PROP-001 now states administrator creation/assignment and agent update-only, matching API §25.1.G and PD-03/PD-04/PD-05; C-01 is recorded as resolved in Section 21.3.
-- **Gap:** FR-INQ-005 and FR-PROP-009 depend on unresolved transition/lifecycle decisions (D-07, D-09). The security control is that the server rejects unapproved transitions until the map is approved.
+- **Resolved for Stage 6:** FR-INQ-005 now has the owner-approved inquiry transition matrix in `STAGE_6_DECISION_REGISTER.md` §3 Decision 1. Property lifecycle D-07 remains governed by the finalized Stage 4 property matrix; no property status rule was changed in Stage 6. Implementation evidence remains outstanding.
 - **Resolved:** FR-DISC-010 and the public visibility of non-published statuses are governed by the approved conservative rule (C-10/D-08): only `PUBLISHED` records are publicly retrievable; SD-31 applies the same boundary to images.
 - **Deployment dependency:** the traceability matrix maps controls, not deployment approval. SD-48 is approved as an architecture, but exact hostnames, CORS origin, `X-CSRF-TOKEN` exposure, and WebSocket origin remain deployment configuration prerequisites.
 
@@ -3615,7 +3674,7 @@ This checklist is ordered so that blocking decisions and shared foundations are 
 | D-14 agent activation decision | Admin creates a usable agent account | Approved as a design (SD-12); implementation pending | No for design; **Yes** for enabling agent activation |
 | D-08 non-published status visibility | Public detail/discovery and image delivery | Resolved: `PUBLISHED`-only rule approved (C-10) | No; implement the filter |
 | D-07 property status lifecycle | Agent/admin status controls | Open (Non-blocking) | No; keep controls hidden/deny transitions |
-| D-09 inquiry status transitions | Inquiry status endpoint | Open (Non-blocking) | No; reject unapproved transitions |
+| D-09 inquiry status transitions | Inquiry status endpoint | Resolved for Stage 6 architecture by `STAGE_6_DECISION_REGISTER.md` §3 Decision 1 | No; implement and verify the approved matrix before transition mutations |
 | Exact hostnames, exact-origin CORS, `X-CSRF-TOKEN` exposure, and WebSocket origin | Session cookie, CSRF, CORS, WebSocket | Architecture approved (SD-48); values not yet recorded | **Yes** for deployment of authenticated features |
 | Neon/Cloudinary/Render/Vercel accounts and plans | Hosting, storage, encryption, backups | Providers approved (ARC-010–ARC-013); accounts/plans not verified | **Yes** for deployment |
 | Email provider and sender domain | Reset/activation delivery | Not selected | **Yes** for enabling reset/activation |
@@ -3705,9 +3764,9 @@ The residual risks in Section 7.5 remain after the controls in this document are
 | SD-50 | Admin MFA | This document | Strong password, short session, audit, monitoring |
 | SD-51 | Audit retention | DB §13 | Preserve append-only records; no deletion |
 | D-07 | Property status lifecycle | UI D-07 | Hide/deny status actions until the map is approved |
-| D-09 | Inquiry status transitions | UI D-09 | Reject unapproved transitions |
-| D-10 | Buyer closing own inquiry | UI D-10 | Read-only status for buyers |
-| D-11 | Inquiry vs chat channel choice | UI D-11 | Both endpoints exist; UI decision later |
+| D-09 | Inquiry status transitions | UI D-09; `STAGE_6_DECISION_REGISTER.md` §3 Decision 1 | **Resolved for Stage 6 architecture**; implement and verify the approved matrix |
+| D-10 | Buyer closing own inquiry | UI D-10; `STAGE_6_DECISION_REGISTER.md` §3 Decision 1 | **Resolved for Stage 6 architecture**; buyer status is read-only |
+| D-11 | Inquiry vs chat channel choice | UI D-11; `STAGE_6_DECISION_REGISTER.md` §3 Decision 9 | **Resolved for Stage 6 only**; inquiry UI, no chat handlers/FK; Stage 7 remains separate |
 | D-18 | Draft properties | UI D-18 | No draft action |
 | D-19 | Archived properties in admin lists | UI D-19 | Confirm the admin filter before relying on it |
 | D-22 | Message pagination direction | UI D-22 | Explicit "Load earlier" control |
@@ -3814,6 +3873,18 @@ The Stage 1.9 audit reconciled this document with the Stage 1.8 repository and e
 - `V1__spring_session_schema.sql` exists and was validated locally in Stage 1.8 (`DEVELOPMENT_SETUP.md` §10). SD-03 remains **Approved**; production migration timing and session-lifecycle tests remain.
 - The FR-PROP-001 wording conflict recorded under C-01 is resolved in `FRD.md`; the traceability gap note was updated accordingly.
 - No stakeholder review was completed, no approval was added, and no decision status was raised by this reconciliation.
+
+### 22.8 Stage 6 favorites and inquiries reconciliation addendum
+
+| Field | Record |
+|---|---|
+| Date | 24 November 2026 |
+| Authority | Project-owner approval of all 12 Stage 6 architectural decision groups, recorded in `docs/STAGE_6_DECISION_REGISTER.md` |
+| Change | Added Stage 6 cross-references in §§1.1, 1.5, 10.3, 10.4.5, 11.9.1, 11.15, 15.7, 18.8, 19.4, 21.2, and 21.7; recorded exact rate-limit coverage, generic `404` IDOR behavior, favorite mutation semantics, inquiry audit rules, and F-1–F-8 schedule. |
+| Preserved | Version 0.5 approval, Stage 1–5 decisions, Sections 22.1–22.7, historical validation reports, all SD status totals, and all deferred decisions not explicitly scoped to Stage 6. |
+| Not approved by this change | Implementation, deployment, V18 creation/application, chat, Stage 8 account management, blanket UI/UX approval, blanket reapproval of this document, or closure of any F finding. |
+
+No finding is marked resolved merely because remediation was scheduled. F-1, F-2, F-4, and F-7 gate Stage 6.2 mutations; F-3 gates Stage 7 chat; F-5 and remaining F-8 obligations are Stage 8/9 work; F-6 is Stage 9 work.
 
 ---
 

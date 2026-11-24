@@ -4,6 +4,8 @@
 **Status:** Draft — functional baseline reviewed; document approval metadata not recorded  
 **Parent Document:** PRD.md
 
+**Stage 6 scope note:** Favorites and inquiry architecture decisions approved by the project owner on 24 November 2026 are recorded in `docs/STAGE_6_DECISION_REGISTER.md`. This document remains Draft; the Stage 6 register adds scoped cross-references only and does not approve this document or change existing FR IDs.
+
 ## 1. Purpose
 
 This document defines the functional requirements, user permissions, workflows, validations, and expected system behaviour for EstateVista V2.
@@ -261,6 +263,8 @@ The system shall prevent duplicate favourite records for the same buyer-property
 ### FR-FAV-005 — Access Control
 Buyers shall not be able to view or modify another buyer's favourites.
 
+**Stage 6 clarification:** Buyer identity is principal-derived. Favorite mutations return `201` for a new favorite, `200` for an existing favorite on a `PUBLISHED` property, `204` for removal of an existing or nonexistent favorite, and generic `404` for a nonexistent or non-public property on add. Existing favorites are retained when a property becomes non-public and render only a generic unavailable placeholder; they remain removable and regain normal presentation on republish. The list is paginated and collection card state uses the approved batched status route, with no personalized flags in public property responses.
+
 ## 8. Inquiry Management
 
 ### FR-INQ-001 — Submit Inquiry
@@ -281,6 +285,8 @@ Agents shall be able to view inquiries associated with their assigned properties
 
 ### FR-INQ-005 — Inquiry Management
 Authorized agents shall be able to update inquiry statuses.
+
+**Stage 6 clarification:** Status authority belongs to historically assigned active AGENT accounts and authorized ADMIN accounts; buyers have read-only status access. The approved statuses are `NEW`, `IN_PROGRESS`, `RESOLVED`, and `CLOSED`, with the transition matrix, same-status idempotence, `resolved_at` rules, audit behavior, and `409` conflict handling in `docs/STAGE_6_DECISION_REGISTER.md` §3 Decision 1. At most one active inquiry (`NEW` or `IN_PROGRESS`) may exist per buyer/property; history is never merged, overwritten, or deleted.
 
 ### FR-INQ-006 — Inquiry Access Control
 Users shall not be able to access unauthorized inquiry records.

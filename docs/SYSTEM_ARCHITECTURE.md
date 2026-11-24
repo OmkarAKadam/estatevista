@@ -1019,6 +1019,10 @@ The following constraints are mandatory unless formally revised:
 | ARC-015 | Use independent frontend and backend deployments. | Approved |
 | ARC-016 | Finalize authentication strategy during security design. | Resolved — SD-01 approved |
 
+### 16.1 Stage 6 architecture cross-reference
+
+Owner-approved Stage 6 favorites/inquiries architecture is recorded in `docs/STAGE_6_DECISION_REGISTER.md`. It controls Stage 6 interpretation of REST contracts, favorite retention and batched state synchronization, the inquiry status matrix and duplicate policy, immutable historical assignment, exact rate-limit overlap, generic `404` IDOR behavior, no chat surface or inquiry↔conversation FK, and the Stage 6.4-only V18 authorization. This cross-reference does not modify ARC-001–ARC-015, ARC-016, the document's Draft for Review status, or any Stage 7–9 boundary. V18 is authorized only in Stage 6.4 and must not be created during Stage 6.1.
+
 ---
 
 # 17. Conclusion

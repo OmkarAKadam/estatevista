@@ -5,7 +5,7 @@
 **Database:** PostgreSQL  
 **ORM:** Spring Data JPA / Hibernate  
 **Migration Tool:** Flyway  
-**Status:** Proposed baseline — §23 records APPROVED clarifications; headers reconciled during Stage 1.6; Stage 1.9 audit corrections applied
+**Status:** Proposed baseline — §23 records APPROVED clarifications; headers reconciled during Stage 1.6; Stage 1.9 audit corrections applied; Stage 6 owner-approved schema reconciliations are recorded in §24 without changing this document's overall status
 
 ---
 
@@ -483,6 +483,8 @@ Rules:
 - Removing a favorite removes the relationship, not the property.
 - The backend must verify the user's role and ownership.
 
+Stage 6 clarification: buyer identity is principal-derived, the existing `UNIQUE(buyer_id, property_id)` constraint is retained, and no soft-delete/active column is added. New favorites may reference only `PUBLISHED` properties. Existing favorites survive transitions to `DRAFT`, `UNAVAILABLE`, `SOLD`, `RENTED`, or `ARCHIVED`; those rows are rendered with a generic “Property no longer available” placeholder containing only identifier and availability data. Removal physically deletes the relationship row and remains available for non-public properties. No favorites migration is authorized.
+
 # 10. Inquiries
 
 ## 10.1 `inquiries`
@@ -502,7 +504,7 @@ Stores buyer inquiries submitted against properties.
 | updated_at | TIMESTAMPTZ | NOT NULL | Last update timestamp |
 | resolved_at | TIMESTAMPTZ | NULL | Resolution timestamp |
 
-Proposed statuses:
+Approved Stage 6 statuses:
 
 - `NEW`
 - `IN_PROGRESS`
@@ -512,12 +514,15 @@ Proposed statuses:
 Rules:
 
 - Inquiries are associated with the buyer and property.
-- The agent assignment is captured at submission time.
-- Existing inquiry history must not silently change when a property is reassigned.
-- Buyers can access only their own inquiries.
-- Agents can access inquiries according to the approved assignment and access policy.
+- `assigned_agent_id` is an immutable snapshot of the eligible active AGENT assigned to the property at submission; later property reassignment never rewrites inquiry history.
+- `NEW` and `IN_PROGRESS` are active. At most one active inquiry per `(buyer_id, property_id)` is allowed; this is enforced by the authorized Stage 6.4 partial unique index, not by a service check alone. Inactive `RESOLVED`/`CLOSED` rows permit a new inquiry.
+- Permitted transitions are `NEW → IN_PROGRESS`, `NEW → CLOSED`, `IN_PROGRESS → RESOLVED`, `IN_PROGRESS → CLOSED`, and `RESOLVED → CLOSED`; `CLOSED` is terminal. Invalid transitions return `409`; repeating the current status is an idempotent success with no timestamp or audit change.
+- `resolved_at` is set on entry to `RESOLVED` and retained afterward. Direct closure from `NEW` or `IN_PROGRESS` leaves it `null`.
+- Every real transition is audited with actor, before/after status, IDs, time, and correlation ID, without subject or message content. Concurrent changes are serialized or otherwise protected.
+- Buyers can access only their own inquiries and have read-only status access. Agents use historical `assigned_agent_id`, including after reactivation. Administrators may manage inquiries assigned to inactive agents but gain no conversation transcript access.
+- No inquiry is physically deleted, merged, overwritten, or automatically reassigned. Deactivated accounts lose authenticated access while history remains.
 
-The exact inquiry lifecycle and reassignment visibility rules remain subject to workflow approval.
+Exact Stage 6 schema reconciliation and the Stage 6.4 V18 authorization are recorded in §24.
 
 # 11. Property-Specific Chat System
 
@@ -910,8 +915,12 @@ Current and proposed migration sequence:
 | V12 | Create notifications |
 | V13 | Create audit logs |
 | V14 | Add indexes and additional constraints |
+| V15 | Create authentication rate-limit events |
+| V16 | Seed property reference data |
+| V17 | Create property image deletion outbox |
+| V18 | **Authorized for Stage 6.4 only — not created in Stage 6.1:** inquiry status `CHECK` and partial unique index for one active inquiry per buyer/property |
 
-`V1__spring_session_schema.sql` is the framework-owned Spring Session JDBC schema approved by Security Architecture SD-03. It is the only migration that exists at Stage 1.8; the business-schema rows remain proposed and must not reuse version `V1`.
+`V1__spring_session_schema.sql` is the framework-owned Spring Session JDBC schema approved by Security Architecture SD-03. It is the only migration that exists at Stage 1.8; the business-schema rows remain proposed and must not reuse version `V1`. The actual current baseline is V1–V17; V1–V17 are immutable for Stage 6.
 
 Migration rules:
 
@@ -922,6 +931,8 @@ Migration rules:
 5. Verify foreign keys and constraints after migration.
 6. Use Flyway's schema history table to track applied migrations.
 7. Do not rely on Hibernate automatic schema updates in production.
+
+Stage 6 migration gate: V18 is authorized only during Stage 6.4 and only for the two inquiry constraints in §24. No migration file is created in Stage 6.1. Before applying V18, inspect existing statuses and active-inquiry duplicates; report incompatible records and obtain separate owner approval for any remediation. Never silently delete, merge, or rewrite historical records. Stage 6.4 must validate clean V1→V18 installation, V17→V18 upgrade, Flyway validation, and updated migration inventory tests.
 
 Hibernate should validate the schema rather than independently modify production tables.
 
@@ -952,9 +963,9 @@ The following details are intentionally not finalized in this document. They sho
 | Property attributes | Final residential and commercial subtype fields |
 | Location | Whether location requires a separate normalized location model |
 | Currency | Supported currencies and default display currency |
-| Agent deactivation | Handling of existing properties and conversations |
+| Agent deactivation | Handling of existing properties and conversations remains deferred; Stage 6 inquiry access is resolved in §24 (history retained, deactivation denies access, reactivation restores authorized historical access) |
 | Conversation reassignment | Whether administrators can manually transfer existing conversations |
-| Inquiry workflow | Final status transitions and closure rules |
+| Inquiry workflow | Stage 6 status transitions, closure rules, duplicate policy, and assignment immutability are resolved in §24; retention duration remains deferred |
 | Chat | Message editing, deletion, pagination, and retention |
 | Notifications | In-app versus email delivery and delivery preferences |
 | Images | Maximum upload count, file size, and allowed formats |
@@ -1085,10 +1096,62 @@ The following rules apply when implementing this design:
 
 The deferred decisions in Section 21 remain open and must be resolved during their relevant development stages. Authentication is not deferred: `SECURITY_ARCHITECTURE.md` SD-01 resolves it as a design, and the Spring Session migration (`V1__spring_session_schema.sql`) exists and was validated locally in Stage 1.8. The password-reset and account-activation token migrations remain implementation tasks.
 
-The approved database design does not imply that every proposed status, workflow, or retention policy is permanently finalized.
+The approved database design does not imply that every proposed status, workflow, or retention policy is permanently finalized. Stage 6 owner approval resolves only the favorites and inquiry items scoped in §24; all other deferred items remain open.
 
 ## 23.5 Final Approval
 
 The database design is accepted as the implementation baseline for EstateVista V2.
 
 No structural redesign is required before proceeding.
+
+---
+
+# 24. Stage 6 Owner-Approved Schema Reconciliations
+
+**Approval date:** 24 November 2026.
+**Authority:** `docs/STAGE_6_DECISION_REGISTER.md` §§3, 8, and 10.
+**Status:** Approved design only. No schema file, data change, migration application, implementation, deployment, or finding closure is claimed by this section. Section 23 remains the Stage 1.4 approved baseline.
+
+## 24.1 Favorites
+
+- The existing V8 `UNIQUE(buyer_id, property_id)` constraint is retained and is the final guard for concurrent duplicate additions. No soft-delete column or new favorites migration is authorized.
+- New rows may reference only `PUBLISHED` properties. This is a service rule enforced before insert; add attempts for nonexistent or non-public properties return generic `404`.
+- Existing rows are retained without change when a property moves to `DRAFT`, `UNAVAILABLE`, `SOLD`, `RENTED`, or `ARCHIVED`. They are rendered with a generic “Property no longer available” placeholder containing only identifier and availability data. Republishing restores normal public-summary presentation without creating another row.
+- Removal physically deletes the relationship row for the authenticated buyer and remains available for non-public properties.
+
+## 24.2 Inquiries
+
+- Statuses are closed to `NEW`, `IN_PROGRESS`, `RESOLVED`, and `CLOSED`. Permitted transitions and `resolved_at` rules are in §10.1 and API §10.2.
+- `assigned_agent_id` is an immutable historical snapshot. Property reassignment, agent deactivation, agent reactivation, and admin management never rewrite it.
+- `NEW` and `IN_PROGRESS` are active. At most one active inquiry per buyer/property is allowed; `RESOLVED` and `CLOSED` rows permit a new inquiry.
+- Service checks are advisory only. The database constraint is authorized in V18 during Stage 6.4.
+- Real transitions are audited with `INQUIRY_STATUS_CHANGED` and no inquiry content. Same-status repeats produce no new audit row and no timestamp change.
+- No inquiry is physically deleted, merged, overwritten, or automatically reassigned.
+
+## 24.3 V18 authorization — Stage 6.4 only
+
+The following additive migration is authorized **only during Stage 6.4**:
+
+```text
+V18__enforce_inquiry_business_constraints.sql
+```
+
+Authorized scope:
+
+```sql
+ALTER TABLE inquiries
+  ADD CONSTRAINT ck_inquiries_status
+  CHECK (status IN ('NEW', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'));
+
+CREATE UNIQUE INDEX uk_inquiries_active_buyer_property
+  ON inquiries (buyer_id, property_id)
+  WHERE status IN ('NEW', 'IN_PROGRESS');
+```
+
+No `resolved_at` CHECK, favorites change, conversation linkage, `is_featured` control, or other migration scope is authorized. V1–V17 remain unchanged.
+
+Before applying V18, inspect for unsupported statuses, duplicate active buyer/property pairs, and unexpected `resolved_at` values. Report incompatible records; stop and obtain separate owner approval for any remediation. Never silently delete, merge, or rewrite them. Verify clean V1→V18 installation, V17→V18 upgrade, Flyway validation, constraint behavior, concurrent-submission behavior, and migration inventory tests during Stage 6.4.
+
+## 24.4 Boundaries
+
+No chat table, conversation status enum, inquiry↔conversation FK, account-management schema, retained-data deletion policy, or retention-duration decision is approved here. Stage 7, Stage 8, and Stage 9 boundaries remain as recorded in `docs/STAGE_6_DECISION_REGISTER.md` §12.
