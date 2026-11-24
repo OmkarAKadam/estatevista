@@ -87,7 +87,7 @@ The 0.3 CSRF architecture is preserved unchanged: a session-bound synchronizer t
 
 ### 1.5 Stage 6 addendum scope
 
-`docs/STAGE_6_DECISION_REGISTER.md` records owner-approved Stage 6 favorites/inquiries decisions. It supplements the controls in this document and is cross-referenced in §§10.4.5, 11.9, 18.8, and 22.8. It does not reapprove this document, change Version 0.5 status, authorize implementation, approve the draft UI/UX specification, mark F-1–F-8 resolved, or alter any Stage 1–5 decision. Scoped implementation evidence cited for SD-53 remains specific to that control and does not convert this design document into an implementation or verification record.
+`docs/STAGE_6_DECISION_REGISTER.md` records owner-approved Stage 6 favorites/inquiries decisions. It supplements the controls in this document and is cross-referenced in §§10.4.5, 11.9, 18.8, and 22.8. Its 24 November 2026 architecture approval did not reapprove this document, change Version 0.5 status, authorize implementation, approve the draft UI/UX specification, mark F-1–F-8 resolved, or alter any Stage 1–5 decision. The later Stage 6.2 Phase A verification addenda in §22.9 and in the register record scoped verification results for F-1, F-2, F-4 and F-7 without reapproving this design document. Scoped implementation evidence cited for SD-53 remains specific to that control and does not convert this design document into an implementation or verification record.
 
 ---
 
@@ -705,7 +705,7 @@ The following lifecycle is normative for the frontend and backend. "Bootstrap" m
 | **Bootstrap failure** | Returns `401` when unauthenticated, `5xx` on server failure. | On `401`, show login. On `5xx`, show a safe error and do not attempt mutations; do not invent a token. |
 | **Token absent or invalid** | `403`; no action; audit event. | Re-bootstrap once, retry once, then sign out. |
 
-**Stage 6 limitation.** Every retry sentence in this table applies only to safe/public `GET` requests. Favorites and inquiry mutations must not use automatic CSRF-failure retry or `retryOnCsrfFailure`; the UI must present a recoverable error after a fresh bootstrap. F-2 (login token regeneration), F-7 (concurrent bootstrap/token-version hardening), and F-1 (exact Origin/Referer validation) remain OPEN prerequisites before Stage 6 mutations. F-4 requires `no-store` on generic errors and denial responses before those mutations.
+**Stage 6 limitation.** Every retry sentence in this table applies only to safe/public `GET` requests. Favorites and inquiry mutations must not use automatic CSRF-failure retry or `retryOnCsrfFailure`; the UI must present a recoverable error after a fresh bootstrap. F-1 (exact Origin/Referer validation), F-2 (login CSRF regeneration), F-4 (`no-store` on generic errors and denial responses) and F-7 (concurrent bootstrap/token-version hardening) were implemented and independently verified in Stage 6.2 Phase A. F-7 is resolved only for single-instance deployment; the multi-instance production-readiness gate is recorded in §22.9.
 
 The token is never written to `localStorage`, `sessionStorage`, IndexedDB, a cookie, a URL, or an application log. The auth/API modules are the only frontend code that handles it (Section 20.9).
 
@@ -3306,17 +3306,17 @@ The project owner approved all Stage 6 architectural decision groups on 24 Novem
 | SD-UI-01 / D-11 | **RESOLVED FOR STAGE 6 ONLY** — inquiry-only UI, no chat surface/handlers/FK; draft UI document not blanket-approved. |
 | SD-STG7-01 | **DEFERRED — STAGE 7** — no inquiry↔conversation relationship in Stage 6. |
 
-F-1…F-8 schedule (scheduled is not resolved):
+F-1…F-8 schedule (scheduled is not resolved; Stage 6.2 Phase A verification statuses are recorded in §22.9):
 
 | Finding | Approved milestone and status |
 |---|---|
-| F-1 — Exact Origin/Referer validation | Stage 6.2 before new mutations; **OPEN — mandatory prerequisite** |
-| F-2 — CSRF token regeneration after login | Stage 6.2 before new mutations; **OPEN — mandatory prerequisite** |
+| F-1 — Exact Origin/Referer validation | Stage 6.2 Phase A; **RESOLVED — implemented and independently verified** |
+| F-2 — CSRF token regeneration after login | Stage 6.2 Phase A; **RESOLVED — implemented and independently verified** |
 | F-3 — WebSocket session invalidation | Stage 7 before chat completion; **OPEN — deferred** |
-| F-4 — Generic error/denial `no-store` | Stage 6.2; **OPEN — mandatory prerequisite** |
+| F-4 — Generic error/denial `no-store` | Stage 6.2 Phase A; **RESOLVED — implemented and independently verified** |
 | F-5 — Absolute/admin timeout and session limits | Stage 8; **OPEN — deferred** |
 | F-6 — Configurable logout cookie name | Stage 9; **OPEN — deferred** |
-| F-7 — Concurrent CSRF bootstrap/token-version hardening | Stage 6.2; **OPEN — mandatory prerequisite** |
+| F-7 — Concurrent CSRF bootstrap/token-version hardening | Stage 6.2 Phase A; **RESOLVED — SINGLE-INSTANCE SCOPE ONLY**; multi-instance gate Stage 9 (§22.9) |
 | F-8 — Rate limits, audit timestamps, proactive revocation | Stage 6 route coverage; remaining obligations Stage 8/9; **PARTIALLY ADDRESSED — OPEN** |
 
 F-8 remaining obligations are independent verification of `last_login_at` capture, remaining audit-timestamp behavior, and proactive revocation/expiry behavior. Every resolved finding requires implementation evidence and independent verification. This addendum preserves server-side sessions, session-bound CSRF, exact-origin CORS, deny-by-default authorization, and per-request account revalidation. No JWT, wildcard CORS, new CSRF exemption, automatic mutation retry, client-derived identity, blanket UI approval, security weakening, blanket document reapproval, or finding closure is approved.
@@ -3885,6 +3885,22 @@ The Stage 1.9 audit reconciled this document with the Stage 1.8 repository and e
 | Not approved by this change | Implementation, deployment, V18 creation/application, chat, Stage 8 account management, blanket UI/UX approval, blanket reapproval of this document, or closure of any F finding. |
 
 No finding is marked resolved merely because remediation was scheduled. F-1, F-2, F-4, and F-7 gate Stage 6.2 mutations; F-3 gates Stage 7 chat; F-5 and remaining F-8 obligations are Stage 8/9 work; F-6 is Stage 9 work.
+
+### 22.9 Stage 6.2 Phase A verification and deployment constraint addendum
+
+| Field | Record |
+|---|---|
+| Date | 24 November 2026 |
+| Scope | Stage 6.2 Phase A targeted closure verification after security commit `7e9cbaa0cb2dc3a1dcadeb41a697c87aa93409c0` |
+| Evidence | Local ignored validation records under `docs/validation/`: live browser/API 34/34, frontend CSRF behavior 12/12, HTTP concurrency 5/5, authorized mutation verification 33/33 checks (201 creation plus two authorized PATCH mutations accepted, four rejected mutations with no persisted change), and historical full backend suite 457/457 |
+| Resolved | F-1, F-2 and F-4 resolved on implementation plus completed verification; F-7 resolved only within the verified single-instance deployment scope |
+| Preserved | F-3 (Stage 7), F-5 (Stage 8), F-6 (Stage 9), and all remaining F-8 obligations (Stage 8/9) remain open |
+
+**Resolved status.** F-1 (exact Origin/Referer validation), F-2 (CSRF regeneration after successful login) and F-4 (`Cache-Control: no-store` on private, error and denial API responses) are recorded as resolved on the completed Stage 6.2 Phase A verification evidence. F-7 (concurrent CSRF bootstrap and token-version hardening) is recorded as resolved **only** for the verified single-instance deployment scope: the striped JVM lock serializes deferred bootstrap inside one application instance, and concurrent same-session requests in that instance could not restore or reuse a stale pre-login token in the verified scenarios.
+
+**Multi-instance deployment constraint — production-readiness gate.** F-7 is verified for single-instance deployment. The striped JVM lock does not provide cross-instance coordination. Multi-instance deployment must not be approved until an appropriate cross-instance CSRF consistency mechanism is approved, implemented and independently verified. This production-readiness gate is assigned to Stage 9. Multi-instance concurrency is **not** resolved, and no multi-instance deployment or concurrency approval is claimed by this addendum.
+
+Local validation reports and verification scripts under `docs/validation/` remain locally available, ignored and untracked; they are evidence records, not tracked design authority. This addendum records scoped verification status only and does not reapprove this document, authorize Phase B implementation, or close any other finding.
 
 ---
 
