@@ -216,9 +216,10 @@
   }
 
   /**
-   * data.js stores root-relative paths such as
-   * "assets/images/properties/sunlit-courtyard-villa-01.webp".
-   * Bare filenames are still accepted for backwards compatibility.
+   * Approved public image fields may contain absolute URLs or root-relative
+   * paths such as "assets/images/properties/example.webp". Bare filenames are
+   * still accepted for backwards compatibility. Unexpected schemes are replaced
+   * with the local placeholder before an element ever receives the value.
    */
   function resolveImagePath(rawValue) {
     var raw = cleanText(rawValue);

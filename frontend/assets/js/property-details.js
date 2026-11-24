@@ -1,15 +1,22 @@
 /**
- * EstateVista — property details behaviour (Stage 4).
+ * EstateVista — property details behaviour (Stage 5.4).
  *
  * Reads ?id=<uuid> from the approved public URL, fetches the published property
  * and its images from the live API, then renders the listing, a selectable
  * gallery and related properties. The shared card renderer from
- * property-card.js is reused for the related rail.
+ * property-card.js is reused for the related rail. No demonstration data is
+ * consulted; every displayed listing value comes from a public API response.
  */
 (function () {
   "use strict";
 
   var CARD = window.EVPropertyCard;
+
+  /* Canonical backend UUID shape, including seeded zero-version identifiers. */
+  var UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  var activeId = "";
+  var requestSequence = 0;
 
   function byId(id) {
     return document.getElementById(id);
@@ -45,22 +52,6 @@
     }
   }
 
-  function joinSentence(parts) {
-    if (parts.length === 0) {
-      return "";
-    }
-
-    if (parts.length === 1) {
-      return parts[0];
-    }
-
-    if (parts.length === 2) {
-      return parts[0] + " and " + parts[1];
-    }
-
-    return parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1];
-  }
-
   var API_READY_TIMEOUT_MS = 5000;
 
   function waitForPublicApi() {
@@ -94,11 +85,69 @@
     });
   }
 
-  /** Reads the approved ?id=<uuid> public detail link. */
+  /**
+   * Reads the approved ?id=<uuid> public detail link. Duplicate ids are only
+   * accepted when every value is identical; conflicting ids are rejected before
+   * any API request is made.
+   */
   function readPropertyId() {
     var params = new URLSearchParams(window.location.search);
-    var rawId = params.get("id");
-    return rawId ? rawId.trim() : "";
+    var values = params.getAll("id").map(function (value) {
+      return text(value);
+    });
+
+    if (values.length === 0 || values.some(function (value) { return value === ""; })) {
+      return "";
+    }
+    if (values.some(function (value) { return value !== values[0]; })) {
+      return "";
+    }
+
+    return UUID_PATTERN.test(values[0]) ? values[0] : "";
+  }
+
+  /**
+   * Uses the images endpoint verbatim: backend `sortOrder` is the display order.
+   * `primaryImageUrl` is only a fallback when the gallery has no image rows.
+   */
+  function orderedImages(detail, images) {
+    var rows = (Array.isArray(images) ? images : [])
+      .map(function (image, index) {
+        if (!image || typeof image !== "object") {
+          return null;
+        }
+        var url = text(image.imageUrl);
+        var order = Number(image.sortOrder);
+        return url
+          ? {
+              url: url,
+              alt: text(image.altText),
+              index: index,
+              order: Number.isFinite(order) ? order : index
+            }
+          : null;
+      })
+      .filter(Boolean)
+      .sort(function (a, b) {
+        return a.order - b.order || a.index - b.index;
+      });
+
+    var seen = [];
+    var ordered = [];
+
+    rows.forEach(function (row) {
+      if (seen.indexOf(row.url) === -1) {
+        seen.push(row.url);
+        ordered.push(row);
+      }
+    });
+
+    var primaryUrl = text(detail.primaryImageUrl);
+    if (ordered.length === 0 && primaryUrl) {
+      ordered.push({ url: primaryUrl, alt: "", index: 0, order: 0 });
+    }
+
+    return ordered;
   }
 
   function toViewModel(detail, images) {
@@ -107,21 +156,6 @@
       detail.residentialDetails && typeof detail.residentialDetails === "object"
         ? detail.residentialDetails
         : {};
-    var areaValue = Number(detail.areaValue);
-    var primary = text(detail.primaryImageUrl);
-    var paths = [];
-
-    (Array.isArray(images) ? images : []).forEach(function (image) {
-      var url = image && typeof image === "object" ? text(image.imageUrl) : "";
-      if (url && paths.indexOf(url) === -1) {
-        paths.push(url);
-      }
-    });
-
-    if (primary && paths.indexOf(primary) === -1) {
-      paths.unshift(primary);
-    }
-
     var amenities = (Array.isArray(detail.amenities) ? detail.amenities : [])
       .map(function (amenity) {
         return amenity && typeof amenity === "object" ? text(amenity.name) : "";
@@ -135,36 +169,58 @@
       title: text(detail.title) || "Property details",
       description: text(detail.description),
       type: CARD.normalizeApiType(detail),
+      subtype: text(detail.subtype),
+      category: text(detail.category),
+      listingType: text(detail.listingType).toUpperCase(),
       status: text(detail.status).toLowerCase() || "published",
       price: Number.isFinite(Number(detail.price)) ? Number(detail.price) : null,
       locality: text(location.locality),
       city: text(location.city),
-      areaSqft:
-        text(detail.areaUnit).toUpperCase() === "SQFT" && Number.isFinite(areaValue)
-          ? areaValue
-          : null,
+      areaValue: Number(detail.areaValue),
+      areaUnit: text(detail.areaUnit),
       bedrooms: Number(residential.bedrooms),
       bathrooms: Number(residential.bathrooms),
       amenities: amenities,
-      images: paths
+      images: orderedImages(detail, images)
     };
   }
 
-  function imagePaths(property) {
+  function imageAssets(property) {
     var raw = Array.isArray(property.images) ? property.images : [];
     var seen = [];
-    var paths = [];
+    var assets = [];
 
-    raw.forEach(function (value) {
-      var path = CARD.resolveImagePath(value);
+    raw.forEach(function (item) {
+      var path = CARD.resolveImagePath(item && item.url);
 
       if (seen.indexOf(path) === -1) {
         seen.push(path);
-        paths.push(path);
+        assets.push({ url: path, alt: text(item.alt) });
       }
     });
 
-    return paths.length > 0 ? paths : [CARD.PLACEHOLDER_IMAGE];
+    return assets.length > 0
+      ? assets
+      : [{ url: CARD.PLACEHOLDER_IMAGE, alt: "Property photograph unavailable" }];
+  }
+
+  function areaLabel(property) {
+    var value = Number(property.areaValue);
+    if (!Number.isFinite(value) || value <= 0) {
+      return "";
+    }
+
+    var amount = value.toLocaleString("en-IN");
+    var unit = text(property.areaUnit).toUpperCase();
+
+    if (unit === "SQFT" || unit === "SQ_FT") {
+      return amount + " sq ft";
+    }
+    if (unit === "SQM" || unit === "SQ_M") {
+      return amount + " sq m";
+    }
+
+    return unit ? amount + " " + unit.replace(/_/g, " ").toLowerCase() : amount;
   }
 
   function setMainImage(source, alt) {
@@ -188,7 +244,7 @@
   }
 
   function renderGallery(property, title) {
-    var paths = imagePaths(property);
+    var assets = imageAssets(property);
     var thumbs = byId("detailThumbs");
     var caption = byId("detailImageCaption");
     var buttons = [];
@@ -197,34 +253,38 @@
       return;
     }
 
-    thumbs.innerHTML = "";
+    thumbs.replaceChildren();
     thumbs.hidden = false;
 
     function imageAlt(index) {
-      if (paths[index] === CARD.PLACEHOLDER_IMAGE) {
+      var asset = assets[index];
+
+      if (asset.url === CARD.PLACEHOLDER_IMAGE) {
         return "Property photograph unavailable";
       }
-
-      if (paths.length === 1) {
+      if (asset.alt) {
+        return asset.alt;
+      }
+      if (assets.length === 1) {
         return "Photograph of " + title;
       }
 
-      return "Photograph of " + title + ", image " + (index + 1) + " of " + paths.length;
+      return "Photograph of " + title + ", image " + (index + 1) + " of " + assets.length;
     }
 
     function captionFor(index) {
-      if (paths[index] === CARD.PLACEHOLDER_IMAGE) {
+      if (assets[index].url === CARD.PLACEHOLDER_IMAGE) {
         return "No photograph is available for this property.";
       }
 
       return (
-        "Image " + (index + 1) + " of " + paths.length +
+        "Image " + (index + 1) + " of " + assets.length +
         " \u00B7 Photograph supplied for this listing."
       );
     }
 
     function selectImage(index) {
-      setMainImage(paths[index], imageAlt(index));
+      setMainImage(assets[index].url, imageAlt(index));
 
       if (caption) {
         caption.textContent = captionFor(index);
@@ -235,7 +295,7 @@
       });
     }
 
-    paths.forEach(function (path, index) {
+    assets.forEach(function (asset, index) {
       var button = el("button", "property-gallery__thumb");
       var thumbImage = document.createElement("img");
 
@@ -243,11 +303,11 @@
       button.setAttribute("aria-pressed", index === 0 ? "true" : "false");
       button.setAttribute(
         "aria-label",
-        "Show image " + (index + 1) + " of " + paths.length +
-          (path === CARD.PLACEHOLDER_IMAGE ? " (placeholder image)" : "")
+        "Show image " + (index + 1) + " of " + assets.length +
+          (asset.url === CARD.PLACEHOLDER_IMAGE ? " (placeholder image)" : "")
       );
 
-      thumbImage.src = path;
+      thumbImage.src = asset.url;
       thumbImage.alt = "";
       thumbImage.width = 160;
       thumbImage.height = 120;
@@ -267,7 +327,8 @@
       buttons.push(button);
     });
 
-    thumbs.addEventListener("keydown", function (event) {
+    /* Assigning replaces any prior handler on retry; it does not accumulate. */
+    thumbs.onkeydown = function (event) {
       var key = event.key;
       var next = -1;
 
@@ -290,29 +351,30 @@
       event.preventDefault();
       buttons[next].focus();
       selectImage(next);
-    });
+    };
 
     selectImage(0);
   }
 
   function renderFacts(property) {
     var facts = byId("detailFacts");
-    var type = CARD.typeLabel(property.type) || text(property.type);
-    var beds = CARD.countLabel(property.bedrooms, "bedroom");
-    var baths = CARD.countLabel(property.bathrooms, "bathroom");
-    var area = CARD.formatArea(property.areaSqft);
+    var type = CARD.displayTypeLabel(property) || CARD.typeLabel(property.type);
     var items = [
       { label: "Property type", value: type },
-      { label: "Bedrooms", value: beds },
-      { label: "Bathrooms", value: baths },
-      { label: "Built-up area", value: area }
+      {
+        label: "Listing type",
+        value: CARD.listingTypeLabel(property.listingType) || text(property.listingType)
+      },
+      { label: "Bedrooms", value: CARD.countLabel(property.bedrooms, "bedroom") },
+      { label: "Bathrooms", value: CARD.countLabel(property.bathrooms, "bathroom") },
+      { label: "Built-up area", value: areaLabel(property) }
     ];
 
     if (!facts) {
       return;
     }
 
-    facts.innerHTML = "";
+    facts.replaceChildren();
 
     items.forEach(function (item) {
       if (!item.value) {
@@ -328,16 +390,16 @@
 
   function renderSpecs(property) {
     var specs = byId("detailSpecs");
-    var type = CARD.typeLabel(property.type) || text(property.type);
     var status = CARD.statusBadge(property.status);
-    var statusLabel = status ? status.label : text(property.status);
     var items = [
       { label: "Property ID", value: text(property.id) },
-      { label: "Listing type", value: type },
-      { label: "Status", value: statusLabel },
+      { label: "Listing type", value: CARD.listingTypeLabel(property.listingType) },
+      { label: "Category", value: CARD.humanizeEnum(property.category) },
+      { label: "Subtype", value: CARD.humanizeEnum(property.subtype) },
+      { label: "Status", value: status ? status.label : text(property.status) },
       { label: "Bedrooms", value: CARD.countLabel(property.bedrooms, "bedroom") },
       { label: "Bathrooms", value: CARD.countLabel(property.bathrooms, "bathroom") },
-      { label: "Built-up area", value: CARD.formatArea(property.areaSqft) },
+      { label: "Built-up area", value: areaLabel(property) },
       { label: "Locality", value: text(property.locality) },
       { label: "City", value: text(property.city) }
     ];
@@ -346,7 +408,7 @@
       return;
     }
 
-    specs.innerHTML = "";
+    specs.replaceChildren();
 
     items.forEach(function (item) {
       if (!item.value) {
@@ -359,45 +421,10 @@
   }
 
   function renderDescription(property) {
-    var title = text(property.title) || "This property";
-    var type = CARD.typeLabel(property.type);
-    var location = CARD.locationLabel(property);
-    var details = [];
-    var beds = CARD.countLabel(property.bedrooms, "bedroom");
-    var baths = CARD.countLabel(property.bathrooms, "bathroom");
-    var area = CARD.formatArea(property.areaSqft);
-    var sentences = [];
-
-    if (beds) {
-      details.push(beds);
-    }
-    if (baths) {
-      details.push(baths);
-    }
-    if (area) {
-      details.push(area + " of built-up area");
-    }
-
-    sentences.push(
-      title +
-        " is a " +
-        (type ? type.toLowerCase() : "residential") +
-        " property" +
-        (location ? " in " + location : "") +
-        "."
+    setText(
+      "detailDescription",
+      text(property.description) || "No description has been supplied for this property."
     );
-
-    if (details.length > 0) {
-      sentences.push("The listing records " + joinSentence(details) + ".");
-    }
-
-    if (text(property.description)) {
-      setText("detailDescription", text(property.description));
-      return;
-    }
-
-    sentences.push("Further details are available from the property manager.");
-    setText("detailDescription", sentences.join(" "));
   }
 
   function renderAmenities(property) {
@@ -424,19 +451,22 @@
 
   function renderBadges(property) {
     var container = byId("detailBadges");
-    var type = CARD.typeLabel(property.type);
+    var type = CARD.displayTypeLabel(property) || CARD.typeLabel(property.type);
+    var listingType = CARD.listingTypeLabel(property.listingType);
     var status = CARD.statusBadge(property.status);
 
     if (!container) {
       return;
     }
 
-    container.innerHTML = "";
+    container.replaceChildren();
 
     if (type) {
       container.appendChild(el("span", "ev-badge ev-badge--neutral", type));
     }
-
+    if (listingType) {
+      container.appendChild(el("span", "ev-badge ev-badge--neutral", listingType));
+    }
     if (status) {
       container.appendChild(
         el("span", "ev-badge " + status.modifier, status.label)
@@ -462,7 +492,7 @@
       return;
     }
 
-    grid.innerHTML = "";
+    grid.replaceChildren();
 
     var fragment = document.createDocumentFragment();
 
@@ -506,6 +536,7 @@
       error.removeAttribute("aria-busy");
     }
 
+    setRetryVisible(false);
     setText("breadcrumbCurrent", title);
     setText("detailTitle", title);
     setText("detailLocation", location || "Location not provided");
@@ -520,7 +551,15 @@
     updateMeta(property);
   }
 
-  function showError(title, message) {
+  function setRetryVisible(visible) {
+    var retry = byId("retryDetailLoad");
+
+    if (retry) {
+      retry.hidden = !visible;
+    }
+  }
+
+  function showError(title, message, canRetry) {
     var detail = byId("propertyDetail");
     var error = byId("propertyError");
     var related = byId("relatedSection");
@@ -539,6 +578,7 @@
       error.removeAttribute("aria-busy");
     }
 
+    setRetryVisible(canRetry === true);
     setText("breadcrumbCurrent", title);
     setText("propertyErrorTitle", title);
     setText("propertyErrorMessage", message);
@@ -547,7 +587,9 @@
     if (description) {
       description.setAttribute(
         "content",
-        "The requested EstateVista property listing could not be found."
+        canRetry === true
+          ? "The EstateVista property service is temporarily unavailable."
+          : "The requested EstateVista property listing could not be found."
       );
     }
   }
@@ -568,6 +610,7 @@
       error.setAttribute("aria-busy", "true");
     }
 
+    setRetryVisible(false);
     setText("breadcrumbCurrent", "Loading property");
     setText("propertyErrorTitle", "Loading property details");
     setText(
@@ -577,11 +620,73 @@
     document.title = "Loading property \u2014 EstateVista";
   }
 
+  /** Fetches a valid UUID; optional requests never block the main detail view. */
+  function loadDetail(id) {
+    activeId = id;
+    var sequence = ++requestSequence;
+
+    showLoading();
+
+    return waitForPublicApi()
+      .then(function (api) {
+        return api.getPublishedDetail(id).then(function (detail) {
+          return api
+            .listPublishedImages(id)
+            .catch(function () {
+              return [];
+            })
+            .then(function (images) {
+              if (sequence !== requestSequence) {
+                return null;
+              }
+              render(toViewModel(detail, images));
+              return api
+                .getRelatedProperties(id)
+                .then(renderRelated)
+                .catch(function () {
+                  renderRelated([]);
+                });
+            });
+        });
+      })
+      .catch(function (error) {
+        if (sequence !== requestSequence) {
+          return;
+        }
+
+        if (error && error.status === 404) {
+          showError(
+            "Property not found",
+            "This property is not available publicly. It may have been removed, or the link may be incomplete.",
+            false
+          );
+          return;
+        }
+
+        showError(
+          "Property details unavailable",
+          "The property service is not available right now. Please try again later or browse other published properties.",
+          true
+        );
+      });
+  }
+
   function init() {
+    var retry = byId("retryDetailLoad");
+
+    if (retry) {
+      retry.addEventListener("click", function () {
+        if (activeId) {
+          loadDetail(activeId);
+        }
+      });
+    }
+
     if (!CARD) {
       showError(
         "Property details unavailable",
-        "The shared property components did not load, so this listing cannot be displayed. Return to the properties page to browse the collection."
+        "The shared property components did not load, so this listing cannot be displayed. Return to the properties page to browse the collection.",
+        false
       );
       return;
     }
@@ -591,52 +696,13 @@
     if (!id) {
       showError(
         "Property not found",
-        "The property link is incomplete. Return to the properties page to browse published listings."
+        "The property link is incomplete or ambiguous. Return to the properties page to browse published listings.",
+        false
       );
       return;
     }
 
-    showLoading();
-
-    waitForPublicApi()
-      .then(function (api) {
-        if (!api.UUID_PATTERN.test(id)) {
-          var invalid = new Error("Invalid property identifier");
-          invalid.name = "InvalidPropertyIdError";
-          throw invalid;
-        }
-
-        return api.getPublishedDetail(id).then(function (detail) {
-          return api
-            .listPublishedImages(id)
-            .catch(function () {
-              return [];
-            })
-            .then(function (images) {
-              render(toViewModel(detail, images));
-              return api
-                .getRelatedProperties(id)
-                .catch(function () {
-                  return [];
-                })
-                .then(renderRelated);
-            });
-        });
-      })
-      .catch(function (error) {
-        if (error && (error.status === 404 || error.name === "InvalidPropertyIdError")) {
-          showError(
-            "Property not found",
-            "This property is not available publicly. It may have been removed, or the link may be incomplete."
-          );
-          return;
-        }
-
-        showError(
-          "Property details unavailable",
-          "The property service is not available right now. Please try again later or browse other published properties."
-        );
-      });
+    loadDetail(id);
   }
 
   if (document.readyState === "loading") {

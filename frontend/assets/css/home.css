@@ -135,14 +135,15 @@
 }
 
 /* -----------------------------------------------------------------------------
-   3. Featured properties
+   3. Latest live properties
    -------------------------------------------------------------------------- */
-.featured {
+.latest {
   padding-block: var(--ev-home-pad);
   background-color: var(--ev-ivory-50);
 }
 
-.featured__empty {
+.latest__empty {
+  margin-top: var(--ev-space-4);
   padding: var(--ev-space-6);
   border: 1px dashed var(--ev-color-border);
   border-radius: var(--ev-radius-md);
@@ -150,7 +151,7 @@
   color: var(--ev-color-text-muted);
 }
 
-.featured [hidden] {
+.latest [hidden] {
   display: none !important;
 }
 
