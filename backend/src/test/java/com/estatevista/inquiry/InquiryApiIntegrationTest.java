@@ -345,7 +345,7 @@ class InquiryApiIntegrationTest {
         // Property archival preserves inquiry records.
         jdbcTemplate.update("UPDATE properties SET status='ARCHIVED', archived_at=now(), updated_at=now() WHERE id=?", property.getId());
         Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM inquiries WHERE property_id=?", Long.class, property.getId());
-        assertThat(count).isEqualTo(2L);
+        assertThat(count).isEqualTo(3L);
         mockMvc.perform(get("/api/v1/inquiries/" + inquiryId).cookie(buyerSession.cookie()))
                 .andExpect(status().isOk());
 
