@@ -37,6 +37,7 @@ import com.estatevista.user.repository.UserRepository;
 import jakarta.servlet.http.Cookie;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -72,10 +73,15 @@ class InquirySubmissionHttpConcurrencyIntegrationTest {
     @Autowired private PropertySubtypeRepository subtypes;
     @Autowired private PasswordEncoder passwordEncoder;
 
-    private final List<UUID> inquiryIds = new ArrayList<>();
     private final List<UUID> propertyIds = new ArrayList<>();
     private final List<UUID> userIds = new ArrayList<>();
     private final List<String> sessionIds = new ArrayList<>();
+
+    @BeforeEach
+    void cleanupBefore() {
+        jdbcTemplate.update("DELETE FROM inquiries WHERE property_id IN (SELECT id FROM properties WHERE title LIKE 'HTTP Concurrent Villa %' OR title LIKE 'HTTP Independent Villa %')");
+        jdbcTemplate.update("DELETE FROM properties WHERE title LIKE 'HTTP Concurrent Villa %' OR title LIKE 'HTTP Independent Villa %'");
+    }
 
     @AfterEach
     void cleanup() {

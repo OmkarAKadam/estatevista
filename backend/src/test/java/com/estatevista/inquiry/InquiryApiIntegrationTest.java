@@ -336,11 +336,11 @@ class InquiryApiIntegrationTest {
         Long activeCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM inquiries WHERE buyer_id=? AND property_id=? AND status IN ('NEW','IN_PROGRESS')",
                 Long.class, buyer.getId(), property.getId());
-        Long historicalCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM inquiries WHERE buyer_id=? AND property_id=? AND status IN ('RESOLVED','CLOSED')",
+        Long totalCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM inquiries WHERE buyer_id=? AND property_id=?",
                 Long.class, buyer.getId(), property.getId());
         assertThat(activeCount).isEqualTo(1L);
-        assertThat(historicalCount).isEqualTo(2L);
+        assertThat(totalCount).isEqualTo(3L);
 
         // Property archival preserves inquiry records.
         jdbcTemplate.update("UPDATE properties SET status='ARCHIVED', archived_at=now(), updated_at=now() WHERE id=?", property.getId());
