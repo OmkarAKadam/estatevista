@@ -68,6 +68,7 @@
   var lastMeta = null;
   var referenceGeneration = 0;
   var activeController = null;
+  var favoritesController = null;
   var requestSequence = 0;
   var keywordTimer = null;
   var pendingWarning = "";
@@ -307,6 +308,57 @@
         field.removeAttribute("aria-invalid");
       }
     });
+  }
+
+  function waitForFavoritesApi() {
+    return new Promise(function (resolve, reject) {
+      if (window.EVFavorites) {
+        resolve(window.EVFavorites);
+        return;
+      }
+
+      var settled = false;
+      var timer = window.setTimeout(function () {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        reject(new Error("Favorites service unavailable"));
+      }, API_READY_TIMEOUT_MS);
+
+      window.addEventListener("ev-favorites-ready", function onReady() {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        window.clearTimeout(timer);
+        resolve(window.EVFavorites);
+      }, { once: true });
+    });
+  }
+
+  /** One bounded batch for the currently rendered result collection. */
+  function refreshFavoriteStatuses(items) {
+    var ids = (Array.isArray(items) ? items : [])
+      .map(function (item) { return item && item.id; })
+      .filter(function (id) { return typeof id === "string" && id.length > 0; });
+
+    if (ids.length === 0) {
+      return;
+    }
+    if (favoritesController) {
+      favoritesController.abort();
+    }
+    favoritesController = new AbortController();
+    var signal = favoritesController.signal;
+
+    waitForFavoritesApi()
+      .then(function (client) {
+        return client.syncCollection(ids, { signal: signal });
+      })
+      .catch(function () {
+        /* Discovery results stay usable when private status cannot load. */
+      });
   }
 
   function waitForPublicApi() {
@@ -1376,6 +1428,7 @@
     });
 
     elements.grid.replaceChildren(fragment);
+    refreshFavoriteStatuses(items);
     return rendered;
   }
 
@@ -1541,6 +1594,9 @@
     var sequence = ++requestSequence;
     if (activeController) {
       activeController.abort();
+    }
+    if (favoritesController) {
+      favoritesController.abort();
     }
     var controller = new AbortController();
     activeController = controller;

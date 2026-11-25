@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Favorites — EstateVista</title>
+  <meta name="description" content="Browse the properties saved by your EstateVista buyer account.">
+  <link rel="icon" href="assets/images/brand/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Inter:wght@400..700&amp;display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <link rel="stylesheet" href="assets/css/theme.css">
+  <link rel="stylesheet" href="assets/css/components.css">
+  <link rel="stylesheet" href="assets/css/favorites.css">
+</head>
+<body>
+  <a class="ev-skip-link" href="#main">Skip to main content</a>
+
+  <header class="site-header" data-site-header>
+    <nav class="navbar navbar-expand-lg site-nav" aria-label="Primary">
+      <div class="container ev-container">
+        <a class="site-brand" href="index.html">
+          <img class="site-brand__mark" src="assets/images/brand/favicon.svg" alt="" width="36" height="36" aria-hidden="true">
+          <span class="site-brand__name">EstateVista</span>
+        </a>
+
+        <button class="navbar-toggler site-nav__toggle" type="button"
+                data-bs-toggle="collapse" data-bs-target="#primaryNav"
+                aria-controls="primaryNav" aria-expanded="false"
+                aria-label="Open navigation menu">
+          <span class="site-nav__bar" aria-hidden="true"></span>
+        </button>
+
+        <div class="collapse navbar-collapse site-nav__panel" id="primaryNav">
+          <ul class="navbar-nav site-nav__list ms-lg-auto">
+            <li class="nav-item">
+              <a class="nav-link site-nav__link" href="index.html" data-nav-link>Home</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link site-nav__link" href="properties.html" data-nav-link>Properties</a>
+            </li>
+            <li class="nav-item" data-favorites-nav hidden>
+              <a class="nav-link site-nav__link" href="favorites.html" data-nav-link aria-current="page">Favorites</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link site-nav__link" href="about.html" data-nav-link>About us</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link site-nav__link" href="contact.html" data-nav-link>Contact us</a>
+            </li>
+          </ul>
+          <div class="site-auth" data-auth-nav data-auth-login-href="login.html" data-auth-register-href="register.html" data-auth-home-href="index.html">
+            <a class="site-auth__link" href="login.html">Log in</a>
+            <a class="btn btn-primary btn-sm site-auth__cta" href="register.html">Create account</a>
+          </div>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <section class="ev-section favorites-page" aria-labelledby="favoritesHeading">
+      <div class="container ev-container">
+        <div class="ev-section-head">
+          <div class="ev-section-head__text">
+            <p class="ev-eyebrow">Your collection</p>
+            <h1 id="favoritesHeading">Favorite properties</h1>
+            <p class="ev-lede">Revisit the homes you saved. Saved properties that are no longer listed remain here as a generic placeholder until you remove them.</p>
+          </div>
+          <a class="ev-section-head__link" href="properties.html">
+            Browse properties
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M2.5 8h10M8.5 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </a>
+        </div>
+
+        <div class="favorites-toolbar" id="favoritesToolbar" hidden>
+          <div class="favorites-toolbar__sort">
+            <label for="favoriteSort">Sort by</label>
+            <select class="form-select" id="favoriteSort">
+              <option value="newest">Newest saved</option>
+              <option value="oldest">Oldest saved</option>
+            </select>
+          </div>
+          <p class="favorites-toolbar__count" id="favoritesCount" role="status" aria-live="polite"></p>
+        </div>
+
+        <div class="favorites-state" id="favoritesGuard" hidden>
+          <h2 id="favoritesGuardTitle">Sign in to view favorites</h2>
+          <p id="favoritesGuardMessage" role="status" aria-live="polite"></p>
+          <a class="btn btn-primary" href="login.html">Log in</a>
+          <a class="btn btn-secondary" href="properties.html">Browse properties</a>
+        </div>
+
+        <div class="favorites-state" id="favoritesLoading" hidden>
+          <p class="ev-eyebrow" role="status" aria-live="polite">Loading your saved properties…</p>
+          <div class="ev-skeleton-grid row g-4" id="favoritesSkeleton" aria-hidden="true"></div>
+        </div>
+
+        <div class="favorites-state" id="favoritesError" role="alert" hidden>
+          <h2>We could not load your favorites</h2>
+          <p id="favoritesErrorMessage"></p>
+          <button class="btn btn-primary" id="favoritesRetry" type="button">Try again</button>
+        </div>
+
+        <div class="favorites-state" id="favoritesEmpty" hidden>
+          <h2>No saved properties yet</h2>
+          <p>Use the heart control on any published property to save it here.</p>
+          <a class="btn btn-primary" href="properties.html">Browse properties</a>
+        </div>
+
+        <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-4"
+             id="favoritesGrid" aria-busy="false" hidden></div>
+
+        <nav class="favorites-pagination" id="favoritesPagination" aria-label="Favorites pages" hidden>
+          <button class="btn btn-secondary" id="favoritesPrev" type="button">Previous</button>
+          <p id="favoritesPageStatus" role="status" aria-live="polite"></p>
+          <button class="btn btn-secondary" id="favoritesNext" type="button">Next</button>
+        </nav>
+
+        <noscript>
+          <div class="favorites-state">
+            <h2>JavaScript required</h2>
+            <p>This buyer page loads saved properties from the EstateVista API. Enable JavaScript to view them.</p>
+          </div>
+        </noscript>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container ev-container">
+      <div class="row gy-5">
+        <div class="col-lg-4">
+          <a class="site-footer__brand" href="index.html">
+            <img src="assets/images/brand/favicon.svg" alt="" width="32" height="32" aria-hidden="true">
+            <span class="site-footer__brand-name">EstateVista</span>
+          </a>
+          <p class="site-footer__about">A fictional property discovery project exploring how residential listings can be presented with clarity, restraint and good photography.</p>
+          <p class="site-footer__note">Demonstration site. No listing, price, person or contact detail on this site is real.</p>
+        </div>
+
+        <div class="col-6 col-lg-2">
+          <h2 class="site-footer__heading">Explore</h2>
+          <ul class="site-footer__links">
+            <li><a href="index.html">Home</a></li>
+            <li><a href="properties.html">Properties</a></li>
+            <li data-favorites-nav hidden><a href="favorites.html">Favorites</a></li>
+            <li><a href="about.html">About us</a></li>
+            <li><a href="contact.html">Contact us</a></li>
+          </ul>
+        </div>
+
+        <div class="col-6 col-lg-3">
+          <h2 class="site-footer__heading">Discover</h2>
+          <ul class="site-footer__links">
+            <li><a href="properties.html?type=apartment">Apartments</a></li>
+            <li><a href="properties.html?type=villa">Villas</a></li>
+            <li><a href="properties.html?type=rowhouse">Row houses</a></li>
+            <li><a href="properties.html">All properties</a></li>
+          </ul>
+        </div>
+
+        <div class="col-lg-3">
+          <h2 class="site-footer__heading">Contact</h2>
+          <address class="site-footer__contact">
+            14 Meridian Court<br>
+            Indiranagar, Bengaluru 560038<br>
+            <a href="mailto:hello@estatevista.example">hello@estatevista.example</a><br>
+            <a href="tel:+918045671200">+91 80 4567 1200</a>
+          </address>
+        </div>
+      </div>
+
+      <div class="site-footer__bottom">
+        <p>© <span data-current-year>2026</span> EstateVista. Fictional content, built for demonstration.</p>
+        <p>HTML · CSS · vanilla JavaScript · Bootstrap 5</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous" defer></script>
+  <script src="assets/js/main.js" defer></script>
+  <script src="assets/js/property-card.js" defer></script>
+  <script src="assets/js/ui-skeletons.js" defer></script>
+  <script type="module" src="assets/js/favorites/favorites-bridge.js"></script>
+  <script type="module" src="assets/js/favorites/favorites-page.js"></script>
+  <script type="module" src="assets/js/auth/auth-init.js"></script>
+</body>
+</html>

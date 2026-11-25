@@ -207,6 +207,15 @@
   margin-bottom: var(--ev-space-4);
 }
 
+.property-detail__favorite {
+  display: inline-flex;
+  align-items: center;
+}
+
+.property-detail__favorite:empty {
+  display: none;
+}
+
 .property-detail__disclaimer {
   margin: 0;
   font-size: var(--ev-text-xs);

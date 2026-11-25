@@ -9,6 +9,10 @@
   "use strict";
 
   var PLACEHOLDER_IMAGE = "assets/images/brand/property-placeholder.svg";
+  var UNAVAILABLE_FAVORITE = "Property no longer available";
+
+  var FAVORITES = null;
+  var favoritesWatched = false;
 
   var TYPE_LABELS = {
     apartment: "Apartment",
@@ -274,6 +278,206 @@
     return svg;
   }
 
+  /* ------------------------------------------------------------- favorites */
+
+  function heartIcon(filled) {
+    var NS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(NS, "svg");
+    var path = document.createElementNS(NS, "path");
+
+    svg.setAttribute("width", "18");
+    svg.setAttribute("height", "18");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", filled ? "currentColor" : "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.7");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+
+    path.setAttribute(
+      "d",
+      "M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 1 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"
+    );
+    svg.appendChild(path);
+    return svg;
+  }
+
+  /** Shared control: a real button, outside the title link, with a live label. */
+  function createFavoriteButton(property) {
+    var id = cleanText(property && property.id);
+    var title = cleanText(property && property.title) || "this property";
+
+    var button = el("button", "ev-favorite");
+    button.type = "button";
+    button.hidden = true;
+    button.setAttribute("data-ev-favorite", "");
+    button.setAttribute("data-property-id", id);
+    button.setAttribute("data-property-title", title);
+    button.setAttribute("aria-pressed", "false");
+    button.setAttribute("aria-label", "Save " + title + " to favorites");
+    button.setAttribute("title", "Save to favorites");
+    button.appendChild(heartIcon(false));
+    /* Cards can be rendered after the session has already resolved. Apply the
+       current auth/cooldown view at creation time so an anonymous sign-in
+       prompt is visible without waiting for an unrelated later notification. */
+    if (FAVORITES && FAVORITES.getSnapshot) {
+      syncFavoriteButton(button, FAVORITES.getSnapshot());
+    }
+    return button;
+  }
+
+  function announceFavorite(message) {
+    if (!message) {
+      return;
+    }
+    var region = document.querySelector("[data-favorite-status]");
+
+    if (!region) {
+      region = el("div", "visually-hidden");
+      region.setAttribute("data-favorite-status", "");
+      region.setAttribute("role", "status");
+      region.setAttribute("aria-live", "polite");
+      if (document.body) {
+        document.body.appendChild(region);
+      }
+    }
+    region.textContent = message;
+  }
+
+  function syncFavoriteButton(button, view) {
+    if (!button || !view) {
+      return;
+    }
+    var id = cleanText(button.getAttribute("data-property-id"));
+    var title = cleanText(button.getAttribute("data-property-title")) || "this property";
+    var authenticated = view.authStatus === "authenticated";
+    var buyer = view.buyer === true;
+
+    if (!id || (authenticated && !buyer) || view.authStatus === "unknown") {
+      button.hidden = true;
+      button.disabled = true;
+      return;
+    }
+
+    button.hidden = false;
+    var pressed = buyer && FAVORITES && FAVORITES.isFavorite(id);
+    var pending = buyer && FAVORITES && FAVORITES.isPending(id);
+    var blocked = buyer && view.cooldownActive;
+
+    button.setAttribute("aria-pressed", pressed ? "true" : "false");
+    button.setAttribute("aria-busy", pending ? "true" : "false");
+    button.disabled = Boolean(pending || blocked || (buyer && !FAVORITES));
+
+    var label;
+    if (!buyer) {
+      label = "Sign in to save " + title;
+    } else if (pressed) {
+      label = "Remove " + title + " from favorites";
+    } else {
+      label = "Save " + title + " to favorites";
+    }
+    button.setAttribute("aria-label", label);
+    button.setAttribute("title", blocked ? "Saving paused during request cooldown" : label);
+    button.replaceChildren(heartIcon(pressed === true));
+  }
+
+  function syncFavoriteControls(view) {
+    if (!view) {
+      return;
+    }
+    var nodes = document.querySelectorAll("[data-ev-favorite]");
+
+    Array.prototype.forEach.call(nodes, function (button) {
+      syncFavoriteButton(button, view);
+    });
+  }
+
+  function redirectToLogin() {
+    var login = new URL("login.html", window.location.href);
+    var intended =
+      window.location.pathname + window.location.search + window.location.hash;
+    login.searchParams.set("next", intended);
+    window.location.assign(login.href);
+  }
+
+  function handleFavoriteClick(event) {
+    var button = event.target && event.target.closest
+      ? event.target.closest("[data-ev-favorite]")
+      : null;
+
+    if (!button) {
+      return;
+    }
+    /* The card title is a stretched link; the favorite control must never
+       navigate to the property detail or submit a surrounding form. */
+    event.preventDefault();
+    event.stopPropagation();
+    if (button.disabled) {
+      return;
+    }
+
+    var id = cleanText(button.getAttribute("data-property-id"));
+    var title = cleanText(button.getAttribute("data-property-title")) || "this property";
+
+    if (!FAVORITES) {
+      return;
+    }
+    if (!FAVORITES.canMutate() && !FAVORITES.isPending(id)) {
+      if (FAVORITES.getCooldown && FAVORITES.getCooldown().active()) {
+        announceFavorite("Favorite updates are paused while the request limit resets.");
+        return;
+      }
+      redirectToLogin();
+      return;
+    }
+
+    var wasSaved = FAVORITES.isFavorite(id);
+    var action = wasSaved ? FAVORITES.removeFavorite(id) : FAVORITES.addFavorite(id);
+    announceFavorite(wasSaved ? "Removing " + title + " from favorites…" : "Saving " + title + " to favorites…");
+
+    Promise.resolve(action)
+      .then(function (result) {
+        var message = result && result.ok
+          ? (result.action === "removed"
+              ? "Removed " + title + " from favorites."
+              : "Saved " + title + " to favorites.")
+          : FAVORITES.describeFavoriteFailure(result);
+        announceFavorite(message);
+        document.dispatchEvent(new CustomEvent("ev-favorite-mutation", {
+          detail: {
+            propertyId: id,
+            action: wasSaved ? "removed" : "added",
+            ok: Boolean(result && result.ok),
+            state: result ? result.state : null
+          }
+        }));
+      })
+      .catch(function () {
+        announceFavorite("We could not update your favorites. Please try again.");
+      });
+  }
+
+  function watchFavorites() {
+    if (favoritesWatched) {
+      return;
+    }
+    favoritesWatched = true;
+
+    if (window.EVFavorites) {
+      FAVORITES = window.EVFavorites;
+      FAVORITES.subscribe(syncFavoriteControls);
+    } else {
+      window.addEventListener("ev-favorites-ready", function onReady() {
+        FAVORITES = window.EVFavorites;
+        if (FAVORITES) {
+          FAVORITES.subscribe(syncFavoriteControls);
+        }
+      }, { once: true });
+    }
+    document.addEventListener("click", handleFavoriteClick);
+  }
+
   /**
    * Builds the standard property card.
    *
@@ -284,6 +488,7 @@
    *   imageHeight  intrinsic height hint
    *   ctaLabel     visible CTA text
    *   lazy         whether the image should lazy-load
+   *   showFavorite set false only for non-buyer surfaces
    */
   function buildCard(property, options) {
     options = options || {};
@@ -322,6 +527,12 @@
     if (badge) {
       media.appendChild(
         el("span", "ev-badge card-estate__badge " + badge.modifier, badge.label)
+      );
+    }
+
+    if (options.showFavorite !== false && id) {
+      media.appendChild(
+        createFavoriteButton({ id: id, title: options.favoriteTitle || title })
       );
     }
 
@@ -391,6 +602,70 @@
     return model ? buildCard(model, options) : null;
   }
 
+  /**
+   * Retained favorite for a property that is no longer public. Only the
+   * approved generic placeholder and the saved identifier are used; no title,
+   * price, description, address, image, agent or lifecycle status is exposed.
+   * The favorite button remains available so the buyer can remove the row.
+   */
+  function buildUnavailableFavoriteCard(item, options) {
+    options = options || {};
+    var id = cleanText(item && item.propertyId);
+    var property = item && item.property;
+    var supplied = property && typeof property === "object"
+      ? cleanText(property.placeholder)
+      : "";
+    /* Accept only the approved backend placeholder string. */
+    var label = supplied === UNAVAILABLE_FAVORITE ? supplied : UNAVAILABLE_FAVORITE;
+    var column = el("div", options.columnClass || "col");
+    column.setAttribute("data-id", id);
+
+    var card = el("article", "card-estate card-estate--unavailable");
+    var media = el("div", "card-estate__media");
+    var image = document.createElement("img");
+
+    image.src = PLACEHOLDER_IMAGE;
+    image.alt = "Property photograph unavailable";
+    image.width = options.imageWidth || 400;
+    image.height = options.imageHeight || 300;
+    image.loading = options.lazy === false ? "eager" : "lazy";
+    image.decoding = "async";
+    media.appendChild(image);
+
+    if (id) {
+      media.appendChild(createFavoriteButton({ id: id, title: label }));
+    }
+    card.appendChild(media);
+
+    var body = el("div", "card-estate__body");
+    body.appendChild(el("p", "ev-favorite-unavailable", label));
+    body.appendChild(el("h3", "card-estate__title", label));
+    body.appendChild(el("p", "card-estate__location", "This saved property is not currently listed."));
+
+    var footer = el("div", "card-estate__footer");
+    footer.appendChild(el("span", "ev-badge ev-badge--neutral", "Saved"));
+    body.appendChild(footer);
+
+    card.appendChild(body);
+    column.appendChild(card);
+    return column;
+  }
+
+  /** True only for the approved restricted favorite placeholder object. */
+  function isUnavailableFavorite(item) {
+    if (!item || typeof item !== "object") {
+      return false;
+    }
+    var property = item.property;
+    return Boolean(
+      !property ||
+        typeof property !== "object" ||
+        (cleanText(property.placeholder) === UNAVAILABLE_FAVORITE && !property.id)
+    );
+  }
+
+  watchFavorites();
+
   window.EVPropertyCard = {
     PLACEHOLDER_IMAGE: PLACEHOLDER_IMAGE,
     TYPE_LABELS: TYPE_LABELS,
@@ -408,6 +683,10 @@
     normalizeApiType: normalizeApiType,
     fromApiSummary: fromApiSummary,
     buildCardFromApiSummary: buildCardFromApiSummary,
+    createFavoriteButton: createFavoriteButton,
+    buildUnavailableFavoriteCard: buildUnavailableFavoriteCard,
+    isUnavailableFavorite: isUnavailableFavorite,
+    syncFavoriteControls: syncFavoriteControls,
     locationLabel: locationLabel,
     primaryImage: primaryImage,
     resolveImagePath: resolveImagePath

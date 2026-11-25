@@ -40,6 +40,9 @@
             <li class="nav-item">
               <a class="nav-link site-nav__link" href="properties.html" data-nav-link>Properties</a>
             </li>
+            <li class="nav-item" data-favorites-nav hidden>
+              <a class="nav-link site-nav__link" href="favorites.html" data-nav-link>Favorites</a>
+            </li>
             <li class="nav-item">
               <a class="nav-link site-nav__link" href="about.html" data-nav-link aria-current="page">About us</a>
             </li>
@@ -300,6 +303,7 @@
           <ul class="site-footer__links">
             <li><a href="index.html">Home</a></li>
             <li><a href="properties.html">Properties</a></li>
+            <li data-favorites-nav hidden><a href="favorites.html">Favorites</a></li>
             <li><a href="about.html">About us</a></li>
             <li><a href="contact.html">Contact us</a></li>
           </ul>
@@ -335,6 +339,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous" defer></script>
   <script src="assets/js/main.js" defer></script>
+  <script type="module" src="assets/js/favorites/favorites-bridge.js"></script>
   <script type="module" src="assets/js/auth/auth-init.js"></script>
 </body>
 </html>

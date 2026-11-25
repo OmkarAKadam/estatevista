@@ -26,6 +26,8 @@
   var detailController = null;
   var imageController = null;
   var relatedController = null;
+  var detailFavoriteController = null;
+  var relatedFavoritesController = null;
   var cooldown = null;
   var lastErrorWasRateLimit = false;
 
@@ -96,6 +98,106 @@
     });
   }
 
+  function waitForFavoritesApi() {
+    return new Promise(function (resolve, reject) {
+      if (window.EVFavorites) {
+        resolve(window.EVFavorites);
+        return;
+      }
+
+      var settled = false;
+      var timer = window.setTimeout(function () {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        reject(new Error("Favorites service unavailable"));
+      }, API_READY_TIMEOUT_MS);
+
+      window.addEventListener(
+        "ev-favorites-ready",
+        function onReady() {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          window.clearTimeout(timer);
+          resolve(window.EVFavorites);
+        },
+        { once: true }
+      );
+    });
+  }
+
+  function syncFavoriteControls() {
+    if (window.EVFavorites && CARD) {
+      CARD.syncFavoriteControls(window.EVFavorites.getSnapshot());
+    }
+  }
+
+  /** One authoritative individual read for the displayed detail property. */
+  function refreshDetailStatus(id) {
+    if (!id) {
+      return;
+    }
+    if (detailFavoriteController) {
+      detailFavoriteController.abort();
+    }
+    detailFavoriteController = new AbortController();
+    var signal = detailFavoriteController.signal;
+
+    waitForFavoritesApi()
+      .then(function (client) {
+        return client.getStatus(id, { force: true, signal: signal });
+      })
+      .catch(function () {
+        /* An anonymous/non-buyer page makes no private request; a failed read
+           leaves the last confirmed state untouched. */
+      })
+      .then(syncFavoriteControls);
+  }
+
+  /** One bounded batch for the related-properties collection. */
+  function refreshRelatedStatuses(items) {
+    var ids = (Array.isArray(items) ? items : [])
+      .map(function (item) { return item && item.id; })
+      .filter(function (id) { return typeof id === "string" && id.length > 0; });
+
+    if (ids.length === 0) {
+      return;
+    }
+    if (relatedFavoritesController) {
+      relatedFavoritesController.abort();
+    }
+    relatedFavoritesController = new AbortController();
+    var signal = relatedFavoritesController.signal;
+
+    waitForFavoritesApi()
+      .then(function (client) {
+        return client.syncCollection(ids, { signal: signal });
+      })
+      .catch(function () {
+        /* Related discovery stays usable when private status cannot load. */
+      });
+  }
+
+  function renderDetailFavorite(property) {
+    var host = byId("detailFavoriteHost");
+
+    if (!host || !CARD || !property || !property.id) {
+      return;
+    }
+
+    var button = CARD.createFavoriteButton({
+      id: property.id,
+      title: property.title || "this property"
+    });
+    button.classList.add("ev-favorite--inline");
+    host.replaceChildren(button);
+    syncFavoriteControls();
+    refreshDetailStatus(property.id);
+  }
+
   function isRateLimit(error) {
     return Boolean(error && (error.reason === "rate_limit" || error.status === 429));
   }
@@ -139,7 +241,13 @@
   }
 
   function cancelControllers() {
-    [detailController, imageController, relatedController].forEach(function (controller) {
+    [
+      detailController,
+      imageController,
+      relatedController,
+      detailFavoriteController,
+      relatedFavoritesController
+    ].forEach(function (controller) {
       if (controller) {
         controller.abort();
       }
@@ -147,6 +255,8 @@
     detailController = null;
     imageController = null;
     relatedController = null;
+    detailFavoriteController = null;
+    relatedFavoritesController = null;
   }
 
   function setRetryState(active, message) {
@@ -627,6 +737,8 @@
 
     grid.appendChild(fragment);
     section.hidden = false;
+    syncFavoriteControls();
+    refreshRelatedStatuses(models);
   }
 
   function updateMeta(property) {
@@ -678,6 +790,7 @@
     renderAmenities(property);
     renderGallery(property, title);
     updateMeta(property);
+    renderDetailFavorite(property);
   }
 
   function setRetryVisible(visible) {

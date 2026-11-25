@@ -377,8 +377,8 @@
   z-index: 2;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: var(--ev-radius-pill);
@@ -397,6 +397,54 @@
 
 .ev-favorite[aria-pressed="true"] {
   color: var(--ev-terracotta-700);
+}
+
+.ev-favorite:focus-visible {
+  outline: 2px solid var(--ev-forest-900);
+  outline-offset: 2px;
+}
+
+.ev-favorite:disabled {
+  cursor: not-allowed;
+}
+
+.ev-favorite[aria-busy="true"] {
+  opacity: 0.65;
+}
+
+.ev-favorite svg {
+  display: block;
+}
+
+/* In-page variant for the property detail surface. The card overlay button
+   keeps the same behaviour and accessible name; only its position changes. */
+.ev-favorite--inline {
+  position: static;
+  display: inline-flex;
+  gap: var(--ev-space-2);
+  width: auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: var(--ev-space-2) var(--ev-space-4);
+  border-radius: var(--ev-radius-sm);
+  font: inherit;
+  font-size: var(--ev-text-sm);
+  font-weight: var(--ev-weight-semibold);
+  white-space: nowrap;
+}
+
+.card-estate--unavailable .ev-favorite-unavailable {
+  margin: 0;
+  font-family: var(--ev-font-display);
+  font-size: var(--ev-text-lg);
+  font-weight: var(--ev-weight-semibold);
+  line-height: var(--ev-leading-snug);
+  color: var(--ev-color-heading);
+}
+
+.card-estate--unavailable .card-estate__title {
+  font-size: var(--ev-text-sm);
+  color: var(--ev-color-text-muted);
 }
 
 /* -----------------------------------------------------------------------------

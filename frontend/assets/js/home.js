@@ -28,6 +28,7 @@
   var errorMessage = null;
   var retry = null;
   var api = null;
+  var favoritesController = null;
   var cooldown = null;
   var lastErrorWasRateLimit = false;
   var activeController = null;
@@ -181,6 +182,57 @@
     });
   }
 
+  function waitForFavoritesApi() {
+    return new Promise(function (resolve, reject) {
+      if (window.EVFavorites) {
+        resolve(window.EVFavorites);
+        return;
+      }
+
+      var settled = false;
+      var timer = window.setTimeout(function () {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        reject(new Error("Favorites service unavailable"));
+      }, API_READY_TIMEOUT_MS);
+
+      window.addEventListener("ev-favorites-ready", function onReady() {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        window.clearTimeout(timer);
+        resolve(window.EVFavorites);
+      }, { once: true });
+    });
+  }
+
+  /** One batched status request for the currently rendered public cards. */
+  function refreshFavoriteStatuses(items) {
+    var ids = (Array.isArray(items) ? items : [])
+      .map(function (item) { return item && item.id; })
+      .filter(function (id) { return typeof id === "string" && id.length > 0; });
+
+    if (ids.length === 0) {
+      return;
+    }
+    if (favoritesController) {
+      favoritesController.abort();
+    }
+    favoritesController = new AbortController();
+    var signal = favoritesController.signal;
+
+    waitForFavoritesApi()
+      .then(function (client) {
+        return client.syncCollection(ids, { signal: signal });
+      })
+      .catch(function () {
+        /* Public discovery remains usable if private status cannot load. */
+      });
+  }
+
   /* ------------------------------------------------------------ live results */
 
   function setLoading() {
@@ -256,6 +308,7 @@
     hide(errorPanel);
     show(grid);
     grid.setAttribute("aria-busy", "false");
+    refreshFavoriteStatuses(items);
     return true;
   }
 
@@ -271,6 +324,9 @@
     var sequence = ++requestSequence;
     if (activeController) {
       activeController.abort();
+    }
+    if (favoritesController) {
+      favoritesController.abort();
     }
     var controller = new AbortController();
     activeController = controller;

@@ -1,0 +1,122 @@
+/* =============================================================================
+   EstateVista — favorites.css
+   Page-only composition for favorites.html. Shared navigation, footer, buttons
+   and property cards remain in components.css.
+   ============================================================================= */
+
+.favorites-page {
+  background-color: var(--ev-ivory-50);
+}
+
+.favorites-page .ev-lede {
+  max-width: var(--ev-measure);
+}
+
+.favorites-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--ev-space-4);
+  margin-bottom: var(--ev-space-6);
+  padding-bottom: var(--ev-space-4);
+  border-bottom: 1px solid var(--ev-color-border);
+}
+
+.favorites-toolbar__sort {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ev-space-2);
+  min-width: min(100%, 220px);
+}
+
+.favorites-toolbar__sort label {
+  margin: 0;
+  font-size: var(--ev-text-sm);
+  font-weight: var(--ev-weight-semibold);
+  color: var(--ev-color-heading);
+}
+
+.favorites-toolbar__sort .form-select {
+  min-height: 44px;
+  border-color: var(--ev-color-border);
+  border-radius: var(--ev-radius-sm);
+  color: var(--ev-color-text);
+}
+
+.favorites-toolbar__sort .form-select:focus-visible {
+  border-color: var(--ev-forest-700);
+  box-shadow: var(--ev-focus-ring);
+}
+
+.favorites-toolbar__count {
+  margin: 0;
+  font-size: var(--ev-text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--ev-color-text-muted);
+}
+
+.favorites-state {
+  max-width: var(--ev-measure);
+  padding: var(--ev-space-6);
+  border: 1px solid var(--ev-color-border);
+  border-radius: var(--ev-radius-md);
+  background-color: var(--ev-color-surface);
+  box-shadow: var(--ev-shadow-xs);
+}
+
+.favorites-state h2 {
+  margin-bottom: var(--ev-space-3);
+  font-size: var(--ev-text-2xl);
+}
+
+.favorites-state p {
+  margin-bottom: var(--ev-space-5);
+  color: var(--ev-color-text-muted);
+}
+
+.favorites-state .btn + .btn {
+  margin-left: var(--ev-space-2);
+}
+
+.favorites-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ev-space-4);
+  margin-top: var(--ev-space-7);
+}
+
+.favorites-pagination p {
+  margin: 0;
+  min-width: 10rem;
+  text-align: center;
+  font-size: var(--ev-text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--ev-color-text-muted);
+}
+
+.favorites-pagination .btn {
+  min-width: 112px;
+  min-height: 44px;
+}
+
+@media (max-width: 575.98px) {
+  .favorites-state {
+    padding: var(--ev-space-5);
+  }
+
+  .favorites-state .btn + .btn {
+    margin-left: 0;
+    margin-top: var(--ev-space-2);
+  }
+
+  .favorites-toolbar {
+    align-items: stretch;
+  }
+
+  .favorites-toolbar__sort {
+    min-width: 100%;
+  }
+}
