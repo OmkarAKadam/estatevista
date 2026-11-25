@@ -41,8 +41,20 @@ const state = new Map();
 const pending = new Map();
 const collectionFlights = new Map();
 const statusFlights = new Map();
+/* A generation protects account boundaries. A per-property revision protects
+   the ordering of status reads and mutations inside one authenticated session. */
+const revisions = new Map();
+/* Non-public favorites are retained server-side but their individual/batch
+   status deliberately reports false. Only GET /favorites is authoritative. */
+const listAuthoritative = new Set();
 
 let generation = 0;
+let stateRevision = 0;
+/* Only accepted mutations advance this revision. It protects a paginated list
+   from a newer mutation without letting ordinary status reads suppress the
+   list's authoritative view of retained non-public favorites. */
+let mutationRevision = 0;
+let sessionInitFlight = null;
 
 function invalid(message, name = "InvalidFavoritesRequestError") {
   const error = new Error(message);
@@ -116,35 +128,74 @@ const cooldown = createRateLimitCooldown(notify);
 /** Any authentication revision change supersedes every cached response. */
 subscribeAuth(() => {
   generation += 1;
+  stateRevision += 1;
   state.clear();
   pending.clear();
   collectionFlights.clear();
   statusFlights.clear();
+  revisions.clear();
+  listAuthoritative.clear();
   notify();
 });
 
 /**
  * Resolve the session once per page load. The auth bridge already performs
  * this check, so an anonymous/agent/admin page adds no extra auth request.
+ * Concurrent callers share one initialization flight.
  */
 async function requireBuyer() {
   let current = getAuthState();
   if (current.status === "unknown") {
-    await initializeSession();
+    if (!sessionInitFlight) {
+      sessionInitFlight = Promise.resolve(initializeSession()).finally(() => {
+        sessionInitFlight = null;
+      });
+    }
+    await sessionInitFlight;
     current = getAuthState();
   }
   return isBuyer(current) ? current : null;
+}
+
+function revisionOf(id) {
+  return revisions.get(id) ?? 0;
+}
+
+function bumpRevision(id) {
+  const next = revisionOf(id) + 1;
+  revisions.set(id, next);
+  stateRevision += 1;
+  mutationRevision += 1;
+  return next;
 }
 
 function applies(myGeneration) {
   return myGeneration === generation && isBuyer(getAuthState());
 }
 
-function apply(id, value, myGeneration) {
-  if (!applies(myGeneration)) {
+function apply(id, value, myGeneration, myRevision, options = {}) {
+  if (
+    myGeneration !== generation ||
+    !isBuyer(getAuthState()) ||
+    (myRevision !== undefined && revisionOf(id) !== myRevision)
+  ) {
+    return false;
+  }
+  if (value !== true && listAuthoritative.has(id) && options.authoritative !== true) {
+    /* A status endpoint cannot disprove a retained non-public favorite. */
     return false;
   }
   state.set(id, value === true);
+  /* Any later write supersedes reads that captured the previous revision. */
+  revisions.set(id, revisionOf(id) + 1);
+  stateRevision += 1;
+  if (options.authoritative === true) {
+    if (value === true) {
+      listAuthoritative.add(id);
+    } else {
+      listAuthoritative.delete(id);
+    }
+  }
   notify();
   return true;
 }
@@ -209,51 +260,124 @@ function normalizeMeta(meta) {
   };
 }
 
+/**
+ * A shared read flight is cancelled only when every caller has cancelled.
+ * One caller's AbortSignal therefore never resolves a different caller's read
+ * prematurely, while a genuinely obsolete flight still releases its request.
+ */
+function createFlight(map, key, generationToken, revisionToken, work) {
+  const flight = {
+    controller: new AbortController(),
+    generation: generationToken,
+    revision: revisionToken,
+    task: null,
+    callers: new Set(),
+    cleanups: new Set()
+  };
+  flight.task = (async () => {
+    try {
+      return await work(flight.controller.signal);
+    } finally {
+      if (map.get(key) === flight) {
+        map.delete(key);
+      }
+      flight.cleanups.forEach((cleanup) => cleanup());
+      flight.cleanups.clear();
+      flight.callers.clear();
+    }
+  })();
+  map.set(key, flight);
+  return flight;
+}
+
+function releaseCaller(flight, token) {
+  if (flight.callers.delete(token) && flight.callers.size === 0) {
+    flight.controller.abort();
+  }
+}
+
+function attachCaller(flight, signal) {
+  const token = {};
+  flight.callers.add(token);
+  if (!signal) {
+    return flight.task;
+  }
+  if (signal.aborted) {
+    releaseCaller(flight, token);
+    return Promise.resolve(null);
+  }
+
+  let settled = false;
+  let resolvePromise;
+  let rejectPromise;
+  const promise = new Promise((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+  const settle = (value, error) => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    signal.removeEventListener("abort", onAbort);
+    flight.cleanups.delete(cleanup);
+    if (error) {
+      rejectPromise(error);
+    } else {
+      resolvePromise(value);
+    }
+  };
+  const onAbort = () => {
+    releaseCaller(flight, token);
+    settle(null);
+  };
+  const cleanup = () => {
+    signal.removeEventListener("abort", onAbort);
+    flight.cleanups.delete(cleanup);
+  };
+  flight.cleanups.add(cleanup);
+  signal.addEventListener("abort", onAbort, { once: true });
+  flight.task.then((value) => settle(value), (error) => settle(null, error));
+  return promise;
+}
+
 /** Individual read. Used by details and to reconcile an ambiguous mutation. */
-async function readStatus(id, myGeneration, { signal, force = false } = {}) {
+async function readStatus(id, myGeneration, myRevision, { signal, force = false } = {}) {
   if (!force && state.has(id) && signal === undefined) {
     return state.get(id);
   }
-  if (statusFlights.has(id)) {
-    return statusFlights.get(id);
+  const existing = statusFlights.get(id);
+  if (
+    existing &&
+    existing.generation === myGeneration &&
+    existing.revision === myRevision
+  ) {
+    return attachCaller(existing, signal);
   }
 
-  const controller = new AbortController();
-  const onAbort = () => controller.abort();
-  if (signal) {
-    if (signal.aborted) {
-      return null;
+  const flight = createFlight(
+    statusFlights,
+    id,
+    myGeneration,
+    myRevision,
+    async (flightSignal) => {
+      const payload = await apiRequest(`/favorites/${encodeURIComponent(id)}/status`, {
+        method: "GET",
+        signal: flightSignal
+      });
+      const entry = payload && payload.data;
+      const returnedId = canonicalId(entry && entry.propertyId);
+      if (returnedId !== id || typeof entry.isFavorite !== "boolean") {
+        throw invalid("The favorites service returned an unexpected status.", "InvalidFavoritesResponseError");
+      }
+      /* A non-public retained favorite reports false here by contract; the
+         authoritative list is the only surface allowed to disprove it. */
+      const value = listAuthoritative.has(id) ? true : entry.isFavorite;
+      const applied = apply(id, value, myGeneration, myRevision);
+      return applied ? value : null;
     }
-    signal.addEventListener("abort", onAbort, { once: true });
-  }
-
-  const task = (async () => {
-    const payload = await apiRequest(`/favorites/${encodeURIComponent(id)}/status`, {
-      method: "GET",
-      signal: controller.signal
-    });
-    const entry = payload && payload.data;
-    const returnedId = canonicalId(entry && entry.propertyId);
-    if (returnedId !== id || typeof entry.isFavorite !== "boolean") {
-      throw invalid("The favorites service returned an unexpected status.", "InvalidFavoritesResponseError");
-    }
-    const applied = apply(id, entry.isFavorite, myGeneration);
-    return applied ? entry.isFavorite : null;
-  })();
-
-  statusFlights.set(id, task);
-  task.finally(() => {
-    if (statusFlights.get(id) === task) {
-      statusFlights.delete(id);
-    }
-    if (signal) {
-      signal.removeEventListener("abort", onAbort);
-    }
-  }).catch(() => {
-    /* Callers handle the original task; this observer must not add a second
-       unhandled rejection when a read fails. */
-  });
-  return task;
+  );
+  return attachCaller(flight, signal);
 }
 
 export async function getStatus(id, options = {}) {
@@ -269,8 +393,9 @@ export async function getStatus(id, options = {}) {
     return null;
   }
   const myGeneration = generation;
+  const myRevision = revisionOf(key);
   try {
-    return await readStatus(key, myGeneration, options);
+    return await readStatus(key, myGeneration, myRevision, options);
   } catch (error) {
     if (isCancellation(error)) {
       return null;
@@ -310,57 +435,58 @@ export async function syncCollection(ids, options = {}) {
 
   const myGeneration = generation;
   const key = normalized.join(",");
-  if (collectionFlights.has(key)) {
-    return collectionFlights.get(key);
-  }
-
-  const controller = new AbortController();
-  const onAbort = () => controller.abort();
-  if (options.signal) {
-    options.signal.addEventListener("abort", onAbort, { once: true });
+  const revisionsAtStart = new Map(
+    normalized.map((id) => [id, revisionOf(id)])
+  );
+  const revisionKey = JSON.stringify([...revisionsAtStart]);
+  const existing = collectionFlights.get(key);
+  if (
+    existing &&
+    existing.generation === myGeneration &&
+    existing.revision === revisionKey
+  ) {
+    return attachCaller(existing, options.signal);
   }
 
   const query = new URLSearchParams({ propertyIds: key });
-  const task = (async () => {
-    const payload = await apiRequest(`/favorites/status?${query.toString()}`, {
-      method: "GET",
-      signal: controller.signal
-    });
-    const entries = payload && payload.data && payload.data.favorites;
-    if (!Array.isArray(entries)) {
-      throw invalid("The favorites service returned an unexpected status list.", "InvalidFavoritesResponseError");
-    }
-
-    const requested = new Set(normalized);
-    const result = new Map();
-    entries.forEach((entry) => {
-      const id = canonicalId(entry && entry.propertyId);
-      if (id && requested.has(id) && typeof entry.isFavorite === "boolean") {
-        result.set(id, entry.isFavorite);
+  const flight = createFlight(
+    collectionFlights,
+    key,
+    myGeneration,
+    revisionKey,
+    async (flightSignal) => {
+      const payload = await apiRequest(`/favorites/status?${query.toString()}`, {
+        method: "GET",
+        signal: flightSignal
+      });
+      const entries = payload && payload.data && payload.data.favorites;
+      if (!Array.isArray(entries)) {
+        throw invalid("The favorites service returned an unexpected status list.", "InvalidFavoritesResponseError");
       }
-    });
 
-    if (!applies(myGeneration)) {
-      return null;
-    }
-    result.forEach((value, id) => state.set(id, value));
-    notify();
-    return result;
-  })();
+      const requested = new Set(normalized);
+      const received = new Map();
+      entries.forEach((entry) => {
+        const id = canonicalId(entry && entry.propertyId);
+        if (id && requested.has(id) && typeof entry.isFavorite === "boolean") {
+          received.set(id, entry.isFavorite);
+        }
+      });
 
-  collectionFlights.set(key, task);
-  task.finally(() => {
-    if (collectionFlights.get(key) === task) {
-      collectionFlights.delete(key);
+      if (!applies(myGeneration)) {
+        return null;
+      }
+      const result = new Map();
+      received.forEach((rawValue, id) => {
+        const value = listAuthoritative.has(id) ? true : rawValue;
+        if (apply(id, value, myGeneration, revisionsAtStart.get(id))) {
+          result.set(id, value);
+        }
+      });
+      return result;
     }
-    if (options.signal) {
-      options.signal.removeEventListener("abort", onAbort);
-    }
-  }).catch(() => {
-    /* Callers handle the original task; this observer must not add a second
-       unhandled rejection when a batch read fails. */
-  });
-  return task;
+  );
+  return attachCaller(flight, options.signal);
 }
 
 /** The paginated list is authoritative for retained, non-public favorites. */
@@ -380,6 +506,7 @@ export async function listFavorites({ page = 0, size = 12, sort = "newest", sign
     return null;
   }
   const myGeneration = generation;
+  const myMutationRevision = mutationRevision;
   const query = new URLSearchParams({
     page: String(page),
     size: String(size),
@@ -396,13 +523,19 @@ export async function listFavorites({ page = 0, size = 12, sort = "newest", sign
     }
 
     /* Every returned item is a stored favorite, including generic placeholders
-       whose individual/batch status deliberately reports false. */
-    payload.data.forEach((item) => {
-      const id = canonicalId(item && item.propertyId);
-      if (id) {
-        apply(id, true, myGeneration);
-      }
-    });
+       whose individual/batch status deliberately reports false. A mutation that
+       began after this request supersedes the whole page; an intervening status
+       read does not because this list is authoritative for retained rows. */
+    if (myMutationRevision === mutationRevision) {
+      payload.data.forEach((item) => {
+        const id = canonicalId(item && item.propertyId);
+        if (id) {
+          apply(id, true, myGeneration, revisionOf(id), {
+            authoritative: true
+          });
+        }
+      });
+    }
 
     return { items: payload.data, meta: normalizeMeta(payload.meta) };
   } catch (error) {
@@ -426,56 +559,132 @@ export function markFavorite(id) {
   }
 }
 
-async function mutate(id, action) {
+/** The approved collection remains authoritative for retained non-public rows. */
+async function reconcileByList(id, myGeneration) {
+  let page = 0;
+  const myMutationRevision = mutationRevision;
+  try {
+    while (true) {
+      const result = await listFavorites({ page, size: MAX_BATCH_IDS, sort: "newest" });
+      if (!result || !applies(myGeneration) || mutationRevision !== myMutationRevision) {
+        return null;
+      }
+      const items = Array.isArray(result.items) ? result.items : [];
+      if (items.some((item) => canonicalId(item && item.propertyId) === id)) {
+        apply(id, true, myGeneration, revisionOf(id), { authoritative: true });
+        return true;
+      }
+      const meta = result.meta;
+      if (!meta || !meta.hasNext || page + 1 >= meta.totalPages) {
+        break;
+      }
+      page += 1;
+    }
+    if (mutationRevision !== myMutationRevision) {
+      return null;
+    }
+    listAuthoritative.delete(id);
+    apply(id, false, myGeneration, revisionOf(id), { authoritative: true });
+    return false;
+  } catch {
+    return null;
+  }
+}
+
+function withOperationContext(result, myGeneration, myRevision) {
+  return {
+    ...result,
+    generation: myGeneration,
+    revision: myRevision,
+    state: result.state === undefined ? null : result.state
+  };
+}
+
+function mutate(id, action) {
   const key = canonicalId(id);
   if (!key) {
-    return { ok: false, reason: "validation", state: null };
+    return Promise.resolve(
+      withOperationContext({ ok: false, reason: "validation", state: null }, 0, 0)
+    );
   }
 
-  const buyer = await requireBuyer();
-  if (!buyer) {
-    return { ok: false, reason: "auth", state: known(key) };
+  const current = getAuthState();
+  if (current.status !== "unknown" && !isBuyer(current)) {
+    return Promise.resolve(
+      withOperationContext(
+        { ok: false, reason: "auth", state: known(key) },
+        generation,
+        revisionOf(key)
+      )
+    );
   }
   if (cooldown.active()) {
-    return {
-      ok: false,
-      reason: "rate_limit",
-      retryAfterMs: cooldown.remainingMs(),
-      state: known(key)
-    };
+    return Promise.resolve(
+      withOperationContext(
+        {
+          ok: false,
+          reason: "rate_limit",
+          retryAfterMs: cooldown.remainingMs(),
+          state: known(key)
+        },
+        generation,
+        revisionOf(key)
+      )
+    );
   }
+  /* Dedupe synchronously, before any await, so two activations in one task
+     cannot issue two requests. */
   if (pending.has(key)) {
     return pending.get(key);
   }
 
   const myGeneration = generation;
+  const myRevision = bumpRevision(key);
   const task = (async () => {
     let result;
     try {
-      const payload = await apiRequest(`/favorites/${encodeURIComponent(key)}`, {
-        method: action === "add" ? "POST" : "DELETE"
-        /* No automatic CSRF retry is requested; Stage 6 mutations never retry. */
-      });
-
-      if (action === "add") {
-        if (payload && payload.data && payload.data.isFavorite === true) {
-          apply(key, true, myGeneration);
-          result = { ok: true, action: "added", state: true };
-        } else {
-          /* An unrecognized success shape is reconciled by a safe read, not
-             by repeating the mutation. */
-          const reconciled = await readStatus(key, myGeneration, { force: true });
-          result = {
-            ok: false,
-            reason: "reconciled",
-            reconciled: true,
-            state: reconciled === null ? known(key) : reconciled
-          };
-        }
+      const buyer = await requireBuyer();
+      if (!buyer || !applies(myGeneration)) {
+        result = { ok: false, reason: "auth", state: null };
       } else {
-        /* DELETE 204 has no body; the client does not try to parse one. */
-        apply(key, false, myGeneration);
-        result = { ok: true, action: "removed", state: false };
+        const payload = await apiRequest(`/favorites/${encodeURIComponent(key)}`, {
+          method: action === "add" ? "POST" : "DELETE"
+          /* No automatic CSRF retry is requested; Stage 6 mutations never retry. */
+        });
+
+        if (action === "add") {
+          if (payload && payload.data && payload.data.isFavorite === true) {
+            if (apply(key, true, myGeneration, myRevision, { authoritative: true })) {
+              result = { ok: true, action: "added", state: true };
+            } else {
+              result = { ok: false, reason: "stale", state: known(key) };
+            }
+          } else {
+            /* An unrecognized success shape is reconciled by a safe read, not
+               by repeating the mutation. */
+            const reconciled = await readStatus(
+              key,
+              myGeneration,
+              revisionOf(key),
+              { force: true }
+            );
+            result = {
+              ok: false,
+              reason: "reconciled",
+              reconciled: true,
+              source: "status",
+              state: reconciled === null ? known(key) : reconciled
+            };
+          }
+        } else {
+          /* DELETE 204 has no body; the client does not try to parse one. */
+          listAuthoritative.delete(key);
+          if (apply(key, false, myGeneration, myRevision, { authoritative: true })) {
+            result = { ok: true, action: "removed", state: false };
+          } else {
+            result = { ok: false, reason: "stale", state: known(key) };
+          }
+        }
       }
     } catch (error) {
       if (isCancellation(error)) {
@@ -492,24 +701,28 @@ async function mutate(id, action) {
         clearSessionState();
         result = { ok: false, reason: "auth", state: null };
       } else if (isAmbiguous(error) && applies(myGeneration) && !cooldown.active()) {
-        /* Network/timeout/5xx after a mutation is ambiguous. The approved
-           individual status endpoint resolves it; the mutation is not retried. */
-        try {
-          const reconciled = await readStatus(key, myGeneration, { force: true });
-          result = {
-            ok: false,
-            reason: "reconciled",
-            reconciled: true,
-            state: reconciled === null ? known(key) : reconciled
-          };
-        } catch {
-          result = { ok: false, reason: "unavailable", state: known(key) };
-        }
+        /* A network/timeout/5xx outcome is ambiguous. Removal is reconciled
+           through the paginated collection because status reports false for a
+           retained non-public favorite. No mutation is replayed. */
+        const reconciled =
+          action === "remove"
+            ? await reconcileByList(key, myGeneration)
+            : await readStatus(key, myGeneration, revisionOf(key), { force: true });
+        result = {
+          ok: false,
+          reason: "reconciled",
+          reconciled: true,
+          source: action === "remove" ? "list" : "status",
+          state: reconciled === null ? known(key) : reconciled
+        };
       } else {
         result = { ok: false, reason: failureReason(error), state: known(key) };
       }
     }
-    return result;
+    if (!applies(myGeneration)) {
+      result = { ok: false, reason: "stale", state: null };
+    }
+    return withOperationContext(result, myGeneration, myRevision);
   })();
 
   pending.set(key, task);

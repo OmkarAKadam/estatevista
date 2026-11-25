@@ -433,13 +433,31 @@
     }
 
     var wasSaved = FAVORITES.isFavorite(id);
+    var mutationGeneration = FAVORITES.getSnapshot
+      ? FAVORITES.getSnapshot().generation
+      : null;
     var action = wasSaved ? FAVORITES.removeFavorite(id) : FAVORITES.addFavorite(id);
     announceFavorite(wasSaved ? "Removing " + title + " from favorites…" : "Saving " + title + " to favorites…");
 
     Promise.resolve(action)
       .then(function (result) {
+        var currentGeneration = FAVORITES.getSnapshot
+          ? FAVORITES.getSnapshot().generation
+          : mutationGeneration;
+        var sameSession = mutationGeneration === null ||
+          (result && result.generation === mutationGeneration &&
+            currentGeneration === mutationGeneration);
+        if (!sameSession || (result && result.reason === "stale")) {
+          announceFavorite("Favorite update was interrupted.");
+          return;
+        }
+        var operation = result && result.action === "removed"
+          ? "removed"
+          : result && result.action === "added"
+            ? "added"
+            : wasSaved ? "removed" : "added";
         var message = result && result.ok
-          ? (result.action === "removed"
+          ? (operation === "removed"
               ? "Removed " + title + " from favorites."
               : "Saved " + title + " to favorites.")
           : FAVORITES.describeFavoriteFailure(result);
@@ -447,7 +465,7 @@
         document.dispatchEvent(new CustomEvent("ev-favorite-mutation", {
           detail: {
             propertyId: id,
-            action: wasSaved ? "removed" : "added",
+            action: operation,
             ok: Boolean(result && result.ok),
             state: result ? result.state : null
           }

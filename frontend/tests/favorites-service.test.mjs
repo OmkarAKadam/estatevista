@@ -37,7 +37,7 @@ globalThis.window = {
 const { default: favorites } = await import(
   "../assets/js/favorites/favorites-service.js"
 );
-const { setAuthenticated, setAnonymous } = await import(
+const { setAuthenticated, setAnonymous, getAuthState } = await import(
   "../assets/js/auth/auth-state.js"
 );
 const { clearCsrfToken } = await import("../assets/js/core/api.js");
@@ -87,6 +87,12 @@ function defaultHandler(url) {
 
 function favoriteCalls() {
   return calls.filter((call) => call.path.includes("/favorites"));
+}
+
+async function tick(times = 2) {
+  for (let index = 0; index < times; index += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 }
 
 function buyer() {
@@ -259,10 +265,10 @@ test("a mutation publishes pending state immediately and releases it on completi
   assert.equal(views.at(-1).pendingCount, 0);
 });
 
-test("an ambiguous mutation is reconciled by a read and never retried", async () => {
+test("an ambiguous retained removal is reconciled by the authoritative list and never retried", async () => {
   buyer();
   let deletes = 0;
-  let reads = 0;
+  let lists = 0;
   installFetch((url, init) => {
     if (url.pathname === "/api/v1/auth/csrf") {
       return defaultHandler(url);
@@ -271,18 +277,63 @@ test("an ambiguous mutation is reconciled by a read and never retried", async ()
       deletes += 1;
       throw new TypeError("network failure");
     }
-    reads += 1;
-    assert.equal(url.pathname, `/api/v1/favorites/${ID1}/status`);
-    return json({ success: true, data: { propertyId: ID1, isFavorite: true } });
+    lists += 1;
+    assert.equal(url.pathname, "/api/v1/favorites");
+    assert.equal(url.searchParams.get("page"), "0");
+    assert.equal(url.searchParams.get("size"), "100");
+    return json({
+      success: true,
+      data: [
+        {
+          propertyId: ID1,
+          createdAt: "2026-11-24T10:30:00Z",
+          property: {
+            availability: "UNAVAILABLE",
+            placeholder: "Property no longer available"
+          }
+        }
+      ],
+      meta: { page: 0, size: 100, totalElements: 1, totalPages: 1, hasNext: false, hasPrevious: false }
+    });
   });
 
+  favorites.markFavorite(ID1);
   const result = await favorites.removeFavorite(ID1);
   assert.equal(result.ok, false);
   assert.equal(result.reason, "reconciled");
+  assert.equal(result.source, "list");
   assert.equal(result.state, true);
   assert.equal(deletes, 1);
-  assert.equal(reads, 1);
+  assert.equal(lists, 1);
   assert.equal(favorites.isFavorite(ID1), true);
+});
+
+test("an ambiguous committed removal is reconciled to an empty authoritative list", async () => {
+  buyer();
+  let deletes = 0;
+  installFetch((url, init) => {
+    if (url.pathname === "/api/v1/auth/csrf") {
+      return defaultHandler(url);
+    }
+    if (init.method === "DELETE") {
+      deletes += 1;
+      throw new TypeError("network failure");
+    }
+    assert.equal(url.pathname, "/api/v1/favorites");
+    return json({
+      success: true,
+      data: [],
+      meta: { page: 0, size: 100, totalElements: 0, totalPages: 0, hasNext: false, hasPrevious: false }
+    });
+  });
+
+  favorites.markFavorite(ID1);
+  const result = await favorites.removeFavorite(ID1);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "reconciled");
+  assert.equal(result.state, false);
+  assert.equal(deletes, 1);
+  assert.equal(favorites.isFavorite(ID1), false);
 });
 
 test("429 starts the full shared cooldown and suppresses subsequent requests", async () => {
@@ -375,4 +426,415 @@ test("an auth revision change clears cached favorite state", async () => {
   assert.equal(favorites.isFavorite(ID1), true);
   setAnonymous();
   assert.equal(favorites.isFavorite(ID1), false);
+});
+
+test("a stale individual status cannot overwrite a completed add", async () => {
+  buyer();
+  let releaseStatus = null;
+  installFetch((url, init) => {
+    if (url.pathname === "/api/v1/auth/csrf") {
+      return defaultHandler(url);
+    }
+    if (init.method === "GET") {
+      return new Promise((resolve) => {
+        releaseStatus = () =>
+          resolve(json({ success: true, data: { propertyId: ID1, isFavorite: false } }));
+      });
+    }
+    return json({ success: true, data: { propertyId: ID1, isFavorite: true } }, 201);
+  });
+
+  const staleStatus = favorites.getStatus(ID1, { force: true });
+  await tick();
+  const added = await favorites.addFavorite(ID1);
+  releaseStatus();
+  const staleResult = await staleStatus;
+
+  assert.equal(added.ok, true);
+  assert.equal(staleResult, null);
+  assert.equal(favorites.isFavorite(ID1), true);
+  assert.equal(favorites.isPending(ID1), false);
+});
+
+test("a stale individual status cannot overwrite a completed removal", async () => {
+  buyer();
+  let releaseStatus = null;
+  installFetch((url, init) => {
+    if (url.pathname === "/api/v1/auth/csrf") {
+      return defaultHandler(url);
+    }
+    if (init.method === "POST") {
+      return json({ success: true, data: { propertyId: ID1, isFavorite: true } }, 201);
+    }
+    if (init.method === "DELETE") {
+      return noContent();
+    }
+    return new Promise((resolve) => {
+      releaseStatus = () =>
+        resolve(json({ success: true, data: { propertyId: ID1, isFavorite: true } }));
+    });
+  });
+
+  assert.equal((await favorites.addFavorite(ID1)).ok, true);
+  const staleStatus = favorites.getStatus(ID1, { force: true });
+  await tick();
+  assert.equal((await favorites.removeFavorite(ID1)).ok, true);
+  releaseStatus();
+  assert.equal(await staleStatus, null);
+  assert.equal(favorites.isFavorite(ID1), false);
+});
+
+test("stale batched status responses cannot overwrite completed mutations", async () => {
+  buyer();
+  let releaseBatch = null;
+  let batchValue = false;
+  installFetch((url, init) => {
+    if (url.pathname === "/api/v1/auth/csrf") {
+      return defaultHandler(url);
+    }
+    if (init.method === "GET") {
+      return new Promise((resolve) => {
+        releaseBatch = () =>
+          resolve(json({
+            success: true,
+            data: { favorites: [{ propertyId: ID1, isFavorite: batchValue }] }
+          }));
+      });
+    }
+    if (init.method === "POST") {
+      return json({ success: true, data: { propertyId: ID1, isFavorite: true } }, 201);
+    }
+    return noContent();
+  });
+
+  const staleAddBatch = favorites.syncCollection([ID1]);
+  await tick();
+  assert.equal((await favorites.addFavorite(ID1)).ok, true);
+  releaseBatch();
+  assert.equal((await staleAddBatch).size, 0);
+  assert.equal(favorites.isFavorite(ID1), true);
+
+  batchValue = true;
+  const staleRemoveBatch = favorites.syncCollection([ID1]);
+  await tick();
+  assert.equal((await favorites.removeFavorite(ID1)).ok, true);
+  releaseBatch();
+  assert.equal((await staleRemoveBatch).size, 0);
+  assert.equal(favorites.isFavorite(ID1), false);
+});
+
+test("rapid activation for one property issues exactly one mutation", async () => {
+  buyer();
+  let posts = 0;
+  installFetch((url, init) => {
+    if (url.pathname === "/api/v1/auth/csrf") {
+      return defaultHandler(url);
+    }
+    assert.equal(init.method, "POST");
+    posts += 1;
+    return json({ success: true, data: { propertyId: ID1, isFavorite: true } }, 201);
+  });
+
+  const first = favorites.addFavorite(ID1);
+  const second = favorites.addFavorite(ID1);
+  assert.strictEqual(first, second);
+  assert.equal(favorites.isPending(ID1), true);
+  await first;
+  assert.equal(posts, 1);
+  assert.equal(favorites.isPending(ID1), false);
+});
+
+test("different properties mutate independently", async () => {
+  buyer();
+  const posted = [];
+  installFetch((url, init) => {
+    if (url.pathname === "/api/v1/auth/csrf") {
+      return defaultHandler(url);
+    }
+    assert.equal(init.method, "POST");
+    posted.push(url.pathname);
+    return json({ success: true, data: { propertyId: ID1, isFavorite: true } }, 201);
+  });
+
+  await Promise.all([favorites.addFavorite(ID1), favorites.addFavorite(ID2)]);
+  assert.equal(posted.length, 2);
+  assert.notDeepEqual(posted[0], posted[1]);
+  assert.equal(favorites.isFavorite(ID1), true);
+  assert.equal(favorites.isFavorite(ID2), true);
+});
+
+test("a failed mutation releases pending state and notifies subscribers", async () => {
+  buyer();
+  installFetch((url, init) => {
+    if (url.pathname === "/api/v1/auth/csrf") {
+      return defaultHandler(url);
+    }
+    assert.equal(init.method, "POST");
+    return json({ success: false, error: { code: "FORBIDDEN" } }, 403);
+  });
+
+  const views = [];
+  const unsubscribe = favorites.subscribe((view) => views.push(view));
+  views.length = 0;
+  const result = await favorites.addFavorite(ID1);
+  unsubscribe();
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "forbidden");
+  assert.equal(favorites.isPending(ID1), false);
+  assert.equal(views.at(-1).pendingCount, 0);
+});
+
+test("one caller cancelling a shared read does not cancel another caller", async () => {
+  buyer();
+  let releaseStatus = null;
+  let requestSignal = null;
+  installFetch((url, init) => {
+    if (url.pathname === "/api/v1/auth/csrf") {
+      return defaultHandler(url);
+    }
+    requestSignal = init.signal;
+    return new Promise((resolve) => {
+      releaseStatus = () =>
+        resolve(json({ success: true, data: { propertyId: ID1, isFavorite: true } }));
+    });
+  });
+
+  const controller = new AbortController();
+  const first = favorites.getStatus(ID1, { force: true });
+  const second = favorites.getStatus(ID1, { force: true, signal: controller.signal });
+  await tick();
+  controller.abort();
+  assert.equal(requestSignal.aborted, false);
+  releaseStatus();
+
+  assert.equal(await first, true);
+  assert.equal(await second, null);
+  assert.equal(favorites.isFavorite(ID1), true);
+});
+
+test("a stale read cannot clear newer pending mutation state", async () => {
+  buyer();
+  let releaseStatus = null;
+  let releaseDelete = null;
+  installFetch((url, init) => {
+    if (url.pathname === "/api/v1/auth/csrf") {
+      return defaultHandler(url);
+    }
+    if (init.method === "POST") {
+      return json({ success: true, data: { propertyId: ID1, isFavorite: true } }, 201);
+    }
+    if (init.method === "DELETE") {
+      return new Promise((resolve) => {
+        releaseDelete = () => resolve(noContent());
+      });
+    }
+    return new Promise((resolve) => {
+      releaseStatus = () =>
+        resolve(json({ success: true, data: { propertyId: ID1, isFavorite: false } }));
+    });
+  });
+
+  assert.equal((await favorites.addFavorite(ID1)).ok, true);
+  const staleStatus = favorites.getStatus(ID1, { force: true });
+  await tick();
+  const removal = favorites.removeFavorite(ID1);
+  await tick();
+  releaseStatus();
+  assert.equal(await staleStatus, null);
+  assert.equal(favorites.isFavorite(ID1), true);
+  assert.equal(favorites.isPending(ID1), true);
+  releaseDelete();
+  assert.equal((await removal).ok, true);
+  assert.equal(favorites.isFavorite(ID1), false);
+});
+
+test("logout and account switch suppress pending mutation results", async () => {
+  const otherBuyer = { ...USER, id: ID2, email: "other-buyer@example.com" };
+  for (const transition of [
+    () => setAnonymous(),
+    () => setAuthenticated(otherBuyer)
+  ]) {
+    buyer();
+    let releaseDelete = null;
+    installFetch((url, init) => {
+      if (url.pathname === "/api/v1/auth/csrf") {
+        return defaultHandler(url);
+      }
+      assert.equal(init.method, "DELETE");
+      return new Promise((resolve) => {
+        releaseDelete = () => resolve(noContent());
+      });
+    });
+
+    favorites.markFavorite(ID1);
+    const removal = favorites.removeFavorite(ID1);
+    await tick();
+    transition();
+    releaseDelete();
+    const result = await removal;
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "stale");
+    assert.equal(favorites.isFavorite(ID1), false);
+    assert.equal(favorites.isPending(ID1), false);
+  }
+});
+
+test("a pending status response cannot leak state after session loss", async () => {
+  buyer();
+  let releaseStatus = null;
+  installFetch((url, init) => {
+    if (url.pathname === "/api/v1/auth/csrf") {
+      return defaultHandler(url);
+    }
+    assert.equal(init.method, "GET");
+    return new Promise((resolve) => {
+      releaseStatus = () =>
+        resolve(json({ success: true, data: { propertyId: ID1, isFavorite: true } }));
+    });
+  });
+
+  const pendingStatus = favorites.getStatus(ID1, { force: true });
+  await tick();
+  setAnonymous();
+  releaseStatus();
+  assert.equal(await pendingStatus, null);
+  assert.equal(favorites.isFavorite(ID1), false);
+});
+
+test("a generic 403 does not end the authenticated session", async () => {
+  buyer();
+  installFetch((url, init) => {
+    if (url.pathname === "/api/v1/auth/csrf") {
+      return defaultHandler(url);
+    }
+    assert.equal(init.method, "POST");
+    return json({ success: false, error: { code: "FORBIDDEN" } }, 403);
+  });
+
+  const result = await favorites.addFavorite(ID1);
+  assert.equal(result.reason, "forbidden");
+  assert.equal(getAuthState().status, "authenticated");
+  assert.equal(getAuthState().user.role, "BUYER");
+});
+
+test("a status false cannot disprove a retained favorite confirmed by the list", async () => {
+  buyer();
+  installFetch((url) => {
+    if (url.pathname === "/api/v1/auth/csrf") {
+      return defaultHandler(url);
+    }
+    if (url.pathname === "/api/v1/favorites") {
+      return json({
+        success: true,
+        data: [
+          {
+            propertyId: ID1,
+            createdAt: "2026-11-24T10:30:00Z",
+            property: {
+              availability: "UNAVAILABLE",
+              placeholder: "Property no longer available"
+            }
+          }
+        ],
+        meta: { page: 0, size: 12, totalElements: 1, totalPages: 1, hasNext: false, hasPrevious: false }
+      });
+    }
+    return json({ success: true, data: { propertyId: ID1, isFavorite: false } });
+  });
+
+  await favorites.listFavorites();
+  assert.equal(favorites.isFavorite(ID1), true);
+  assert.equal(await favorites.getStatus(ID1, { force: true }), true);
+  assert.equal(favorites.isFavorite(ID1), true);
+});
+
+test("an ambiguous add is reconciled by a status read without replaying POST", async () => {
+  buyer();
+  let posts = 0;
+  let reads = 0;
+  installFetch((url, init) => {
+    if (url.pathname === "/api/v1/auth/csrf") {
+      return defaultHandler(url);
+    }
+    if (init.method === "POST") {
+      posts += 1;
+      const timeout = new Error("simulated timeout");
+      timeout.reason = "timeout";
+      throw timeout;
+    }
+    reads += 1;
+    assert.equal(url.pathname, `/api/v1/favorites/${ID1}/status`);
+    return json({ success: true, data: { propertyId: ID1, isFavorite: true } });
+  });
+
+  const result = await favorites.addFavorite(ID1);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "reconciled");
+  assert.equal(result.source, "status");
+  assert.equal(result.state, true);
+  assert.equal(posts, 1);
+  assert.equal(reads, 1);
+  assert.equal(favorites.isFavorite(ID1), true);
+});
+
+test("an authoritative list corrects an intervening non-public status false", async () => {
+  buyer();
+  let releaseList = null;
+  installFetch((url, init) => {
+    if (url.pathname === "/api/v1/auth/csrf") {
+      return defaultHandler(url);
+    }
+    if (url.pathname === "/api/v1/favorites") {
+      return new Promise((resolve) => {
+        releaseList = () =>
+          resolve(json({
+            success: true,
+            data: [{
+              propertyId: ID1,
+              createdAt: "2026-11-24T10:30:00Z",
+              property: { availability: "UNAVAILABLE", placeholder: "Property no longer available" }
+            }],
+            meta: { page: 0, size: 12, totalElements: 1, totalPages: 1, hasNext: false, hasPrevious: false }
+          }));
+      });
+    }
+    assert.equal(init.method, "GET");
+    return json({ success: true, data: { propertyId: ID1, isFavorite: false } });
+  });
+
+  const list = favorites.listFavorites();
+  await tick();
+  assert.equal(await favorites.getStatus(ID1, { force: true }), false);
+  assert.equal(favorites.isFavorite(ID1), false);
+  releaseList();
+  await list;
+  assert.equal(favorites.isFavorite(ID1), true);
+});
+
+test("cooldown expiry allows one explicit mutation with no automatic replay", async () => {
+  buyer();
+  let posts = 0;
+  installFetch((url, init) => {
+    if (url.pathname === "/api/v1/auth/csrf") {
+      return defaultHandler(url);
+    }
+    assert.equal(init.method, "POST");
+    posts += 1;
+    return json({ success: true, data: { propertyId: ID1, isFavorite: true } }, 201);
+  });
+
+  favorites.getCooldown().start(40);
+  const blocked = await favorites.addFavorite(ID1);
+  assert.equal(blocked.reason, "rate_limit");
+  assert.equal(posts, 0);
+  assert.equal(favorites.getCooldown().active(), true);
+
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(favorites.getCooldown().active(), false);
+  const result = await favorites.addFavorite(ID1);
+  assert.equal(result.ok, true);
+  assert.equal(posts, 1);
+  assert.equal(favorites.isPending(ID1), false);
 });

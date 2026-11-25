@@ -27,6 +27,7 @@ let activeController = null;
 let lastErrorWasRateLimit = false;
 let retryWasDisabled = false;
 let lastAuthRevision = -1;
+let focusAfterLoad = null;
 
 function byId(id) {
   return document.getElementById(id);
@@ -324,6 +325,36 @@ function updatePagination(meta, rendered) {
   );
 }
 
+function restoreFocus() {
+  if (!focusAfterLoad) {
+    return;
+  }
+  const request = focusAfterLoad;
+  focusAfterLoad = null;
+  const grid = byId("favoritesGrid");
+  if (!grid || grid.hidden) {
+    const sortControl = byId("favoriteSort");
+    if (sortControl) {
+      sortControl.focus();
+    }
+    return;
+  }
+  const buttons = Array.from(grid.querySelectorAll("[data-ev-favorite]"));
+  if (buttons.length === 0) {
+    const sortControl = byId("favoriteSort");
+    if (sortControl) {
+      sortControl.focus();
+    }
+    return;
+  }
+  const target = buttons[Math.min(request.index, buttons.length - 1)];
+  if (target && !target.disabled) {
+    target.focus();
+  } else if (buttons[0]) {
+    buttons[0].focus();
+  }
+}
+
 function render(items, meta) {
   const grid = byId("favoritesGrid");
 
@@ -357,6 +388,7 @@ function render(items, meta) {
     if (sortControl) {
       sortControl.value = sort;
     }
+    restoreFocus();
     return;
   }
 
@@ -368,6 +400,7 @@ function render(items, meta) {
   if (sortControl) {
     sortControl.value = sort;
   }
+  restoreFocus();
 }
 
 async function load() {
@@ -399,23 +432,27 @@ async function load() {
     }
 
     const meta = normalizeMeta(result.meta);
+    const items = Array.isArray(result.items) ? result.items : [];
+    let correctedPage = page;
 
     if (meta && meta.totalPages > 0 && page >= meta.totalPages) {
-      page = meta.totalPages - 1;
-      writeUrlState();
-      loading = false;
-      await load();
-      return;
+      correctedPage = meta.totalPages - 1;
+    } else if (meta && meta.totalPages === 0 && page > 0) {
+      correctedPage = 0;
+    } else if (items.length === 0 && page > 0) {
+      /* A removal can empty a page that is still numerically in range. */
+      correctedPage = page - 1;
     }
-    if (meta && meta.totalPages === 0 && page > 0) {
-      page = 0;
+
+    if (correctedPage !== page) {
+      page = correctedPage;
       writeUrlState();
       loading = false;
       await load();
       return;
     }
 
-    render(Array.isArray(result.items) ? result.items : [], meta);
+    render(items, meta);
   } catch (error) {
     if (sequence !== requestSequence || isCancelled(error) || !allowed) {
       return;
@@ -455,6 +492,7 @@ function handleAuthView(view) {
     }
     allowed = false;
     lastAuthRevision = -1;
+    focusAfterLoad = null;
     if (view.status !== "authenticated" || !view.user) {
       showGuard("Sign in to view favorites", "Your session is not active. You will be directed to sign in.");
       redirectToLogin();
@@ -563,7 +601,14 @@ function wireEvents() {
 
     const grid = byId("favoritesGrid");
     if (grid) {
-      Array.from(grid.children).forEach((column) => {
+      const columns = Array.from(grid.children);
+      const index = columns.findIndex(
+        (column) => column.getAttribute("data-id") === detail.propertyId
+      );
+      if (index >= 0) {
+        focusAfterLoad = { index };
+      }
+      columns.forEach((column) => {
         if (column.getAttribute("data-id") === detail.propertyId) {
           column.remove();
         }
