@@ -329,7 +329,7 @@ class InquiryApiIntegrationTest {
         assertThat(newAssigned).isEqualTo(agentB.getId());
 
         // New inquiry after CLOSED also allowed; multiple historical coexist with one active.
-        jdbcTemplate.update("UPDATE inquiries SET status='CLOSED', closed_at=now(), updated_at=now() WHERE id=?", newInquiryId);
+        jdbcTemplate.update("UPDATE inquiries SET status='CLOSED', updated_at=now() WHERE id=?", newInquiryId);
         UUID closedFollowUpId = submitInquiry(buyerSession, property.getId(), "after-closed");
         UUID closedFollowUpAssigned = jdbcTemplate.queryForObject("SELECT assigned_agent_id FROM inquiries WHERE id=?", UUID.class, closedFollowUpId);
         assertThat(closedFollowUpAssigned).isEqualTo(agentB.getId());

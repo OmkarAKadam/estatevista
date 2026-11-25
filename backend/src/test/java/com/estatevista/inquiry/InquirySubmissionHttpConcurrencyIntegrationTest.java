@@ -79,23 +79,23 @@ class InquirySubmissionHttpConcurrencyIntegrationTest {
 
     @AfterEach
     void cleanup() {
-        if (!propertyIds.isEmpty()) {
-            jdbcTemplate.update("DELETE FROM inquiries WHERE property_id = ANY (?)", propertyIds.toArray(UUID[]::new));
+        for (UUID propertyId : propertyIds) {
+            jdbcTemplate.update("DELETE FROM inquiries WHERE property_id = ?", propertyId);
         }
-        if (!userIds.isEmpty()) {
-            jdbcTemplate.update("DELETE FROM inquiries WHERE buyer_id = ANY (?) OR assigned_agent_id = ANY (?)",
-                    userIds.toArray(UUID[]::new), userIds.toArray(UUID[]::new));
+        for (UUID userId : userIds) {
+            jdbcTemplate.update("DELETE FROM inquiries WHERE buyer_id = ? OR assigned_agent_id = ?", userId, userId);
         }
-        if (!propertyIds.isEmpty()) {
-            jdbcTemplate.update("DELETE FROM properties WHERE id = ANY (?)", propertyIds.toArray(UUID[]::new));
+        for (UUID propertyId : propertyIds) {
+            jdbcTemplate.update("DELETE FROM properties WHERE id = ?", propertyId);
         }
-        if (!sessionIds.isEmpty()) {
-            jdbcTemplate.update("DELETE FROM spring_session_attributes WHERE session_primary_id IN (SELECT primary_id FROM spring_session WHERE session_id = ANY (?))",
-                    sessionIds.toArray(String[]::new));
-            jdbcTemplate.update("DELETE FROM spring_session WHERE session_id = ANY (?)", sessionIds.toArray(String[]::new));
+        for (String sessionId : sessionIds) {
+            jdbcTemplate.update(
+                    "DELETE FROM spring_session_attributes WHERE session_primary_id IN (SELECT primary_id FROM spring_session WHERE session_id = ?)",
+                    sessionId);
+            jdbcTemplate.update("DELETE FROM spring_session WHERE session_id = ?", sessionId);
         }
-        if (!userIds.isEmpty()) {
-            jdbcTemplate.update("DELETE FROM users WHERE id = ANY (?)", userIds.toArray(UUID[]::new));
+        for (UUID userId : userIds) {
+            jdbcTemplate.update("DELETE FROM users WHERE id = ?", userId);
         }
     }
 
