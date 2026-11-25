@@ -25,6 +25,8 @@ public class RateLimitProperties {
     private Limit authenticatedApi = new Limit(300, 60);
     private Limit adminMutation = new Limit(60, 60);
     private Limit favoriteMutation = new Limit(60, 60);
+    private Limit inquirySubmissionBurst = new Limit(5, 60);
+    private Limit inquirySubmissionSustained = new Limit(30, 3600);
 
     public boolean isEnabled() {
         return enabled;
@@ -96,6 +98,22 @@ public class RateLimitProperties {
 
     public void setFavoriteMutation(Limit favoriteMutation) {
         this.favoriteMutation = favoriteMutation;
+    }
+
+    public Limit getInquirySubmissionBurst() {
+        return inquirySubmissionBurst;
+    }
+
+    public void setInquirySubmissionBurst(Limit inquirySubmissionBurst) {
+        this.inquirySubmissionBurst = inquirySubmissionBurst;
+    }
+
+    public Limit getInquirySubmissionSustained() {
+        return inquirySubmissionSustained;
+    }
+
+    public void setInquirySubmissionSustained(Limit inquirySubmissionSustained) {
+        this.inquirySubmissionSustained = inquirySubmissionSustained;
     }
 
     /** Shared threshold/window holder for approved Stage 4 rate-limit scopes. */

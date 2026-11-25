@@ -212,8 +212,8 @@ class BusinessSchemaIntegrationTest {
 
         assertThat(versions).containsExactly(
                 "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15",
-                "16", "17");
-        assertThat(successes).hasSize(17).containsOnly(true);
+                "16", "17", "18");
+        assertThat(successes).hasSize(18).containsOnly(true);
     }
 
     @Test
@@ -622,6 +622,120 @@ class BusinessSchemaIntegrationTest {
 
         assertThatThrownBy(() -> propertyRepository.saveAndFlush(property))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void inquiryStatusCheckRejectsInvalidStatus() {
+        User buyer = newUser(roleRepository.findByName("BUYER").orElseThrow(), "inq-status");
+        User agent = newUser(roleRepository.findByName("AGENT").orElseThrow(), "inq-status-agent");
+        User admin = newUser(roleRepository.findByName("ADMIN").orElseThrow(), "inq-status-admin");
+        userRepository.saveAllAndFlush(List.of(buyer, agent, admin));
+        Property property = propertyRepository.saveAndFlush(newUnsavedProperty(agent, admin));
+
+        Inquiry inquiry = new Inquiry();
+        inquiry.setBuyer(buyer);
+        inquiry.setProperty(property);
+        inquiry.setAssignedAgent(agent);
+        inquiry.setMessage("Status check");
+        inquiry.setStatus("INVALID");
+
+        assertThatThrownBy(() -> inquiryRepository.saveAndFlush(inquiry))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void activeInquiryPartialUniqueIndexBlocksDuplicateNewOrInProgress() {
+        User buyer = newUser(roleRepository.findByName("BUYER").orElseThrow(), "inq-active");
+        User agent = newUser(roleRepository.findByName("AGENT").orElseThrow(), "inq-active-agent");
+        User admin = newUser(roleRepository.findByName("ADMIN").orElseThrow(), "inq-active-admin");
+        userRepository.saveAllAndFlush(List.of(buyer, agent, admin));
+        Property property = propertyRepository.saveAndFlush(newUnsavedProperty(agent, admin));
+
+        Inquiry first = new Inquiry();
+        first.setBuyer(buyer);
+        first.setProperty(property);
+        first.setAssignedAgent(agent);
+        first.setMessage("First active inquiry");
+        first.setStatus("NEW");
+        inquiryRepository.saveAndFlush(first);
+
+        Inquiry second = new Inquiry();
+        second.setBuyer(buyer);
+        second.setProperty(property);
+        second.setAssignedAgent(agent);
+        second.setMessage("Second active inquiry");
+        second.setStatus("IN_PROGRESS");
+
+        assertThatThrownBy(() -> inquiryRepository.saveAndFlush(second))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void resolvedOrClosedInquiryAllowsNewActiveInquiryForSameBuyerAndProperty() {
+        User buyer = newUser(roleRepository.findByName("BUYER").orElseThrow(), "inq-reopen");
+        User agent = newUser(roleRepository.findByName("AGENT").orElseThrow(), "inq-reopen-agent");
+        User admin = newUser(roleRepository.findByName("ADMIN").orElseThrow(), "inq-reopen-admin");
+        userRepository.saveAllAndFlush(List.of(buyer, agent, admin));
+        Property property = propertyRepository.saveAndFlush(newUnsavedProperty(agent, admin));
+
+        Inquiry closed = new Inquiry();
+        closed.setBuyer(buyer);
+        closed.setProperty(property);
+        closed.setAssignedAgent(agent);
+        closed.setMessage("Closed inquiry");
+        closed.setStatus("CLOSED");
+        closed.setResolvedAt(Instant.now());
+        inquiryRepository.saveAndFlush(closed);
+
+        Inquiry reopened = new Inquiry();
+        reopened.setBuyer(buyer);
+        reopened.setProperty(property);
+        reopened.setAssignedAgent(agent);
+        reopened.setMessage("New inquiry after close");
+        reopened.setStatus("NEW");
+        Inquiry saved = inquiryRepository.saveAndFlush(reopened);
+
+        assertThat(saved.getId()).isNotNull();
+        assertThat(inquiryRepository.findById(saved.getId())).isPresent();
+    }
+
+    @Test
+    void v18InquiryConstraintsExistInDatabase() {
+        Boolean checkExists = jdbcTemplate.queryForObject("""
+                select exists (
+                    select 1
+                    from pg_constraint c
+                    join pg_class t on t.oid = c.conrelid
+                    where t.relname = 'inquiries'
+                      and c.conname = 'ck_inquiries_status'
+                      and c.contype = 'c'
+                )
+                """, Boolean.class);
+        Boolean indexExists = jdbcTemplate.queryForObject("""
+                select exists (
+                    select 1
+                    from pg_indexes
+                    where schemaname = 'public'
+                      and tablename = 'inquiries'
+                      and indexname = 'uk_inquiries_active_buyer_property'
+                )
+                """, Boolean.class);
+        String indexDef = jdbcTemplate.queryForObject("""
+                select indexdef
+                from pg_indexes
+                where schemaname = 'public'
+                  and tablename = 'inquiries'
+                  and indexname = 'uk_inquiries_active_buyer_property'
+                """, String.class);
+
+        assertThat(checkExists).isTrue();
+        assertThat(indexExists).isTrue();
+        assertThat(indexDef)
+                .contains("UNIQUE INDEX")
+                .contains("(buyer_id, property_id)")
+                .contains("WHERE")
+                .contains("NEW")
+                .contains("IN_PROGRESS");
     }
 
     private Property newUnsavedProperty(User agent, User admin) {

@@ -647,7 +647,7 @@ class PublicPropertyDiscoveryIntegrationTest {
         Integer flywayVersion = jdbcTemplate.queryForObject(
                 "SELECT max(cast(version AS integer)) FROM flyway_schema_history "
                         + "WHERE success = true", Integer.class);
-        assertThat(flywayVersion).isEqualTo(17);
+        assertThat(flywayVersion).isEqualTo(18);
     }
 
     @Test

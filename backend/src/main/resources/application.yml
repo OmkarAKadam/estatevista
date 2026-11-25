@@ -97,6 +97,12 @@ app:
     favorite-mutation:
       max-attempts: ${APP_RATE_LIMIT_FAVORITE_MUTATION_MAX_ATTEMPTS:60}
       window-seconds: ${APP_RATE_LIMIT_FAVORITE_MUTATION_WINDOW_SECONDS:60}
+    inquiry-submission-burst:
+      max-attempts: ${APP_RATE_LIMIT_INQUIRY_SUBMISSION_BURST_MAX_ATTEMPTS:5}
+      window-seconds: ${APP_RATE_LIMIT_INQUIRY_SUBMISSION_BURST_WINDOW_SECONDS:60}
+    inquiry-submission-sustained:
+      max-attempts: ${APP_RATE_LIMIT_INQUIRY_SUBMISSION_SUSTAINED_MAX_ATTEMPTS:30}
+      window-seconds: ${APP_RATE_LIMIT_INQUIRY_SUBMISSION_SUSTAINED_WINDOW_SECONDS:3600}
   image-cleanup:
     enabled: ${APP_IMAGE_CLEANUP_ENABLED:true}
     poll-ms: ${APP_IMAGE_CLEANUP_POLL_MS:5000}

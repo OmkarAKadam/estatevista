@@ -102,21 +102,27 @@ public class ResourceAuthorizationService {
     /**
      * An inquiry is available to its submitting buyer, its originally assigned
      * agent, and ADMIN monitoring. ADMIN does not gain conversation access.
+     *
+     * <p>Missing and unauthorized resources receive the same generic 404 to avoid
+     * private-resource existence disclosure (Stage 6 decision register).</p>
      */
     public void requireInquiryAccess(AuthenticatedAccount account, UUID inquiryId) {
         Inquiry inquiry = inquiryId == null
                 ? null
                 : inquiryRepository.findById(inquiryId).orElse(null);
         if (inquiry == null) {
-            throw denied();
+            throw notFound();
         }
         if (account == null) {
-            throw denied();
+            throw notFound();
         }
-        switch (account.role()) {
-            case BUYER -> requireSelf(account, ownerId(inquiry.getBuyer()));
-            case AGENT -> requireSelf(account, ownerId(inquiry.getAssignedAgent()));
-            case ADMIN -> { /* documented platform monitoring capability */ }
+        boolean allowed = switch (account.role()) {
+            case BUYER -> account.id().equals(ownerId(inquiry.getBuyer()));
+            case AGENT -> account.id().equals(ownerId(inquiry.getAssignedAgent()));
+            case ADMIN -> true;
+        };
+        if (!allowed) {
+            throw notFound();
         }
     }
 
@@ -226,5 +232,9 @@ public class ResourceAuthorizationService {
 
     private static ApiException denied() {
         return new ApiException(ErrorCode.FORBIDDEN, ErrorCode.FORBIDDEN.defaultMessage());
+    }
+
+    private static ApiException notFound() {
+        return new ApiException(ErrorCode.NOT_FOUND, ErrorCode.NOT_FOUND.defaultMessage());
     }
 }

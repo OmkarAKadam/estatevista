@@ -230,9 +230,9 @@ class ResourceAuthorizationIntegrationTest {
         resources.requireInquiryAccess(assignedAgentAccount, inquiry.getId());
         resources.requireInquiryAccess(adminAccount, inquiry.getId());
 
-        assertDenied(() -> resources.requireInquiryAccess(otherBuyerAccount, inquiry.getId()));
-        assertDenied(() -> resources.requireInquiryAccess(otherAgentAccount, inquiry.getId()));
-        assertDenied(() -> resources.requireInquiryAccess(buyerAccount, UUID.randomUUID()));
+        assertNotFound(() -> resources.requireInquiryAccess(otherBuyerAccount, inquiry.getId()));
+        assertNotFound(() -> resources.requireInquiryAccess(otherAgentAccount, inquiry.getId()));
+        assertNotFound(() -> resources.requireInquiryAccess(buyerAccount, UUID.randomUUID()));
     }
 
     @Test
@@ -290,8 +290,9 @@ class ResourceAuthorizationIntegrationTest {
         assertDenied(() -> resources.requireMessageSender(spoofed, message.getId()));
         assertDenied(() -> resources.requireReadStateOwner(
                 buyerAccount, new ConversationReadStateId(conversation.getId(), spoofedUserId)));
-        assertDenied(() -> resources.requireInquiryAccess(null, inquiry.getId()));
+        assertNotFound(() -> resources.requireInquiryAccess(null, inquiry.getId()));
         assertThat(ErrorCode.FORBIDDEN.defaultMessage()).isNotBlank();
+        assertThat(ErrorCode.NOT_FOUND.defaultMessage()).isNotBlank();
     }
 
     private AuthenticatedAccount accountFor(User user, PlatformRole expectedRole) {
@@ -307,6 +308,13 @@ class ResourceAuthorizationIntegrationTest {
                 .isThrownBy(executable::execute)
                 .satisfies(error -> assertThat(error.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN))
                 .withMessage(ErrorCode.FORBIDDEN.defaultMessage());
+    }
+
+    private static void assertNotFound(Executable executable) {
+        assertThatExceptionOfType(ApiException.class)
+                .isThrownBy(executable::execute)
+                .satisfies(error -> assertThat(error.getErrorCode()).isEqualTo(ErrorCode.NOT_FOUND))
+                .withMessage(ErrorCode.NOT_FOUND.defaultMessage());
     }
 
     private static User newUser(Role role, String label) {

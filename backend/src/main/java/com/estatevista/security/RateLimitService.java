@@ -42,6 +42,8 @@ public class RateLimitService {
     public static final String SCOPE_AUTHENTICATED_API = "authenticated_api";
     public static final String SCOPE_ADMIN_MUTATION = "admin_mutation";
     public static final String SCOPE_FAVORITE_MUTATION = "favorite_mutation";
+    public static final String SCOPE_INQUIRY_SUBMISSION_BURST = "inquiry_submission_burst";
+    public static final String SCOPE_INQUIRY_SUBMISSION_SUSTAINED = "inquiry_submission_sustained";
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitService.class);
 
@@ -187,6 +189,12 @@ public class RateLimitService {
         if (SCOPE_FAVORITE_MUTATION.equals(scope)) {
             return Math.max(1, properties.getFavoriteMutation().getMaxAttempts());
         }
+        if (SCOPE_INQUIRY_SUBMISSION_BURST.equals(scope)) {
+            return Math.max(1, properties.getInquirySubmissionBurst().getMaxAttempts());
+        }
+        if (SCOPE_INQUIRY_SUBMISSION_SUSTAINED.equals(scope)) {
+            return Math.max(1, properties.getInquirySubmissionSustained().getMaxAttempts());
+        }
         return Math.max(1, properties.getLogin().getMaxAttempts());
     }
 
@@ -211,6 +219,12 @@ public class RateLimitService {
         }
         if (SCOPE_FAVORITE_MUTATION.equals(scope)) {
             return Math.max(1, properties.getFavoriteMutation().getWindowSeconds());
+        }
+        if (SCOPE_INQUIRY_SUBMISSION_BURST.equals(scope)) {
+            return Math.max(1, properties.getInquirySubmissionBurst().getWindowSeconds());
+        }
+        if (SCOPE_INQUIRY_SUBMISSION_SUSTAINED.equals(scope)) {
+            return Math.max(1, properties.getInquirySubmissionSustained().getWindowSeconds());
         }
         return Math.max(1, properties.getLogin().getWindowSeconds());
     }

@@ -53,6 +53,12 @@ app:
     favorite-mutation:
       max-attempts: 1000
       window-seconds: 60
+    inquiry-submission-burst:
+      max-attempts: 1000
+      window-seconds: 60
+    inquiry-submission-sustained:
+      max-attempts: 1000
+      window-seconds: 3600
   image-cleanup:
     # Tests drive the worker deterministically; no background poller runs.
     enabled: false

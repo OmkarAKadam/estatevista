@@ -164,6 +164,15 @@ public class SecurityConfig {
                         .requestMatchers(
                                 HttpMethod.DELETE, "/api/v1/favorites/{propertyId}")
                                 .hasRole("BUYER")
+                        // Stage 6.4 inquiries: explicit routes only. Buyer history is
+                        // listed before the variable detail route to avoid ambiguity.
+                        .requestMatchers(
+                                HttpMethod.POST, "/api/v1/properties/{propertyId}/inquiries")
+                                .hasRole("BUYER")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/inquiries/me")
+                                .hasRole("BUYER")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/inquiries/{inquiryId}")
+                                .hasAnyRole("BUYER", "AGENT", "ADMIN")
                         .requestMatchers(HttpMethod.GET, appProperties.websocket().endpoint()).authenticated()
                         // Stage 4.3: method-specific assignment route must be
                         // evaluated before the broader admin prefix matcher.

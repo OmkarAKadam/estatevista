@@ -68,6 +68,14 @@ public final class PropertyRateLimitFilter extends OncePerRequestFilter {
             PathPatternRequestMatcher.pathPattern(
                     HttpMethod.GET, "/api/v1/favorites/{propertyId}/status")));
 
+    private static final RequestMatcher INQUIRY_SUBMISSION =
+            PathPatternRequestMatcher.pathPattern(
+                    HttpMethod.POST, "/api/v1/properties/{propertyId}/inquiries");
+
+    private static final RequestMatcher INQUIRY_READ = new OrRequestMatcher(List.of(
+            PathPatternRequestMatcher.pathPattern(HttpMethod.GET, "/api/v1/inquiries/me"),
+            PathPatternRequestMatcher.pathPattern(HttpMethod.GET, "/api/v1/inquiries/{inquiryId}")));
+
     private static final RequestMatcher PROPERTY_MUTATION = new OrRequestMatcher(List.of(
             PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/v1/properties"),
             PathPatternRequestMatcher.pathPattern(HttpMethod.PATCH, "/api/v1/properties/{propertyId}"),
@@ -109,6 +117,12 @@ public final class PropertyRateLimitFilter extends OncePerRequestFilter {
                         List.of(RateLimitService.SCOPE_AUTHENTICATED_API,
                                 RateLimitService.SCOPE_FAVORITE_MUTATION),
                         resolveIdentity(request));
+            } else if (INQUIRY_SUBMISSION.matches(request)) {
+                rateLimitService.acquire(
+                        List.of(RateLimitService.SCOPE_AUTHENTICATED_API,
+                                RateLimitService.SCOPE_INQUIRY_SUBMISSION_BURST,
+                                RateLimitService.SCOPE_INQUIRY_SUBMISSION_SUSTAINED),
+                        resolveIdentity(request));
             } else {
                 rateLimitService.acquire(scope, resolveIdentity(request));
             }
@@ -124,6 +138,9 @@ public final class PropertyRateLimitFilter extends OncePerRequestFilter {
             return null;
         }
         if (FAVORITE_MUTATION.matches(request) || FAVORITE_READ.matches(request)) {
+            return RateLimitService.SCOPE_AUTHENTICATED_API;
+        }
+        if (INQUIRY_SUBMISSION.matches(request) || INQUIRY_READ.matches(request)) {
             return RateLimitService.SCOPE_AUTHENTICATED_API;
         }
         if (PUBLIC_SEARCH.matches(request)) {
