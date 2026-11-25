@@ -290,6 +290,77 @@ class InquiryApiIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void historicalAssignmentAuthorizationAndLifecycleBoundariesArePreserved() throws Exception {
+        User admin = persistUser("ADMIN", "inq-hist-admin");
+        User agentA = persistUser("AGENT", "inq-hist-agent-a");
+        User agentB = persistUser("AGENT", "inq-hist-agent-b");
+        User buyer = persistUser("BUYER", "inq-hist-buyer");
+        User otherBuyer = persistUser("BUYER", "inq-hist-other-buyer");
+        Property property = persistProperty(admin, agentA, PropertyStatus.PUBLISHED, "Historical Villa");
+        Session buyerSession = login(buyer.getEmail());
+        Session agentASession = login(agentA.getEmail());
+        Session agentBSession = login(agentB.getEmail());
+        Session adminSession = login(admin.getEmail());
+        Session otherBuyerSession = login(otherBuyer.getEmail());
+
+        UUID inquiryId = submitInquiry(buyerSession, property.getId(), "historical");
+        jdbcTemplate.update("UPDATE inquiries SET status='RESOLVED', resolved_at=now(), updated_at=now() WHERE id=?", inquiryId);
+
+        // Reassign property; historical inquiry assignment must remain agentA.
+        jdbcTemplate.update("UPDATE properties SET primary_agent_id=?, updated_at=now() WHERE id=?", agentB.getId(), property.getId());
+        UUID assignedAgentId = jdbcTemplate.queryForObject("SELECT assigned_agent_id FROM inquiries WHERE id=?", UUID.class, inquiryId);
+        assertThat(assignedAgentId).isEqualTo(agentA.getId());
+
+        mockMvc.perform(get("/api/v1/inquiries/" + inquiryId).cookie(agentASession.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.assignedAgentId").value(agentA.getId().toString()));
+        mockMvc.perform(get("/api/v1/inquiries/" + inquiryId).cookie(agentBSession.cookie()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
+        mockMvc.perform(get("/api/v1/inquiries/" + inquiryId).cookie(otherBuyerSession.cookie()))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/inquiries/" + inquiryId).cookie(adminSession.cookie()))
+                .andExpect(status().isOk());
+
+        // New inquiry after RESOLVED uses current eligible assigned agent (agentB).
+        UUID newInquiryId = submitInquiry(buyerSession, property.getId(), "after-resolved");
+        UUID newAssigned = jdbcTemplate.queryForObject("SELECT assigned_agent_id FROM inquiries WHERE id=?", UUID.class, newInquiryId);
+        assertThat(newAssigned).isEqualTo(agentB.getId());
+
+        // New inquiry after CLOSED also allowed; multiple historical coexist with one active.
+        jdbcTemplate.update("UPDATE inquiries SET status='CLOSED', closed_at=now(), updated_at=now() WHERE id=?", newInquiryId);
+        UUID closedFollowUpId = submitInquiry(buyerSession, property.getId(), "after-closed");
+        UUID closedFollowUpAssigned = jdbcTemplate.queryForObject("SELECT assigned_agent_id FROM inquiries WHERE id=?", UUID.class, closedFollowUpId);
+        assertThat(closedFollowUpAssigned).isEqualTo(agentB.getId());
+        Long activeCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM inquiries WHERE buyer_id=? AND property_id=? AND status IN ('NEW','IN_PROGRESS')",
+                Long.class, buyer.getId(), property.getId());
+        Long historicalCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM inquiries WHERE buyer_id=? AND property_id=? AND status IN ('RESOLVED','CLOSED')",
+                Long.class, buyer.getId(), property.getId());
+        assertThat(activeCount).isEqualTo(1L);
+        assertThat(historicalCount).isEqualTo(2L);
+
+        // Property archival preserves inquiry records.
+        jdbcTemplate.update("UPDATE properties SET status='ARCHIVED', archived_at=now(), updated_at=now() WHERE id=?", property.getId());
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM inquiries WHERE property_id=?", Long.class, property.getId());
+        assertThat(count).isEqualTo(2L);
+        mockMvc.perform(get("/api/v1/inquiries/" + inquiryId).cookie(buyerSession.cookie()))
+                .andExpect(status().isOk());
+
+        // Deactivation denies access per approved policy; reactivation restores eligible historical access.
+        jdbcTemplate.update("UPDATE users SET account_status='DEACTIVATED', updated_at=now() WHERE id=?", agentA.getId());
+        mockMvc.perform(get("/api/v1/inquiries/" + inquiryId).cookie(agentASession.cookie()))
+                .andExpect(result -> assertThat(result.getResponse().getStatus()).isIn(401, 403, 404));
+
+        jdbcTemplate.update("UPDATE users SET account_status='ACTIVE', updated_at=now() WHERE id=?", agentA.getId());
+        Session reactivatedAgentSession = login(agentA.getEmail());
+        mockMvc.perform(get("/api/v1/inquiries/" + inquiryId).cookie(reactivatedAgentSession.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(inquiryId.toString()));
+    }
+
     private UUID submitInquiry(Session session, UUID propertyId, String message) throws Exception {
         MvcResult submit = mockMvc.perform(post("/api/v1/properties/" + propertyId + "/inquiries")
                         .header(HttpHeaders.ORIGIN, ORIGIN)
