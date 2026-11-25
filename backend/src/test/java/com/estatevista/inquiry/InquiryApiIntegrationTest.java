@@ -350,7 +350,7 @@ class InquiryApiIntegrationTest {
                 .andExpect(status().isOk());
 
         // Deactivation denies access per approved policy; reactivation restores eligible historical access.
-        jdbcTemplate.update("UPDATE users SET account_status='DEACTIVATED', updated_at=now() WHERE id=?", agentA.getId());
+        jdbcTemplate.update("UPDATE users SET account_status='INACTIVE', updated_at=now() WHERE id=?", agentA.getId());
         mockMvc.perform(get("/api/v1/inquiries/" + inquiryId).cookie(agentASession.cookie()))
                 .andExpect(result -> assertThat(result.getResponse().getStatus()).isIn(401, 403, 404));
 
