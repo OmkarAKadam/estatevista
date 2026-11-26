@@ -112,11 +112,76 @@ class InquiryRateLimitFilterTest {
         assertThat(chain.getRequest()).isNull();
     }
 
+    @Test
+    void managementCollectionsUseSharedAuthenticatedBucket() throws Exception {
+        MockHttpServletRequest agentList = new MockHttpServletRequest(
+                "GET", "/api/v1/agents/me/inquiries");
+        MockHttpServletRequest adminList = new MockHttpServletRequest(
+                "GET", "/api/v1/admin/inquiries");
+        agentList.setRemoteAddr(SOCKET_ADDRESS);
+        adminList.setRemoteAddr(SOCKET_ADDRESS);
+
+        filter.doFilter(agentList, new MockHttpServletResponse(), new MockFilterChain());
+        filter.doFilter(adminList, new MockHttpServletResponse(), new MockFilterChain());
+
+        verify(rateLimitService, times(2)).acquire(
+                RateLimitService.SCOPE_AUTHENTICATED_API, "user:" + BUYER);
+    }
+
+    @Test
+    void adminStatusMutationAppliesSharedAndAdministratorBuckets() throws Exception {
+        authenticate("ROLE_ADMIN");
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "PATCH", "/api/v1/inquiries/" + INQUIRY_ID + "/status");
+        request.setRemoteAddr(SOCKET_ADDRESS);
+
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+        verify(rateLimitService).acquire(
+                eq(List.of(RateLimitService.SCOPE_AUTHENTICATED_API,
+                        RateLimitService.SCOPE_ADMIN_MUTATION)),
+                eq("user:" + BUYER));
+    }
+
+    @Test
+    void agentStatusMutationUsesOnlySharedAuthenticatedBucket() throws Exception {
+        authenticate("ROLE_AGENT");
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "PATCH", "/api/v1/inquiries/" + INQUIRY_ID + "/status");
+        request.setRemoteAddr(SOCKET_ADDRESS);
+
+        filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+
+        verify(rateLimitService).acquire(
+                RateLimitService.SCOPE_AUTHENTICATED_API, "user:" + BUYER);
+    }
+
+    @Test
+    void adminMutationRejectionUsesLongestRetryAfterAndNoStore() throws Exception {
+        authenticate("ROLE_ADMIN");
+        doThrow(new RateLimitExceededException(60)).when(rateLimitService).acquire(eq(List.of(
+                RateLimitService.SCOPE_AUTHENTICATED_API,
+                RateLimitService.SCOPE_ADMIN_MUTATION)), anyString());
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "PATCH", "/api/v1/inquiries/" + INQUIRY_ID + "/status");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(response.getStatus()).isEqualTo(429);
+        assertThat(response.getHeader("Retry-After")).isEqualTo("60");
+        assertThat(response.getHeader("Cache-Control")).isEqualTo("no-store");
+    }
+
     private static void authenticateBuyer() {
+        authenticate("ROLE_BUYER");
+    }
+
+    private static void authenticate(String authority) {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
                         BUYER,
                         null,
-                        List.of(new SimpleGrantedAuthority("ROLE_BUYER"))));
+                        List.of(new SimpleGrantedAuthority(authority))));
     }
 }

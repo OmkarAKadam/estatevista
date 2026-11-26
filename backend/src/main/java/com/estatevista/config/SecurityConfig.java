@@ -173,6 +173,15 @@ public class SecurityConfig {
                                 .hasRole("BUYER")
                         .requestMatchers(HttpMethod.GET, "/api/v1/inquiries/{inquiryId}")
                                 .hasAnyRole("BUYER", "AGENT", "ADMIN")
+                        // Stage 6.5: explicit management routes. Literal agent/admin
+                        // inquiry paths are declared before the broader prefixes.
+                        .requestMatchers(
+                                HttpMethod.PATCH, "/api/v1/inquiries/{inquiryId}/status")
+                                .hasAnyRole("AGENT", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/agents/me/inquiries")
+                                .hasRole("AGENT")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/inquiries")
+                                .hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, appProperties.websocket().endpoint()).authenticated()
                         // Stage 4.3: method-specific assignment route must be
                         // evaluated before the broader admin prefix matcher.

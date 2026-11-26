@@ -57,6 +57,12 @@ public class RateLimitService {
             "SELECT count(*) FROM auth_rate_limit_events "
                     + "WHERE attempt_key = ? "
                     + "AND occurred_at > now() - make_interval(secs => ?)";
+    private static final String OLDEST_ACTIVE_REMAINING =
+            "SELECT coalesce(ceil(extract(epoch FROM (min(occurred_at) "
+                    + "+ make_interval(secs => ?) - now()))), 0)::bigint "
+                    + "FROM auth_rate_limit_events "
+                    + "WHERE attempt_key = ? "
+                    + "AND occurred_at > now() - make_interval(secs => ?)";
     private static final String INSERT_EVENT =
             "INSERT INTO auth_rate_limit_events (attempt_key, occurred_at) VALUES (?, now())";
     private static final String DELETE_ALL =
@@ -91,7 +97,7 @@ public class RateLimitService {
     /**
      * Applies every applicable bucket together. All keys are locked in a stable
      * order before any counter is consumed, and a rejection reports the longest
-     * blocking window among the triggered buckets.
+     * remaining block among the triggered buckets.
      */
     @Transactional
     public void acquire(Collection<String> scopes, String identity) {
@@ -115,7 +121,7 @@ public class RateLimitService {
         }
 
         boolean blocked = false;
-        long longestWindow = 0L;
+        long longestRemaining = 0L;
         String firstBlockedScope = null;
         for (Map.Entry<String, String> entry : keysByScope.entrySet()) {
             String scope = entry.getKey();
@@ -126,7 +132,12 @@ public class RateLimitService {
                     COUNT_ACTIVE, Long.class, key, windowSeconds);
             if (active != null && active >= threshold(scope)) {
                 blocked = true;
-                longestWindow = Math.max(longestWindow, windowSeconds);
+                Long remaining = jdbcTemplate.queryForObject(
+                        OLDEST_ACTIVE_REMAINING, Long.class, windowSeconds, key, windowSeconds);
+                long remainingSeconds = remaining == null
+                        ? windowSeconds
+                        : Math.min(windowSeconds, Math.max(1L, remaining));
+                longestRemaining = Math.max(longestRemaining, remainingSeconds);
                 if (firstBlockedScope == null) {
                     firstBlockedScope = scope;
                 }
@@ -136,7 +147,7 @@ public class RateLimitService {
             log.warn("Rate limit rejected an attempt scopes={}", keysByScope.keySet());
             auditEventService.recordRateLimitRejected(
                     firstBlockedScope == null ? "unknown" : firstBlockedScope);
-            throw new RateLimitExceededException(longestWindow);
+            throw new RateLimitExceededException(longestRemaining);
         }
         for (String key : keysByScope.values()) {
             jdbcTemplate.update(INSERT_EVENT, key);

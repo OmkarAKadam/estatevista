@@ -2,6 +2,7 @@ package com.estatevista.audit;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.time.Instant;
 import java.util.UUID;
 
 import com.estatevista.audit.entity.AuditLog;
@@ -62,6 +63,7 @@ public class AuditEventService {
     public static final String ACTION_IMAGE_DELETE = "PROPERTY_IMAGE_DELETE";
     public static final String ACTION_IMAGE_CLEANUP = "PROPERTY_IMAGE_CLEANUP";
     public static final String ACTION_IMAGE_FAILURE = "PROPERTY_IMAGE_FAILURE";
+    public static final String ACTION_INQUIRY_STATUS_CHANGED = "INQUIRY_STATUS_CHANGED";
 
     private static final Logger log = LoggerFactory.getLogger(AuditEventService.class);
     private static final String AUDITED_ATTRIBUTE_PREFIX =
@@ -192,6 +194,34 @@ public class AuditEventService {
         writeInCurrentTransaction(ACTION_IMAGE_DELETE, "PROPERTY_IMAGE", imageId, actorId,
                 "{\"outcome\":\"SUCCESS\",\"propertyId\":" + jsonUuid(propertyId)
                         + ",\"replacement\":\"NONE\"}");
+    }
+
+    /**
+     * Records one real inquiry status transition inside the caller's transaction.
+     * Only server-owned identifiers, status names, the server event time, and the
+     * correlation ID are persisted; inquiry subject and message are never passed
+     * to the audit subsystem.
+     */
+    public void recordInquiryStatusChangeInTransaction(
+            UUID inquiryId,
+            UUID actorId,
+            UUID propertyId,
+            UUID buyerId,
+            UUID assignedAgentId,
+            String fromStatus,
+            String toStatus,
+            Instant occurredAt) {
+        String before = "{\"outcome\":\"SUCCESS\",\"fromStatus\":"
+                + jsonToken(fromStatus) + "}";
+        String after = "{\"outcome\":\"SUCCESS\",\"toStatus\":" + jsonToken(toStatus)
+                + ",\"propertyId\":" + jsonUuid(propertyId)
+                + ",\"buyerId\":" + jsonUuid(buyerId)
+                + ",\"assignedAgentId\":" + jsonUuid(assignedAgentId)
+                + ",\"occurredAt\":\"" + occurredAt + "\"}";
+        // saveAndFlush makes an audit failure roll back the inquiry mutation.
+        auditLogRepository.saveAndFlush(buildEntry(
+                ACTION_INQUIRY_STATUS_CHANGED, "INQUIRY", inquiryId, actorId,
+                before, after, null));
     }
 
     /** Records the eventual provider-cleanup outcome for a committed deletion. */

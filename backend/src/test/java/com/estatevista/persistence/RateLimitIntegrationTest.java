@@ -3,6 +3,10 @@ package com.estatevista.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.List;
 import java.util.UUID;
 
 import com.estatevista.common.exception.ApiException;
@@ -118,6 +122,37 @@ class RateLimitIntegrationTest {
     }
 
     @Test
+    void overlappingBucketsReportTheLongestRemainingBlock() {
+        String identity = "stage65-longest-" + UUID.randomUUID();
+        try {
+            for (int i = 0; i < 2; i++) {
+                rateLimitService.acquire(RateLimitService.SCOPE_AUTHENTICATED_API, identity);
+                rateLimitService.acquire(RateLimitService.SCOPE_ADMIN_MUTATION, identity);
+            }
+            // Age the shared bucket nearly to expiry while leaving the admin
+            // bucket freshly blocked; Retry-After must use the latter.
+            jdbcTemplate.update(
+                    "UPDATE auth_rate_limit_events SET occurred_at=now() - interval '55 seconds' "
+                            + "WHERE attempt_key=?",
+                    digest(RateLimitService.SCOPE_AUTHENTICATED_API, identity));
+            jdbcTemplate.update(
+                    "UPDATE auth_rate_limit_events SET occurred_at=now() - interval '5 seconds' "
+                            + "WHERE attempt_key=?",
+                    digest(RateLimitService.SCOPE_ADMIN_MUTATION, identity));
+
+            assertThatThrownBy(() -> rateLimitService.acquire(
+                    List.of(RateLimitService.SCOPE_AUTHENTICATED_API,
+                            RateLimitService.SCOPE_ADMIN_MUTATION),
+                    identity))
+                    .isInstanceOfSatisfying(RateLimitExceededException.class, exception ->
+                            assertThat(exception.getRetryAfterSeconds()).isBetween(54L, 56L));
+        } finally {
+            rateLimitService.reset(RateLimitService.SCOPE_AUTHENTICATED_API, identity);
+            rateLimitService.reset(RateLimitService.SCOPE_ADMIN_MUTATION, identity);
+        }
+    }
+
+    @Test
     void storedKeysAreDigestsAndNeverContainTheRawIdentity() {
         rateLimitService.acquire(RateLimitService.SCOPE_LOGIN, LOGIN_IDENTITY);
 
@@ -126,6 +161,21 @@ class RateLimitIntegrationTest {
                 Long.class,
                 "%stage36%");
         assertThat(rawIdentityRows).isZero();
+    }
+
+    private static String digest(String scope, String identity) {
+        String material = scope + "|" + identity.toLowerCase();
+        try {
+            byte[] bytes = MessageDigest.getInstance("SHA-256")
+                    .digest(material.getBytes(StandardCharsets.UTF_8));
+            StringBuilder result = new StringBuilder(bytes.length * 2);
+            for (byte value : bytes) {
+                result.append(String.format("%02x", value));
+            }
+            return result.toString();
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
     private void assertThatCodeLoginScopeStillAllowsAttempts() {

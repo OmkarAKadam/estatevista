@@ -6,9 +6,11 @@ import java.util.UUID;
 
 import com.estatevista.inquiry.entity.Inquiry;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -54,6 +56,31 @@ public interface InquiryRepository extends JpaRepository<Inquiry, UUID> {
             + "join fetch i.assignedAgent a "
             + "where i.id = :id")
     Optional<Inquiry> findDetailById(@Param("id") UUID id);
+
+    @Query(value = "select i.id from Inquiry i "
+            + "where i.assignedAgent.id = :assignedAgentId "
+            + "and (cast(:status as string) is null or i.status = :status)",
+            countQuery = "select count(i) from Inquiry i "
+                    + "where i.assignedAgent.id = :assignedAgentId "
+                    + "and (cast(:status as string) is null or i.status = :status)")
+    Page<UUID> findIdsByAssignedAgent(
+            @Param("assignedAgentId") UUID assignedAgentId,
+            @Param("status") String status,
+            Pageable pageable);
+
+    @Query(value = "select i.id from Inquiry i "
+            + "where (cast(:status as string) is null or i.status = :status)",
+            countQuery = "select count(i) from Inquiry i "
+                    + "where (cast(:status as string) is null or i.status = :status)")
+    Page<UUID> findIdsForAdmin(@Param("status") String status, Pageable pageable);
+
+    /**
+     * Serializes status mutations on one inquiry. PostgreSQL re-reads the locked
+     * row after a concurrent committer, so validation never uses a stale status.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select i from Inquiry i where i.id = :id")
+    Optional<Inquiry> findByIdForUpdate(@Param("id") UUID id);
 
     boolean existsByBuyer_IdAndProperty_IdAndStatusIn(
             UUID buyerId, UUID propertyId, Collection<String> statuses);
