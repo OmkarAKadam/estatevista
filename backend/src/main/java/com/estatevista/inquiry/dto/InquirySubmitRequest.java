@@ -1,5 +1,6 @@
 package com.estatevista.inquiry.dto;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -52,6 +53,8 @@ public class InquirySubmitRequest {
     }
 
     public Map<String, Object> unknownFields() {
-        return Map.copyOf(unknownFields);
+        // Map.copyOf rejects null values; explicit JSON nulls must still reach
+        // UnknownFieldGuard and produce a 400 instead of a 500.
+        return Collections.unmodifiableMap(new LinkedHashMap<>(unknownFields));
     }
 }

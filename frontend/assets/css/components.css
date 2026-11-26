@@ -1069,6 +1069,15 @@
   flex: 0 0 auto;
 }
 
+/* Compact Bootstrap pagination still exposes a 24px minimum target. */
+.pagination .page-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 24px;
+}
+
 .ev-filter-note:not([hidden]) {
   margin-top: var(--ev-space-2);
 }

@@ -348,6 +348,7 @@ test("lifecycle presentation exposes exactly the approved transitions", () => {
 test("stale list responses cannot overwrite newer filter results", async () => {
   setAuthenticated(USER);
   let releaseOld = null;
+  let oldSignalAborted = false;
   installFetch((url, init) => {
     const csrfResponse = csrf(url);
     if (csrfResponse) {
@@ -355,6 +356,9 @@ test("stale list responses cannot overwrite newer filter results", async () => {
     }
     if (url.searchParams.get("status") === "NEW") {
       return new Promise((resolve) => {
+        init.signal?.addEventListener("abort", () => {
+          oldSignalAborted = true;
+        });
         releaseOld = () =>
           resolve(json(listPayload([detail("NEW")], { page: 3, totalElements: 100 })));
       });
@@ -367,6 +371,7 @@ test("stale list responses cannot overwrite newer filter results", async () => {
   const newer = await inquiries.listInquiries("buyer", { status: "CLOSED", page: 0 });
   assert.equal(newer.ok, true);
   assert.equal(newer.items[0].status, "CLOSED");
+  assert.equal(oldSignalAborted, true);
   releaseOld();
   const oldResult = await oldRequest;
   assert.equal(oldResult.ok, false);

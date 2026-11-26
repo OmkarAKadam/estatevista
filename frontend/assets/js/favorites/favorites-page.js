@@ -127,6 +127,7 @@ function hideAllStates() {
   });
   const grid = byId("favoritesGrid");
   if (grid) {
+    grid.replaceChildren();
     grid.setAttribute("aria-busy", "false");
   }
 }

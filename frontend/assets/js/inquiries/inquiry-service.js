@@ -282,6 +282,10 @@ function beginRead(key) {
   const generation = (generations.get(key) ?? 0) + 1;
   generations.set(key, generation);
   const controller = new AbortController();
+  const superseded = controllers.get(key);
+  if (superseded) {
+    superseded.abort();
+  }
   controllers.set(key, controller);
   return {
     key,

@@ -220,10 +220,11 @@ These gaps are explicit and are not represented as passing checks.
 ## 10. Stage 6 approved acceptance matrix
 
 The owner-approved architecture is recorded in `docs/STAGE_6_DECISION_REGISTER.md`.
-The matrix below defines future verification obligations; it does not claim any
-Stage 6 test has been written, executed, or passed.
+The matrix below records the Stage 6 verification obligations and their scoped
+Stage 6.7 disposition. It does not extend Stage 7–9 scope or claim deferred work
+is complete.
 
-| Decision | Required verification when implemented |
+| Decision | Required verification and Stage 6 disposition |
 |---|---|
 | 1 — Inquiry lifecycle | All statuses and transitions, invalid-transition `409`, idempotent same-status `200` with no audit/timestamp change, `resolved_at` rules, audit records without content, serialized concurrency, buyer read-only status, active AGENT/ADMIN authority, and no transcript access. |
 | 2 — Duplicate inquiry | One active `NEW`/`IN_PROGRESS` inquiry per buyer/property; inactive statuses allow a new inquiry; duplicate active submission returns `409`; concurrent submissions cannot bypass the Stage 6.4 partial unique index; no merge/overwrite/delete. |
@@ -238,4 +239,6 @@ Stage 6 test has been written, executed, or passed.
 | 11 — Security schedule | Stage 6.2 evidence for F-1, F-2, F-4, and F-7 before mutations; F-3 Stage 7; F-5 Stage 8; F-6 Stage 9; F-8 partially open with remaining obligations in Stage 8/9. Scheduling is not resolution. |
 | 12 — Boundaries | No chat, dashboard/account management, deployment, featured endpoint, or other Stage 7–9 work is tested as part of Stage 6 acceptance. |
 
-V1–V14 in §9 rule 3 remains the historical Stage 2 wording. The Stage 5.8 baseline is V1–V17, and the authorized V18 is Stage 6.4-only. The historical `452/452` result does not satisfy any new Stage 6 verification row above.
+Stage 6.7 closed rows 1–10 and the Stage 6.2 portion of row 11 within the approved boundary. F-3, F-5, F-6, the F-8 remainder, and all Stage 7–9 work in rows 11–12 remain deferred and are not claimed as verified here.
+
+V1–V14 in §9 rule 3 remains the historical Stage 2 wording. The Stage 5.8 baseline is V1–V17, and the authorized V18 is Stage 6.4-only. The historical `452/452` result does not satisfy any new Stage 6 verification row above; Stage 6.7 evidence is recorded separately and is not added to that historical total.

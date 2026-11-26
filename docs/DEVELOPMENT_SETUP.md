@@ -396,9 +396,10 @@ Registered for `/api/**` and `/actuator/health`:
 - Methods: `GET, POST, PUT, PATCH, DELETE, OPTIONS`.
 - Allowed request headers: `Content-Type`, `X-CSRF-TOKEN`, `Accept`, `Origin`,
   `X-Requested-With`.
-- Exposed response header: `X-CSRF-TOKEN` (reserved for SD-53).
+- Exposed response headers: `X-CSRF-TOKEN` (reserved for SD-53) and
+  `Retry-After`.
 - `Access-Control-Allow-Credentials: true`.
-- Preflight cache: 3600 seconds.
+- Preflight cache: 600 seconds.
 - Wildcard, blank, malformed, placeholder, path, query, fragment, user-info, and
   non-HTTP origins cause startup failure through the shared `AllowedOrigins`
   validator.
@@ -453,16 +454,15 @@ Runtime API configuration (`frontend/assets/js/core/config.js`):
   shared by all public-read channels on the page. A later response can extend
   but never shorten an active cooldown, and long waits are chunked safely.
   Missing, malformed or inaccessible values use the documented 60-second
-  fallback. Production CORS does not expose `Retry-After`; no CORS change is
-  made by the frontend.
+  fallback. Approved browser origins receive `Retry-After` through the
+  implemented CORS exposure configuration; the frontend makes no CORS change.
 
 **Stage 6 scope note.** The Stage 3.7 sentence above records the historical
-frontend-only state. For Stage 6.2, `docs/STAGE_6_DECISION_REGISTER.md` §5.4
-requires `Retry-After` to be exposed to approved browser origins through the
-approved CORS exposure configuration so the shared client can honour the
-server's cooldown. This documentation reconciliation makes no CORS, deployment,
-or runtime configuration change; the fallback behavior above remains the safe
-client behavior when a header is inaccessible.
+frontend-only state. Stage 6.2 implemented the
+`docs/STAGE_6_DECISION_REGISTER.md` §5.4 requirement to expose `Retry-After` to
+approved browser origins, and Stage 6.7 verified that the shared client honours
+the full server-provided cooldown without automatic retry. The fallback behavior
+above remains the safe client behavior when a header is inaccessible.
 - Legacy `?type=<name>` links stay in the URL while reference data is unavailable
   and block the search until the subtype can be resolved from authoritative
   catalogue data or the user explicitly clears the criterion.

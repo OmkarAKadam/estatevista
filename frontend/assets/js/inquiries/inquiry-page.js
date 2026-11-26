@@ -92,6 +92,17 @@ function setVisible(element, visible) {
   }
 }
 
+const CARD_VIEWPORT = window.matchMedia?.("(max-width: 575.98px)") ?? null;
+let lastRenderedCount = 0;
+
+function applyListPresentation() {
+  const compact = CARD_VIEWPORT?.matches ?? false;
+  setVisible(refs.table, lastRenderedCount > 0 && !compact);
+  setVisible(refs.cards, lastRenderedCount > 0 && compact);
+}
+
+CARD_VIEWPORT?.addEventListener?.("change", applyListPresentation);
+
 function setText(element, value) {
   if (element) {
     element.textContent = String(value ?? "");
@@ -110,6 +121,7 @@ function hideCollections() {
   setVisible(refs.loading, false);
   setVisible(refs.error, false);
   setVisible(refs.empty, false);
+  lastRenderedCount = 0;
   setVisible(refs.table, false);
   setVisible(refs.cards, false);
   setVisible(refs.pagination, false);
@@ -243,6 +255,7 @@ function setBusy(busy) {
   if (busy) {
     setVisible(refs.error, false);
     setVisible(refs.empty, false);
+    lastRenderedCount = 0;
     setVisible(refs.table, false);
     setVisible(refs.cards, false);
     setVisible(refs.pagination, false);
@@ -252,6 +265,7 @@ function setBusy(busy) {
 function showListError(message) {
   setText(refs.errorMessage, message);
   setVisible(refs.error, true);
+  lastRenderedCount = 0;
   setVisible(refs.table, false);
   setVisible(refs.cards, false);
   setVisible(refs.empty, false);
@@ -297,8 +311,8 @@ async function loadList({ clearDetailOnLoad = true } = {}) {
   rendered.rows.forEach((row) => refs.tbody?.append(row));
   rendered.cards.forEach((card) => refs.cards?.append(card));
 
-  setVisible(refs.table, rendered.rows.length > 0);
-  setVisible(refs.cards, rendered.cards.length > 0);
+  lastRenderedCount = rendered.rows.length;
+  applyListPresentation();
   setVisible(refs.empty, rendered.rows.length === 0);
 
   const meta = result.meta || {};

@@ -251,9 +251,11 @@ function updateSubmitState() {
       : "Send inquiry";
 }
 
-function clearPrivateState() {
+function clearPrivateState({ preservePropertyId = false } = {}) {
   state.active = false;
-  state.propertyId = null;
+  if (!preservePropertyId) {
+    state.propertyId = null;
+  }
   state.sequence += 1;
   if (refs.subject) {
     refs.subject.value = "";
@@ -313,7 +315,7 @@ subscribeAuth(() => {
   setActiveProperty(propertyId, null);
 });
 
-window.addEventListener("pagehide", clearPrivateState);
+window.addEventListener("pagehide", () => clearPrivateState({ preservePropertyId: true }));
 window.addEventListener("pageshow", (event) => {
   if (event.persisted && state.propertyId) {
     const id = state.propertyId;

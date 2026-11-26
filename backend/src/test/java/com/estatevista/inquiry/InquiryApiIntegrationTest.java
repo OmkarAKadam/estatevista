@@ -204,6 +204,15 @@ class InquiryApiIntegrationTest {
                         .content("{\"message\":\"Hello\",\"buyerId\":\"" + buyer.getId() + "\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        mockMvc.perform(post("/api/v1/properties/" + draft.getId() + "/inquiries")
+                        .header(HttpHeaders.ORIGIN, ORIGIN)
+                        .cookie(session.cookie())
+                        .header(CSRF_HEADER, session.csrfToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"Hello\",\"buyerId\":null}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     @Test

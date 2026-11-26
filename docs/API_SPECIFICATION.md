@@ -416,7 +416,7 @@ Supported sorting:
 
 The backend must validate query parameters and enforce reasonable page-size limits.
 
-**Stage 5.2 verified implementation notes.** Public search enforces the approved §11.10 keyword and `amenityIds` caps and returns `VALIDATION_ERROR` for violations. Invalid pages, sizes, sort values, ranges, bedroom filters, enum values, UUIDs, and numeric values use the standard error envelope. Blank string parameters are ignored, while blank numeric parameters fail Spring type conversion with `BAD_REQUEST`. Blank `sort` selects `newest`; sort names are case-sensitive; `keyword` values remain parameterized SQL `LIKE` patterns, so wildcard characters retain their existing behavior. Unknown query parameters are ignored. Public search, detail, related, recent, and reference endpoints are subject to the §11.9 HTTP rate limits and return `429 TOO_MANY_REQUESTS` with `Retry-After`.
+**Stage 5.2 verified implementation notes.** Public search enforces the approved `SECURITY_ARCHITECTURE.md` §11.10 keyword and `amenityIds` caps and returns `VALIDATION_ERROR` for violations. Invalid pages, sizes, sort values, ranges, bedroom filters, enum values, UUIDs, and numeric values use the standard error envelope. Blank string parameters are ignored, while blank numeric parameters fail Spring type conversion with `BAD_REQUEST`. Blank `sort` selects `newest`; sort names are case-sensitive; `keyword` values remain parameterized SQL `LIKE` patterns, so wildcard characters retain their existing behavior. Unknown query parameters are ignored. Public search, detail, related, recent, and reference endpoints are subject to `SECURITY_ARCHITECTURE.md` §11.9 HTTP rate limits and return `429 TOO_MANY_REQUESTS` with `Retry-After`.
 
 ## 7.2 Property List Response
 
@@ -535,12 +535,14 @@ New favorites may reference only `PUBLISHED` properties. Existing favorites rema
 {
   "propertyId": "uuid",
   "createdAt": "2026-11-24T10:30:00Z",
-  "availability": "UNAVAILABLE",
-  "placeholder": "Property no longer available"
+  "property": {
+    "availability": "UNAVAILABLE",
+    "placeholder": "Property no longer available"
+  }
 }
 ```
 
-No unpublished title, price, description, image, address, agent detail, or internal lifecycle status is exposed. When the property becomes `PUBLISHED` again, the normal approved public-summary presentation is restored without creating a new favorite row.
+The `property` member is the restricted placeholder DTO; a published entry uses the approved public property summary from §7.2 in the same member. No unpublished title, price, description, image, address, agent detail, or internal lifecycle status is exposed. When the property becomes `PUBLISHED` again, the normal approved public-summary presentation is restored without creating a new favorite row.
 
 ## 9.4 Favorite List, Pagination, and Status
 
@@ -900,7 +902,7 @@ All API errors must follow a consistent structure.
 
 The API must not expose internal stack traces, SQL errors, database credentials, or sensitive implementation details.
 
-Stage 6 Favorites and Inquiries use this standard envelope with `400` for invalid requests, `401` for unauthenticated requests, `403` for role-level denial, `404` for both missing and unauthorized resources, `409` for business-state conflicts, and `429` for rate-limit exceeded. Unauthorized and nonexistent resources are indistinguishable to callers. `429` responses include `Retry-After` reflecting every blocking limit, and that header must be exposed to approved browser origins through CORS during Stage 6.2 implementation. Private error/denial responses use `Cache-Control: no-store` under the Stage 6.2 security prerequisites recorded in `docs/STAGE_6_DECISION_REGISTER.md` §9.
+Stage 6 Favorites and Inquiries use this standard envelope with `400` for invalid requests, `401` for unauthenticated requests, `403` for role-level denial, `404` for both missing and unauthorized resources, `409` for business-state conflicts, and `429` for rate-limit exceeded. Unauthorized and nonexistent resources are indistinguishable to callers. `429` responses include `Retry-After` reflecting every blocking limit, and that header is exposed to approved browser origins through the implemented CORS configuration. Private error/denial responses use `Cache-Control: no-store` under the Stage 6.2 security prerequisites recorded in `docs/STAGE_6_DECISION_REGISTER.md` §9.
 
 # 18. Validation Requirements
 
@@ -1103,18 +1105,18 @@ The following details require final decisions during their corresponding impleme
 | Property Assignment | Every property is created with one primary agent; there is no unassigned state |
 | Property Images | Upload limits and supported formats. Image deletion uses the approved durable outbox: metadata and cleanup task commit together; provider cleanup is eventual and retried by a backend worker (project-owner-approved ADR: `STAGE_4_IMAGE_DELETION_OUTBOX_ADR.md`; register index in `STAGE_4_DECISION_REGISTER.md` §10). |
 | Search | Full-text search and geographic search implementation |
-| Favorites | Stage 6 mutation, retention, pagination, and batch-status decisions are approved in §9 and `docs/STAGE_6_DECISION_REGISTER.md` §5.1; implementation and verification remain. |
-| Inquiries | Stage 6 status transitions, duplicate policy, actor authority, pagination, and DTO rules are approved in §10.2 and `docs/STAGE_6_DECISION_REGISTER.md` §5.2; implementation and verification remain. Retention duration remains deferred. |
+| Favorites | Stage 6 mutation, retention, pagination, and batch-status decisions are approved in §9 and `docs/STAGE_6_DECISION_REGISTER.md` §5.1; they were implemented and verified in Stage 6.7. |
+| Inquiries | Stage 6 status transitions, duplicate policy, actor authority, pagination, and DTO rules are approved in §10.2 and `docs/STAGE_6_DECISION_REGISTER.md` §5.2; they were implemented and verified in Stage 6.7. Retention duration remains deferred. |
 | Conversations | Handling conversations when an agent is deactivated |
 | Chat | Editing, deletion, attachments, and delivery acknowledgements |
 | Chat Pagination | Cursor-based versus page-based history retrieval |
 | Notifications | Email delivery and notification preferences |
 | Dashboard | Final metrics and aggregation requirements |
 | Audit | Retention period and exact audited operations |
-| API Rate Limits | Stage 6 favorites/inquiry route limits are approved in `docs/SECURITY_ARCHITECTURE.md` §11.9 and `docs/STAGE_6_DECISION_REGISTER.md` §5.4; other endpoint-specific limits remain deferred. |
+| API Rate Limits | Stage 6 favorites/inquiry route limits are approved in `docs/SECURITY_ARCHITECTURE.md` §11.9 and `docs/STAGE_6_DECISION_REGISTER.md` §5.4; they were implemented and verified in Stage 6.7. Other endpoint-specific limits remain deferred. |
 | API Documentation | OpenAPI/Swagger configuration |
 
-These decisions must be approved before implementing the corresponding functionality.
+Remaining decisions must be approved before implementing the corresponding functionality; the Stage 6 favorites, inquiry, and route-limit rows above are closed by the Stage 6.7 verification evidence.
 
 # 24. Final Design Summary
 
@@ -1301,7 +1303,7 @@ Authorized participants may retrieve historical references through authenticated
 
 All decisions listed in Section 23 remain deferred unless explicitly resolved by this review.
 
-Session authentication, the CSRF header contract, the password-reset token mechanics, agent activation, and public property visibility are resolved as designs (Security Architecture SD-01, SD-05, SD-11, SD-12, SD-53, and C-10/D-08); their implementation, email-provider, token-migration, hostname, and test prerequisites remain. The Spring Session migration exists, and the SD-53 recheck against Spring Security 7.1.2 is recorded in `DEVELOPMENT_SETUP.md` §12. Stage 6 favorites and inquiry contracts are resolved by the owner decisions in `docs/STAGE_6_DECISION_REGISTER.md`, with no implementation or verification claimed here. Detailed status transitions for conversations, upload limits, notification delivery, and chat enhancements must be finalized before their respective implementations.
+Session authentication, the CSRF header contract, the password-reset token mechanics, agent activation, and public property visibility are resolved as designs (Security Architecture SD-01, SD-05, SD-11, SD-12, SD-53, and C-10/D-08); their implementation, email-provider, token-migration, hostname, and test prerequisites remain. The Spring Session migration exists, and the SD-53 recheck against Spring Security 7.1.2 is recorded in `DEVELOPMENT_SETUP.md` §12. Stage 6 favorites and inquiry contracts are resolved by the owner decisions in `docs/STAGE_6_DECISION_REGISTER.md` and were implemented and verified in Stage 6.7; this specification is not itself the test evidence. Detailed status transitions for conversations, upload limits, notification delivery, and chat enhancements must be finalized before their respective implementations.
 
 ## 25.5 Final Approval
 
