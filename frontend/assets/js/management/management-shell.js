@@ -73,11 +73,13 @@ const SIDEBAR_ITEMS = Object.freeze({
     { key: "overview", label: "Overview", href: "/index.html" },
     { key: "properties", label: "Properties", href: "./properties.html" },
     { key: "assignments", label: "Assignments", href: "./property-assignments.html" },
+    { key: "inquiries", label: "Inquiries", href: "./inquiries.html" },
     { key: "help", label: "Help", href: "/about.html" }
   ]),
   [ROLES.AGENT]: Object.freeze([
     { key: "overview", label: "Overview", href: "/index.html" },
     { key: "properties", label: "Properties", href: "./properties.html" },
+    { key: "inquiries", label: "Inquiries", href: "./inquiries.html" },
     { key: "help", label: "Help", href: "/about.html" }
   ])
 });

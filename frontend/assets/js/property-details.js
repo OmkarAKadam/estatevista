@@ -791,6 +791,9 @@
     renderGallery(property, title);
     updateMeta(property);
     renderDetailFavorite(property);
+    if (window.EVInquiryProperty && typeof window.EVInquiryProperty.setActiveProperty === "function") {
+      window.EVInquiryProperty.setActiveProperty(activeId, property);
+    }
   }
 
   function setRetryVisible(visible) {
@@ -821,6 +824,9 @@
     }
 
     activeDetail = null;
+    if (window.EVInquiryProperty && typeof window.EVInquiryProperty.setActiveProperty === "function") {
+      window.EVInquiryProperty.setActiveProperty(null, null);
+    }
     clearDetailSkeleton();
     clearRelatedSkeleton();
     if (!lastErrorWasRateLimit) {

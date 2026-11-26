@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Monitor all EstateVista inquiries and update their status.">
+  <title>Inquiry monitoring | EstateVista Admin</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <link rel="stylesheet" href="/assets/css/theme.css">
+  <link rel="stylesheet" href="/assets/css/components.css">
+  <link rel="stylesheet" href="/assets/css/property-management.css">
+  <link rel="stylesheet" href="/assets/css/inquiries.css">
+</head>
+<body class="mgmt-shell" data-management-page data-management-role="ADMIN" data-inquiry-scope="admin" data-inquiry-role="ADMIN">
+  <a class="visually-hidden-focusable mgmt-skip" href="#management-content">Skip to management content</a>
+  <div class="mgmt-scrim" data-dash-scrim hidden></div>
+  <aside class="dash-sidebar" id="dash-sidebar" data-dash-sidebar aria-label="Management navigation"></aside>
+
+  <div class="mgmt-main">
+    <header class="dash-topbar">
+      <button class="dash-topbar__menu" type="button" data-dash-menu-toggle aria-controls="dash-sidebar" aria-expanded="false">
+        <span class="dash-topbar__menu-bars" aria-hidden="true"></span>
+        <span class="visually-hidden">Toggle navigation</span>
+      </button>
+      <h1 class="dash-topbar__title" data-dash-title>Inquiry monitoring</h1>
+      <span class="dash-topbar__spacer"></span>
+      <span class="dash-topbar__role" data-dash-role></span>
+      <div class="site-auth" data-auth-nav data-auth-home-href="/index.html" data-auth-login-href="/login.html"></div>
+    </header>
+
+    <main class="mgmt-content" id="management-content" data-management-content data-inquiry-content tabindex="-1" hidden>
+      <nav class="mgmt-breadcrumb" aria-label="Breadcrumb">
+        <ul>
+          <li><a href="/index.html">Home</a></li>
+          <li aria-current="page">Inquiry monitoring</li>
+        </ul>
+      </nav>
+
+      <div class="mgmt-page-head">
+        <div>
+          <h2>All inquiries</h2>
+          <p>Monitor inquiry status across the platform. This view does not open private conversations.</p>
+        </div>
+      </div>
+
+      <section class="ev-panel" aria-labelledby="inquiryListHeading">
+        <div class="ev-panel__head">
+          <h2 id="inquiryListHeading">Inquiry collection</h2>
+          <span class="text-muted small" data-inquiry-summary role="status" aria-live="polite"></span>
+        </div>
+
+        <form class="inquiry-toolbar" data-inquiry-filters aria-label="Inquiry filters">
+          <div class="mgmt-field">
+            <label for="inquiryStatusFilter">Status</label>
+            <select class="form-select" id="inquiryStatusFilter" name="status">
+              <option value="">All statuses</option>
+              <option value="NEW">New</option>
+              <option value="IN_PROGRESS">In progress</option>
+              <option value="RESOLVED">Resolved</option>
+              <option value="CLOSED">Closed</option>
+            </select>
+          </div>
+          <div class="mgmt-field">
+            <label for="inquirySort">Sort by</label>
+            <select class="form-select" id="inquirySort" name="sort">
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+            </select>
+          </div>
+          <div class="inquiry-toolbar__actions">
+            <button class="btn btn-primary btn-sm" type="submit">Apply</button>
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-inquiry-reset>Reset</button>
+          </div>
+        </form>
+
+        <div class="inquiry-loading" data-inquiry-loading hidden aria-label="Loading inquiries">
+          <div class="inquiry-skeleton"></div>
+          <div class="inquiry-skeleton"></div>
+          <div class="inquiry-skeleton"></div>
+        </div>
+
+        <div class="ev-alert ev-alert--error" data-inquiry-error role="alert" hidden>
+          <p data-inquiry-error-message></p>
+          <button class="btn btn-outline-secondary btn-sm" type="button" data-inquiry-retry>Try again</button>
+        </div>
+
+        <div class="ev-empty" data-inquiry-empty hidden>
+          <h3>No inquiries found</h3>
+          <p>Try a different status filter. Inquiries remain here after a property is archived.</p>
+        </div>
+
+        <div class="inquiry-table-wrap" data-inquiry-table hidden>
+          <table class="mgmt-table">
+            <caption class="visually-hidden">All platform inquiries</caption>
+            <thead>
+              <tr>
+                <th scope="col">Property</th>
+                <th scope="col">Buyer account</th>
+                <th scope="col">Status</th>
+                <th scope="col">Received</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody data-inquiry-body></tbody>
+          </table>
+        </div>
+        <div class="inquiry-cards" data-inquiry-cards hidden></div>
+
+        <nav class="inquiry-pagination" data-inquiry-pagination aria-label="Inquiry pages" hidden>
+          <button class="btn btn-outline-secondary btn-sm" type="button" data-inquiry-prev>Previous</button>
+          <p data-inquiry-page-status role="status" aria-live="polite"></p>
+          <button class="btn btn-outline-secondary btn-sm" type="button" data-inquiry-next>Next</button>
+        </nav>
+      </section>
+
+      <section class="ev-panel inquiry-detail-panel" data-inquiry-detail aria-labelledby="inquiryDetailHeading" hidden>
+        <div class="ev-panel__head">
+          <h2 id="inquiryDetailHeading">Inquiry details</h2>
+          <button class="btn btn-outline-secondary btn-sm" type="button" data-inquiry-detail-close>Close details</button>
+        </div>
+        <div data-inquiry-detail-body></div>
+        <div class="ev-alert ev-alert--error" data-inquiry-detail-error role="alert" hidden>
+          <p data-inquiry-detail-error-message></p>
+          <button class="btn btn-outline-secondary btn-sm" type="button" data-inquiry-detail-retry>Try again</button>
+        </div>
+      </section>
+    </main>
+
+    <div class="mgmt-denied" data-access-denied role="alert" tabindex="-1" hidden></div>
+    <div class="ev-toast-region" data-toast-region aria-live="polite" aria-atomic="false"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+  <script src="/assets/js/main.js"></script>
+  <script type="module" src="/assets/js/auth/auth-init.js"></script>
+  <script type="module" src="/assets/js/inquiries/inquiry-bridge.js"></script>
+  <script type="module" src="/assets/js/inquiries/inquiry-page.js"></script>
+</body>
+</html>

@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="assets/css/theme.css">
   <link rel="stylesheet" href="assets/css/components.css">
   <link rel="stylesheet" href="assets/css/property-details.css">
+  <link rel="stylesheet" href="assets/css/inquiries.css">
 </head>
 <body>
   <a class="ev-skip-link" href="#main">Skip to main content</a>
@@ -42,6 +43,9 @@
             </li>
             <li class="nav-item" data-favorites-nav hidden>
               <a class="nav-link site-nav__link" href="favorites.html" data-nav-link>Favorites</a>
+            </li>
+            <li class="nav-item" data-inquiries-nav hidden>
+              <a class="nav-link site-nav__link" href="dashboard/buyer/inquiries.html" data-nav-link>Inquiries</a>
             </li>
             <li class="nav-item">
               <a class="nav-link site-nav__link" href="about.html" data-nav-link>About us</a>
@@ -95,13 +99,51 @@
               <dl class="property-facts" id="detailFacts"></dl>
 
               <div class="property-detail__actions">
-                <a class="btn btn-primary" href="contact.html">Enquire about this home</a>
+                <button class="btn btn-primary" type="button" data-inquiry-focus>Enquire about this home</button>
                 <a class="btn btn-secondary" href="properties.html">Back to properties</a>
                 <span id="detailFavoriteHost" class="property-detail__favorite"></span>
               </div>
-              <p class="property-detail__disclaimer">Listing details are served live by the EstateVista property API. Enquiry links are illustrative.</p>
+              <p class="property-detail__disclaimer">Listing details are served live by the EstateVista property API.</p>
             </div>
           </div>
+
+          <section class="property-detail__section property-detail__section--wide ev-inquiry-panel"
+                   id="inquirySection" aria-labelledby="inquiryHeading" hidden>
+            <h2 id="inquiryHeading">Enquire about this home</h2>
+            <p class="ev-inquiry-panel__property" id="inquiryPropertyTitle">Send an inquiry about this property</p>
+
+            <div class="ev-inquiry-panel__state" id="inquiryPrompt" hidden>
+              <p id="inquiryPromptText" role="status" aria-live="polite"></p>
+              <a class="btn btn-primary" id="inquiryLoginLink" href="login.html" hidden>Log in to enquire</a>
+              <a class="btn btn-secondary" href="properties.html">Browse properties</a>
+            </div>
+
+            <form class="ev-inquiry-form" id="inquiryForm" hidden novalidate>
+              <div class="ev-inquiry-form__field">
+                <label for="inquirySubject">Subject <span class="text-muted">(optional)</span></label>
+                <input class="form-control" id="inquirySubject" name="subject" type="text"
+                       maxlength="200" autocomplete="off">
+                <p class="ev-inquiry-form__error" id="inquirySubjectError" role="alert" hidden></p>
+              </div>
+              <div class="ev-inquiry-form__field">
+                <label for="inquiryMessage">Message</label>
+                <textarea class="form-control" id="inquiryMessage" name="message" rows="5"
+                          maxlength="5000" required></textarea>
+                <p class="ev-inquiry-form__error" id="inquiryMessageError" role="alert" hidden></p>
+              </div>
+              <p class="ev-inquiry-form__feedback" id="inquiryFeedback" role="alert" hidden></p>
+              <div class="ev-inquiry-form__actions">
+                <button class="btn btn-primary" type="submit">Send inquiry</button>
+                <a class="btn btn-outline-secondary" href="dashboard/buyer/inquiries.html">View my inquiries</a>
+              </div>
+            </form>
+
+            <div class="ev-inquiry-panel__state" id="inquirySuccess" role="status" aria-live="polite" hidden>
+              <h3>Your inquiry has been sent</h3>
+              <p>You can review its status in your inquiry history. The agent has not been contacted beyond this recorded inquiry.</p>
+              <a class="btn btn-primary" id="inquiryHistoryLink" href="dashboard/buyer/inquiries.html">View my inquiries</a>
+            </div>
+          </section>
 
           <div class="property-detail__content">
             <section class="property-detail__section property-detail__section--wide" aria-labelledby="detailDescriptionHeading">
@@ -186,6 +228,7 @@
             <li><a href="index.html">Home</a></li>
             <li><a href="properties.html">Properties</a></li>
             <li data-favorites-nav hidden><a href="favorites.html">Favorites</a></li>
+            <li data-inquiries-nav hidden><a href="dashboard/buyer/inquiries.html">Inquiries</a></li>
             <li><a href="about.html">About us</a></li>
             <li><a href="contact.html">Contact us</a></li>
           </ul>
@@ -226,6 +269,8 @@
   <script src="assets/js/ui-skeletons.js" defer></script>
   <script src="assets/js/property-details.js" defer></script>
   <script type="module" src="assets/js/favorites/favorites-bridge.js"></script>
+  <script type="module" src="assets/js/inquiries/inquiry-bridge.js"></script>
+  <script type="module" src="assets/js/inquiries/inquiry-property.js"></script>
   <script type="module" src="assets/js/auth/auth-init.js"></script>
 </body>
 </html>

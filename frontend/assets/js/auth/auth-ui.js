@@ -44,13 +44,15 @@ function authLink(container, kind, fallbackHref, label, className) {
  * control. Roles are never used to reveal unimplemented features.
  */
 export function renderAuthNavigation(state = getAuthState()) {
-  const buyerOnlyLinks = document.querySelectorAll("[data-favorites-nav]");
+  const buyerOnlyLinks = document.querySelectorAll(
+    "[data-favorites-nav], [data-inquiries-nav]"
+  );
   const buyer = Boolean(
     state.status === "authenticated" && state.user && state.user.role === "BUYER"
   );
 
-  /* Favorites are a BUYER-only surface. The link is hidden without changing
-     layout-adjacent controls and never triggers a favorites request itself. */
+  /* Favorites and inquiry history are BUYER-only surfaces. Links are hidden
+     without changing layout-adjacent controls and never trigger a request. */
   buyerOnlyLinks.forEach((link) => {
     link.hidden = !buyer;
   });

@@ -1,2 +1,5 @@
 # Local Stage 1 and Stage 2 validation reports
 /docs/validation/
+
+# Disposable Stage 6.6 PostgreSQL validation cluster
+/backend/.test-postgres-s66/
