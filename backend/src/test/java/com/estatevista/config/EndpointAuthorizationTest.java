@@ -15,6 +15,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -25,6 +26,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.estatevista.audit.AuditEventService;
 import com.estatevista.auth.AuthService;
+import com.estatevista.authorization.AccountAuthorizationService;
+import com.estatevista.chat.service.ChatMessageService;
+import com.estatevista.chat.service.ConversationService;
 import com.estatevista.favorite.service.FavoriteService;
 import com.estatevista.inquiry.service.InquiryService;
 import com.estatevista.property.PropertyService;
@@ -76,6 +80,18 @@ class EndpointAuthorizationTest {
 
     @MockitoBean
     private InquiryService inquiryService;
+
+    @MockitoBean
+    private ConversationService conversationService;
+
+    @MockitoBean
+    private ChatMessageService chatMessageService;
+
+    @MockitoBean
+    private AccountAuthorizationService accountAuthorizationService;
+
+    @MockitoBean
+    private SimpMessagingTemplate simpMessagingTemplate;
 
     @Test
     void adminPrefixAllowsOnlyAdminAndStillRequiresCsrfForWrites() throws Exception {

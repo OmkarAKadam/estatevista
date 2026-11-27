@@ -65,6 +65,10 @@ public class AuditEventService {
     public static final String ACTION_IMAGE_CLEANUP = "PROPERTY_IMAGE_CLEANUP";
     public static final String ACTION_IMAGE_FAILURE = "PROPERTY_IMAGE_FAILURE";
     public static final String ACTION_INQUIRY_STATUS_CHANGED = "INQUIRY_STATUS_CHANGED";
+    public static final String ACTION_CONVERSATION_CREATE = "CONVERSATION_CREATE";
+    public static final String ACTION_MESSAGE_CREATE = "MESSAGE_CREATE";
+    public static final String ACTION_MESSAGE_REJECTED = "MESSAGE_REJECTED";
+    public static final String ACTION_READ_STATE_UPDATE = "READ_STATE_UPDATE";
 
     private static final Logger log = LoggerFactory.getLogger(AuditEventService.class);
     private static final String AUDITED_ATTRIBUTE_PREFIX =
@@ -223,6 +227,62 @@ public class AuditEventService {
         auditLogRepository.saveAndFlush(buildEntry(
                 ACTION_INQUIRY_STATUS_CHANGED, "INQUIRY", inquiryId, actorId,
                 before, after, null));
+    }
+
+    /**
+     * Records a conversation creation in the caller's transaction. Only server
+     * identifiers are accepted; no message content is ever passed to audit.
+     */
+    public void recordConversationCreatedInTransaction(
+            UUID conversationId, UUID actorId, UUID propertyId, UUID assignedAgentId) {
+        writeInCurrentTransaction(ACTION_CONVERSATION_CREATE, "CONVERSATION", conversationId, actorId,
+                "{\"outcome\":\"SUCCESS\",\"propertyId\":" + jsonUuid(propertyId)
+                        + ",\"assignedAgentId\":" + jsonUuid(assignedAgentId) + "}");
+    }
+
+    /**
+     * Records one persisted message in the caller's transaction so a rollback
+     * cannot leave an audit row without a message. Content is deliberately not
+     * an argument and therefore cannot be persisted here.
+     */
+    public void recordMessageCreatedInTransaction(
+            UUID messageId, UUID actorId, UUID conversationId, UUID idempotencyKey,
+            Instant occurredAt) {
+        writeInCurrentTransaction(ACTION_MESSAGE_CREATE, "MESSAGE", messageId, actorId,
+                "{\"outcome\":\"SUCCESS\",\"conversationId\":" + jsonUuid(conversationId)
+                        + ",\"idempotencyKey\":" + jsonUuid(idempotencyKey)
+                        + ",\"occurredAt\":\"" + occurredAt + "\"}");
+    }
+
+    /**
+     * Records a rejected chat send in the independent audit sink. A rejection has
+     * no durable message row, so this write must survive the failed persistence
+     * transaction. Only safe identifiers, a coarse reason, and a correlation ID
+     * are accepted; message content is deliberately not an argument.
+     */
+    public void recordMessageRejected(
+            UUID actorId,
+            UUID conversationId,
+            UUID messageId,
+            UUID idempotencyKey,
+            String reason,
+            UUID correlationId) {
+        String payload = "{\"outcome\":\"REJECTED\",\"conversationId\":"
+                + jsonUuid(conversationId)
+                + ",\"messageId\":" + jsonUuid(messageId)
+                + ",\"idempotencyKey\":" + jsonUuid(idempotencyKey)
+                + ",\"reason\":" + jsonToken(reason)
+                + ",\"correlationId\":\""
+                + (correlationId == null ? UUID.randomUUID() : correlationId) + "\"}";
+        write(ACTION_MESSAGE_REJECTED, "MESSAGE", messageId, actorId, payload, null);
+    }
+
+    /** Records a monotonic read-state advance without exposing message content. */
+    public void recordReadStateUpdatedInTransaction(
+            UUID conversationId, UUID actorId, UUID lastReadMessageId, Instant occurredAt) {
+        writeInCurrentTransaction(ACTION_READ_STATE_UPDATE, "CONVERSATION_READ_STATE", conversationId, actorId,
+                "{\"outcome\":\"SUCCESS\",\"lastReadMessageId\":" + jsonUuid(lastReadMessageId)
+                        + ",\"occurredAt\":\"" + occurredAt + "\"}");
     }
 
     /** Records the eventual provider-cleanup outcome for a committed deletion. */

@@ -383,6 +383,10 @@ public final class WebSocketConnectionRegistry {
             return false;
         }
         String resolved = "/" + requested.substring("/user/".length()) + "-" + stompSessionId;
-        return resolved.equals(delivered);
+        // Spring's user-destination resolver prefixes the session id with "user".
+        // Accept both spellings, but only for this exact connection's session.
+        String springResolved = "/" + requested.substring("/user/".length())
+                + "-user" + stompSessionId;
+        return resolved.equals(delivered) || springResolved.equals(delivered);
     }
 }

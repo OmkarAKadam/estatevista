@@ -108,8 +108,12 @@ public final class WebSocketOutboundAuthorizationInterceptor implements ChannelI
             return false;
         }
         for (String requested : ALLOWED_SUBSCRIPTIONS) {
-            String resolved = "/" + requested.substring("/user/".length()) + "-" + stompSessionId;
-            if (resolved.equals(destination)) {
+            String base = "/" + requested.substring("/user/".length());
+            String resolved = base + "-" + stompSessionId;
+            // Spring's user-destination resolver prefixes the session id with
+            // "user". Both forms remain bound to this exact session id.
+            String springResolved = base + "-user" + stompSessionId;
+            if (resolved.equals(destination) || springResolved.equals(destination)) {
                 return true;
             }
         }

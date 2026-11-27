@@ -82,6 +82,18 @@ public final class PropertyRateLimitFilter extends OncePerRequestFilter {
             PathPatternRequestMatcher.pathPattern(
                     HttpMethod.PATCH, "/api/v1/inquiries/{inquiryId}/status");
 
+    /** Stage 7.3 reuses the approved shared authenticated bucket; no new limit is invented. */
+    private static final RequestMatcher CHAT_API = new OrRequestMatcher(List.of(
+            PathPatternRequestMatcher.pathPattern(
+                    HttpMethod.POST, "/api/v1/properties/{propertyId}/conversations"),
+            PathPatternRequestMatcher.pathPattern(HttpMethod.GET, "/api/v1/conversations"),
+            PathPatternRequestMatcher.pathPattern(
+                    HttpMethod.GET, "/api/v1/conversations/{conversationId}"),
+            PathPatternRequestMatcher.pathPattern(
+                    HttpMethod.GET, "/api/v1/conversations/{conversationId}/messages"),
+            PathPatternRequestMatcher.pathPattern(
+                    HttpMethod.PATCH, "/api/v1/conversations/{conversationId}/read-state")));
+
     private static final RequestMatcher PROPERTY_MUTATION = new OrRequestMatcher(List.of(
             PathPatternRequestMatcher.pathPattern(HttpMethod.POST, "/api/v1/properties"),
             PathPatternRequestMatcher.pathPattern(HttpMethod.PATCH, "/api/v1/properties/{propertyId}"),
@@ -155,7 +167,8 @@ public final class PropertyRateLimitFilter extends OncePerRequestFilter {
         }
         if (INQUIRY_SUBMISSION.matches(request)
                 || INQUIRY_READ.matches(request)
-                || INQUIRY_STATUS_MUTATION.matches(request)) {
+                || INQUIRY_STATUS_MUTATION.matches(request)
+                || CHAT_API.matches(request)) {
             return RateLimitService.SCOPE_AUTHENTICATED_API;
         }
         if (PUBLIC_SEARCH.matches(request)) {

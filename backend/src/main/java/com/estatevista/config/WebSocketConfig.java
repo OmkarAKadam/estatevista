@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.TaskScheduler;
 
 import com.estatevista.authorization.StompAuthorizationInterceptor;
+import com.estatevista.websocket.ChatDispatchAuthorizationGuard;
 import com.estatevista.websocket.WebSocketHandshakeInterceptor;
 import com.estatevista.websocket.WebSocketOutboundAuthorizationInterceptor;
 import com.estatevista.websocket.WebSocketSecurityInterceptor;
@@ -38,6 +39,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final WebSocketSecurityInterceptor securityInterceptor;
     private final StompAuthorizationInterceptor stompAuthorizationInterceptor;
     private final WebSocketOutboundAuthorizationInterceptor outboundAuthorizationInterceptor;
+    private final ChatDispatchAuthorizationGuard chatDispatchAuthorizationGuard;
     private final WebSocketTransportLifecycle transportLifecycle;
     private final TaskScheduler taskScheduler;
 
@@ -48,6 +50,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
             WebSocketSecurityInterceptor securityInterceptor,
             StompAuthorizationInterceptor stompAuthorizationInterceptor,
             WebSocketOutboundAuthorizationInterceptor outboundAuthorizationInterceptor,
+            ChatDispatchAuthorizationGuard chatDispatchAuthorizationGuard,
             WebSocketTransportLifecycle transportLifecycle,
             @Qualifier("taskScheduler") TaskScheduler taskScheduler) {
         this.properties = properties;
@@ -56,6 +59,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         this.securityInterceptor = securityInterceptor;
         this.stompAuthorizationInterceptor = stompAuthorizationInterceptor;
         this.outboundAuthorizationInterceptor = outboundAuthorizationInterceptor;
+        this.chatDispatchAuthorizationGuard = chatDispatchAuthorizationGuard;
         this.transportLifecycle = transportLifecycle;
         this.taskScheduler = taskScheduler;
     }
@@ -108,6 +112,6 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureClientOutboundChannel(ChannelRegistration registration) {
-        registration.interceptors(outboundAuthorizationInterceptor);
+        registration.interceptors(outboundAuthorizationInterceptor, chatDispatchAuthorizationGuard);
     }
 }
