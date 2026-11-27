@@ -2027,21 +2027,23 @@ Rules:
 
 ### 12.18 Implementation checklist for chat
 
-- [ ] Handshake goes directly to the approved API host and rejects no-session, bad-origin, and query-token requests.
-- [ ] CONNECT requires a server-populated principal and validates the session-bound CSRF native header with exact `Origin`.
-- [ ] SUBSCRIBE allows only the three user queues.
-- [ ] SEND allows only `/app/chat.send`.
-- [ ] Sender ID, message ID and timestamp are server-generated; the mandatory UUID idempotency key is accepted, correlated and unique per conversation/sender.
-- [ ] Participant predicate is applied to every SEND, history read and immediately before every outbound send.
-- [ ] `assigned_agent_id` is the immutable original agent, not `primary_agent_id`; reassignment transfers nothing.
-- [ ] Admin cannot subscribe to or read conversations.
-- [ ] Message is persisted before broadcast; sender-only `PERSISTENCE_ACK` is sent after commit and native `RECEIPT` is non-authoritative.
-- [ ] Message content is length-limited and plain text.
-- [ ] Rate limits and connection limits are enforced.
-- [ ] Authoritative `SessionRepository.findById`/`Session.isExpired` validation closes sockets and rejects stale frames; destruction events are supplemental only.
-- [ ] Reconnect uses REST cursor resync, deduplicates by server message ID, adds no sync endpoint and performs no automatic mutation replay.
-- [ ] Errors are generic and contain no content or stack traces.
-- [ ] Tests cover raw STOMP, spoofing, cross-conversation, reassignment and AC-48–AC-55.
+Stage 7.2 completed only the foundation items marked `[x] (Stage 7.2)`. Unchecked items remain Stage 7.3–7.7 obligations; where a Stage 7.2 boundary was verified but a future-stage portion remains, that portion is named explicitly.
+
+- [x] (Stage 7.2) Handshake requires an authenticated host-only session and rejects no-session, bad-origin, query-token and client-identity-override requests. Deployment to the exact approved API host remains a P-12/7.7 verification input.
+- [x] (Stage 7.2) CONNECT requires a server-populated principal and validates exactly one session-bound CSRF native header with exact `Origin`.
+- [x] (Stage 7.2) SUBSCRIBE allows only the three user queues and enforces the three-subscription-per-connection cap.
+- [x] (Stage 7.2) SEND allows only `/app/chat.send`; no application handler or message persistence exists until Stage 7.4.
+- [ ] Sender ID, message ID and timestamp are server-generated; the mandatory UUID idempotency key is accepted, correlated and unique per conversation/sender. (Stage 7.4)
+- [ ] Participant predicate is applied to every SEND, history read and immediately before every outbound send. Stage 7.2 verified session, role, subscription and revocation state before dispatch; participant/conversation predicates remain Stage 7.4.
+- [ ] `assigned_agent_id` is the immutable original agent, not `primary_agent_id`; reassignment transfers nothing. (Stage 7.3/7.7)
+- [ ] Admin cannot subscribe to or read conversations. Stage 7.2 denies ADMIN at the CONNECT boundary; transcript/history denial remains Stage 7.3/7.5.
+- [ ] Message is persisted before broadcast; sender-only `PERSISTENCE_ACK` is sent after commit and native `RECEIPT` is non-authoritative. (Stage 7.4)
+- [ ] Message content is length-limited and plain text. Stage 7.2 enforces the 32 KB STOMP frame cap; the 2,000-character business limit remains Stage 7.4.
+- [x] (Stage 7.2) Approved WebSocket rate and connection limits are enforced: five sockets per user, twenty connection attempts per IP per minute, three subscriptions per connection and a 32 KB frame cap. Message-rate scopes are wired; business-message verification remains Stage 7.4.
+- [x] (Stage 7.2) Authoritative `SessionRepository.findById`/`Session.isExpired` validation closes sockets and rejects stale frames; destruction events are supplemental only.
+- [ ] Reconnect uses REST cursor resync, deduplicates by server message ID, adds no sync endpoint and performs no automatic mutation replay. (Stage 7.6)
+- [x] (Stage 7.2) Boundary errors are generic and contain no content, stack trace or existence confirmation.
+- [ ] Tests cover raw STOMP, spoofing, cross-conversation, reassignment and AC-48–AC-55. Stage 7.2 covered raw STOMP, spoofing and the Stage 7.2 ledger items; cross-conversation, reassignment and AC-48–AC-55 remain future gates.
 
 ---
 
@@ -3317,14 +3319,14 @@ F-1…F-8 schedule (scheduled is not resolved; Stage 6.2 Phase A verification st
 |---|---|
 | F-1 — Exact Origin/Referer validation | Stage 6.2 Phase A; **RESOLVED — implemented and independently verified** |
 | F-2 — CSRF token regeneration after login | Stage 6.2 Phase A; **RESOLVED — implemented and independently verified** |
-| F-3 — WebSocket session invalidation | Design resolved in Stage 7.1 by F-7.1-02; implementation and verification assigned to Stage 7.2 (AC-49); **OPEN — not implemented** |
+| F-3 — WebSocket session invalidation | Design resolved in Stage 7.1 by F-7.1-02; WebSocket implementation and verification completed in Stage 7.2 (AC-30–AC-32, AC-44–AC-46, AC-49); chat persistence/history and Stage 7.7 restart verification remain future gates; **WEBSOCKET SCOPE RESOLVED — remaining gates OPEN** |
 | F-4 — Generic error/denial `no-store` | Stage 6.2 Phase A; **RESOLVED — implemented and independently verified** |
 | F-5 — Absolute/admin timeout and session limits | Stage 8; **OPEN — deferred** |
 | F-6 — Configurable logout cookie name | Stage 9; **OPEN — deferred** |
 | F-7 — Concurrent CSRF bootstrap/token-version hardening | Stage 6.2 Phase A; **RESOLVED — SINGLE-INSTANCE SCOPE ONLY**; multi-instance gate Stage 9 (§22.9) |
-| F-8 — Rate limits, audit timestamps, proactive revocation | Stage 6 route coverage; WebSocket proactive revocation/revalidation is a Stage 7.2 gate under F-7.1-02/03; other remaining obligations Stage 8/9; **PARTIALLY ADDRESSED — OPEN** |
+| F-8 — Rate limits, audit timestamps, proactive revocation | Stage 6 route coverage; WebSocket proactive revocation/revalidation was implemented and verified in Stage 7.2 under F-7.1-02/03; non-chat `last_login_at` and audit-timestamp obligations remain Stage 8/9; **PARTIALLY ADDRESSED — remaining non-chat obligations OPEN** |
 
-F-8 remaining obligations outside chat are independent verification of `last_login_at` capture and remaining audit-timestamp behavior. WebSocket proactive revocation/revalidation is scoped to Stage 7.2 and is not treated as a Stage 8/9 remnant. Every resolved finding requires implementation evidence and independent verification. This addendum preserves server-side sessions, session-bound CSRF, exact-origin CORS, deny-by-default authorization, and per-request account revalidation. No JWT, wildcard CORS, new CSRF exemption, automatic mutation retry, client-derived identity, blanket UI approval, security weakening, blanket document reapproval, or finding closure is approved.
+F-8 remaining obligations outside chat are independent verification of `last_login_at` capture and remaining audit-timestamp behavior. WebSocket proactive revocation/revalidation was scoped to, implemented in, and verified during Stage 7.2 (§22.11); it is not treated as a Stage 8/9 remnant. Every resolved finding requires implementation evidence and independent verification. This addendum preserves server-side sessions, session-bound CSRF, exact-origin CORS, deny-by-default authorization, and per-request account revalidation. No JWT, wildcard CORS, new CSRF exemption, automatic mutation retry, client-derived identity, blanket UI approval, security weakening, blanket document reapproval, or finding closure is approved.
 
 ---
 
@@ -3475,6 +3477,7 @@ F-8 remaining obligations outside chat are independent verification of `last_log
 - **Resolved for Stage 6:** FR-INQ-005 now has the owner-approved inquiry transition matrix in `STAGE_6_DECISION_REGISTER.md` §3 Decision 1. Property lifecycle D-07 remains governed by the finalized Stage 4 property matrix; no property status rule was changed in Stage 6. Implementation evidence remains outstanding.
 - **Resolved:** FR-DISC-010 and the public visibility of non-published statuses are governed by the approved conservative rule (C-10/D-08): only `PUBLISHED` records are publicly retrievable; SD-31 applies the same boundary to images.
 - **Deployment dependency:** the traceability matrix maps controls, not deployment approval. SD-48 is approved as an architecture, but exact hostnames, CORS origin, `X-CSRF-TOKEN` exposure, and WebSocket origin remain deployment configuration prerequisites.
+- **Stage 7.2 coverage:** the WebSocket foundation controls derived from SD-40 and F-7.1-02/03 were implemented and verified against real sessions and native frames (§22.11). Chat message persistence, participant predicates, cursor history, frontend rendering and exact deployment values are not covered by Stage 7.2 and remain Stage 7.3–7.7 gates.
 
 ---
 
@@ -3556,24 +3559,26 @@ This checklist is ordered so that blocking decisions and shared foundations are 
 
 ### 20.5 WebSocket and chat
 
-- [ ] `/ws` handshake goes directly to the approved API host and requires a valid host-only session; unauthenticated upgrade rejected.
-- [ ] No STOMP dependency, CDN client or locally vendored client is introduced before the P-11 gate; a client may be added in 7.5 only after exact version, license, artifact integrity and security-review records exist.
-- [ ] No token is accepted from the query string, subprotocol, or URL.
-- [ ] `Origin` allowlist enforced; no wildcard or origin reflection.
-- [ ] WSS required in production.
-- [ ] CONNECT requires a server-populated principal and a validated session-bound CSRF native header with exact `Origin`; client login fields ignored.
-- [ ] SUBSCRIBE allows only `/user/queue/messages`, `/user/queue/notifications`, `/user/queue/errors`.
-- [ ] `/topic/**`, `/queue/**`, and arbitrary user queues are rejected.
-- [ ] SEND allows only `/app/chat.send`; read state is REST-only, monotonic and viewed-only (SD-39/P-07).
-- [ ] Sender ID, message ID, timestamp and type are server-generated; the mandatory UUID idempotency key is scoped per conversation/sender.
-- [ ] Participant predicate checked on every SEND, history read and immediately before every outbound send.
-- [ ] Message persisted before broadcast; failed persistence produces no success event; sender-only `PERSISTENCE_ACK` follows commit and native `RECEIPT` is non-authoritative.
-- [ ] Only the buyer and original assigned agent receive conversation events; no fallback or transfer when the original agent is inactive.
-- [ ] Offline recipients retrieve history through REST cursor refresh, deduplicate by server message ID, and have no sync endpoint or automatic mutation replay.
-- [ ] Message length, frame size, send rate, and connection count limits enforced.
-- [ ] Authoritative `SessionRepository.findById`/`Session.isExpired` validation closes sockets and rejects stale frames; destruction events are supplemental only.
-- [ ] Errors are generic and contain no content, stack trace, or existence confirmation.
-- [ ] Chat content is treated as plain text and escaped by the frontend.
+The Stage 7.2 implementation evidence covers the checked items below only. All unchecked items remain future-stage gates; see §22.11 and `docs/validation/STAGE_7_2_COMPLETION_REPORT.md`.
+
+- [x] (Stage 7.2) `/ws` requires a valid host-only Spring Session; unauthenticated upgrades are rejected. Deployment to the exact approved API host remains a P-12/7.7 input.
+- [x] (Stage 7.2) No STOMP client dependency, CDN script or locally vendored client was introduced; the P-11 client gate remains open for Stage 7.5.
+- [x] (Stage 7.2) No token is accepted from the query string, subprotocol, or URL.
+- [x] (Stage 7.2) `Origin` allowlist enforced; no wildcard or origin reflection.
+- [ ] WSS required in production. (Stage 7.7 deployment verification)
+- [x] (Stage 7.2) CONNECT requires a server-populated principal and a validated session-bound CSRF native header with exact `Origin`; client login fields ignored.
+- [x] (Stage 7.2) SUBSCRIBE allows only `/user/queue/messages`, `/user/queue/notifications`, `/user/queue/errors`.
+- [x] (Stage 7.2) `/topic/**`, `/queue/**`, and arbitrary user queues are rejected at subscription and again before outbound dispatch.
+- [x] (Stage 7.2) SEND allows only `/app/chat.send`; read state remains REST-only, monotonic and viewed-only, with no handler implemented in 7.2.
+- [ ] Sender ID, message ID, timestamp and type are server-generated; the mandatory UUID idempotency key is scoped per conversation/sender. (Stage 7.4)
+- [ ] Participant predicate checked on every SEND, history read and immediately before every outbound send. Stage 7.2 verified session/role/socket state before dispatch; participant predicates remain Stage 7.4.
+- [ ] Message persisted before broadcast; failed persistence produces no success event; sender-only `PERSISTENCE_ACK` follows commit and native `RECEIPT` is non-authoritative. (Stage 7.4)
+- [ ] Only the buyer and original assigned agent receive conversation events; no fallback or transfer when the original agent is inactive. (Stage 7.3/7.4)
+- [ ] Offline recipients retrieve history through REST cursor refresh, deduplicate by server message ID, and have no sync endpoint or automatic mutation replay. (Stage 7.6)
+- [x] (Stage 7.2) Frame size, connection count, per-user socket count, per-IP attempt count and subscription count limits enforced; business message-length/rate verification remains Stage 7.4.
+- [x] (Stage 7.2) Authoritative `SessionRepository.findById`/`Session.isExpired` validation closes sockets and rejects stale frames; destruction events are supplemental only.
+- [x] (Stage 7.2) Errors are generic and contain no content, stack trace, or existence confirmation.
+- [ ] Chat content is treated as plain text and escaped by the frontend. (Stage 7.5)
 
 ### 20.6 File uploads
 
@@ -3921,7 +3926,28 @@ Local validation reports and verification scripts under `docs/validation/` remai
 | Decision changes | SD-29 is Approved: mandatory client UUID `idempotencyKey` with the V19 `UNIQUE(conversation_id, sender_id, idempotency_key)` constraint. SD-40 is Approved: the session-bound `X-CSRF-TOKEN` value is required as a native STOMP `CONNECT` header with exact `Origin` validation. Current consolidated totals are 48 Approved and 5 Deferred. |
 | Preserved decisions | SD-36 remains the authority for any future conversation-status lifecycle, but P-04 defers and unmaps all status mutation in Stage 7. P-12 makes exact same-site hostnames production-verification inputs for Stage 7.7, not Stage 7.1 blockers. P-11 permits a locally vendored STOMP client only after exact version, license, artifact integrity and security-review records exist. |
 | Finding resolutions | F-7.1-01 sender-only post-commit `PERSISTENCE_ACK` with non-authoritative native `RECEIPT`; F-7.1-02 authoritative `SessionRepository.findById`/`Session.isExpired` validation instead of reliance on destruction events; F-7.1-03 reauthorization immediately before every outbound send; F-7.1-04 deterministic `(sent_at DESC, id DESC)` cursor with advisory serialization and no sequence column; F-7.1-05 idempotent explicit retry; F-7.1-06 monotonic viewed-only own read state; F-7.1-07 creation eligibility separated from historical retrieval; F-7.1-08 CONNECT CSRF. |
-| Document reconciliation | This addendum updates the CSRF, session lifecycle, authorization matrix, idempotency, acknowledgement, cursor, read-state, creation-eligibility, audit, test, checklist, risk, conflict and deferred-decision sections. The authoritative Stage 7 ledger is `docs/STAGE_7_DECISION_REGISTER.md` §7; all 55 scenarios remain `NOT EXECUTED`. |
+| Document reconciliation | This addendum updates the CSRF, session lifecycle, authorization matrix, idempotency, acknowledgement, cursor, read-state, creation-eligibility, audit, test, checklist, risk, conflict and deferred-decision sections. The authoritative Stage 7 ledger is `docs/STAGE_7_DECISION_REGISTER.md` §7; as of Stage 7.1 all 55 scenarios remained `NOT EXECUTED`. Stage 7.2 execution status is recorded separately in §22.11. |
 | Boundaries | F-3 design is resolved here; its implementation and verification are Stage 7.2 gates. WebSocket-specific F-8 revocation/revalidation is Stage 7.2; other F-8 remnants remain Stage 8/9. V19 remains Stage 7.3 work. No chat REST endpoint, STOMP handler, client dependency, migration or acceptance scenario was introduced or executed by Stage 7.1. |
+
+### 22.11 Stage 7.2 implementation reconciliation addendum
+
+| Field | Record |
+|---|---|
+| Date | 27 November 2026 |
+| Baseline | `b769b0acbcaef67c558efeaba96f7ffe2617e6d3` on `stage-7-realtime-chat`. |
+| Authority | `docs/STAGE_7_DECISION_REGISTER.md` §§7, 8, 10 and 11; Stage 7.1 decisions remain unchanged. |
+| Status | WebSocket security foundation and F-3 session invalidation implemented and verified; no chat REST endpoint, message handler, persistence, frontend STOMP client, V19 migration, JWT/Redis/SockJS/wildcard-origin change, or Stage 8/9 work is claimed. |
+| Handshake/CONNECT | Native `/ws` handshake requires an authenticated Spring Session and exact allowlisted `Origin`; query credentials and client identity overrides are rejected. `CONNECT` requires exactly one current session-bound `X-CSRF-TOKEN` native header. The existing `SecureCsrfTokenRepository` remains the single CSRF system. |
+| Framework finding | Dependency-tree evidence shows only `spring-security-core`, `spring-security-web`, `spring-security-config` and `spring-security-test` at 7.1.2; `spring-security-messaging` and `CsrfChannelInterceptor` are not present in the pinned dependency set. A custom session-bound CONNECT CSRF check was therefore required and is recorded here as a framework finding, not a second CSRF system. |
+| Authoritative lifecycle | A bounded registry tracks pending/authenticated connections, subscriptions and transports. Handshake, CONNECT, protected frames, heartbeats and periodic revalidation use authoritative session existence/expiry and account state. Logout, session deletion/expiry, account-wide revocation, session rotation, role loss and deactivation close real transports and invalidate cache/registry state. |
+| Limits | Five sockets per user, twenty connection attempts per IP per minute, three subscriptions per connection, 32 KB STOMP frame cap, thirty messages per minute per user and ten per minute per conversation/sender are configured and bounded. Conservative idle revalidation defaults to 10 s; the hard maximum is 60 s and startup fails above it. |
+| Outbound authorization | `ChannelInterceptor.preSend` rechecks session/account/subscription/role state and returns `null` to fail closed. Spring-resolved `/queue/<name>-<stompSessionId>` destinations are permitted only for the matching connection. Lock order remains `capacityGuard` then per-connection write lock. |
+| Audit | WebSocket audit events carry only a safe actor UUID, allowlisted action/reason/scope token, outcome and correlation UUID; session IDs, cookies, CSRF tokens, headers and message content are not accepted by the audit API. |
+| Evidence | `docs/validation/STAGE_7_2_TARGETED_TESTS_FINAL.log` (34/34), `STAGE_7_2_REGRESSION_TARGETED.log` (76/76), `STAGE_7_2_FULL_VERIFY.log` (602/602), `STAGE_7_2_SECURITY_DEPENDENCY_TREE.log`, and repeated Flyway validation of 18 migrations with schema version 18 and no V19. All WebSocket integration cases use a live Spring Boot server, real security chain, real Spring Session JDBC and native WebSocket/STOMP frames. |
+| Independent review | Two independent review passes were completed. Review findings were remediated before closure, including audit-scope classification from the denial decision, audit-write race handling, oversized-frame transport-close handling, trusted principal propagation, resolved outbound destination handling and CONNECT-denial cleanup ownership. |
+| Acceptance boundary | Stage 7.2 items in the authoritative ledger are `PASS` or explicitly `PARTIAL`; future-stage scenarios remain `NOT EXECUTED`. AC-14/AC-15/AC-35/AC-50 are `PARTIAL` because only the Stage 7.2 boundary was executed. AC-08 is `PARTIAL` because socket revocation was executed while history preservation remains Stage 7.7. |
+| Finding status | F-3 WebSocket invalidation is resolved for its Stage 7.2 scope. WebSocket F-8 proactive revocation/revalidation is resolved for its Stage 7.2 scope; non-chat `last_login_at` and audit-timestamp remnants remain Stage 8/9. F-5 and F-6 remain deferred. |
+
+This addendum records implementation and verification status only. It does not reapprove the whole security document, close future acceptance scenarios, authorize production deployment, or broaden Stage 7.2 scope.
 
 **End of document.**

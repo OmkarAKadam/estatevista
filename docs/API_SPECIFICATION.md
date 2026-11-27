@@ -984,7 +984,7 @@ REST handles normal resource operations. WebSocket/STOMP handles real-time messa
 /ws
 ```
 
-The endpoint is hosted by the Spring Boot backend. The approved design uses native WebSocket (no SockJS fallback) at `/ws`, with the same server-side session as REST, an exact `Origin` allowlist, and no query-string token (Security Architecture SD-01, SD-34, SD-48). The handshake is a `GET` and needs no CSRF token itself; the STOMP `CONNECT` frame must carry the session-bound token from the existing `X-CSRF-TOKEN` flow in a native header. Missing, invalid, stale or mismatched tokens and disallowed origins are rejected before subscriptions. Exact production origins and the hostnames in SD-48 remain deployment configuration (P-12). This is a design contract; Stage 7.1 does not claim handshake or STOMP implementation.
+The endpoint is hosted by the Spring Boot backend. The approved design uses native WebSocket (no SockJS fallback) at `/ws`, with the same server-side session as REST, an exact `Origin` allowlist, and no query-string token (Security Architecture SD-01, SD-34, SD-48). The handshake is a `GET` and needs no CSRF token itself; the STOMP `CONNECT` frame must carry the session-bound token from the existing `X-CSRF-TOKEN` flow in a native header. Missing, invalid, stale or mismatched tokens and disallowed origins are rejected before subscriptions. Stage 7.2 implemented and verified this handshake/CONNECT boundary against real Spring Session JDBC sessions and native WebSocket/STOMP frames; the `X-CSRF-TOKEN` repository remains the single session-bound CSRF system. Exact production origins and the hostnames in SD-48 remain deployment configuration (P-12). No application chat handler, message persistence, frontend STOMP client, V19 migration, or Stage 7.3–7.7 acceptance scenario is claimed by Stage 7.2.
 
 ## 20.2 Client Subscription Destinations
 
@@ -994,13 +994,13 @@ The endpoint is hosted by the Spring Boot backend. The approved design uses nati
 | `/user/queue/notifications` | Receive private notifications | Authenticated user |
 | `/user/queue/errors` | Receive messaging errors | Authenticated user |
 
-Clients must not subscribe directly to arbitrary conversation destinations without server-side authorization.
+Clients must not subscribe directly to arbitrary conversation destinations without server-side authorization. Stage 7.2 enforces this allowlist, a three-subscription-per-connection cap, and fail-closed outbound authorization immediately before dispatch. Participant-scoped conversation delivery remains a Stage 7.4 obligation and is not claimed here.
 
 ## 20.3 Client Message Destinations
 
 | Destination | Purpose |
 |---|---|
-| `/app/chat.send` | Send a message |
+| `/app/chat.send` | Send a message (Stage 7.2 permits only this STOMP destination; no application handler or persistence is implemented until Stage 7.4) |
 
 ## 20.4 Send Message Payload
 

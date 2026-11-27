@@ -16,11 +16,14 @@ import com.estatevista.common.response.ApiResponse;
 import com.estatevista.common.validation.UnknownFieldGuard;
 import com.estatevista.security.RateLimitService;
 import com.estatevista.user.entity.AccountStatus;
+import com.estatevista.websocket.WebSocketSessionRevocationService;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -50,18 +53,48 @@ public class AuthController {
     private final RateLimitService rateLimitService;
     private final AuditEventService auditEventService;
     private final CsrfTokenRepository csrfTokenRepository;
+    private final WebSocketSessionRevocationService webSocketRevocation;
     private final SecurityContextRepository securityContextRepository =
             new HttpSessionSecurityContextRepository();
 
+    /** Constructor retained for isolated authentication unit tests. */
     public AuthController(
             AuthService authService,
             RateLimitService rateLimitService,
             AuditEventService auditEventService,
             CsrfTokenRepository csrfTokenRepository) {
+        this(authService, rateLimitService, auditEventService, csrfTokenRepository,
+                (WebSocketSessionRevocationService) null);
+    }
+
+    /** Constructor retained for explicit revocation wiring in isolation. */
+    public AuthController(
+            AuthService authService,
+            RateLimitService rateLimitService,
+            AuditEventService auditEventService,
+            CsrfTokenRepository csrfTokenRepository,
+            WebSocketSessionRevocationService webSocketRevocation) {
         this.authService = authService;
         this.rateLimitService = rateLimitService;
         this.auditEventService = auditEventService;
         this.csrfTokenRepository = csrfTokenRepository;
+        this.webSocketRevocation = webSocketRevocation;
+    }
+
+    /**
+     * Spring wiring. The provider keeps MVC slice tests independent of the
+     * WebSocket infrastructure while the full application always resolves the
+     * concrete revocation service.
+     */
+    @Autowired
+    public AuthController(
+            AuthService authService,
+            RateLimitService rateLimitService,
+            AuditEventService auditEventService,
+            CsrfTokenRepository csrfTokenRepository,
+            ObjectProvider<WebSocketSessionRevocationService> webSocketRevocationProvider) {
+        this(authService, rateLimitService, auditEventService, csrfTokenRepository,
+                webSocketRevocationProvider.getIfAvailable());
     }
 
     @PostMapping("/register")
@@ -165,7 +198,18 @@ public class AuthController {
         SecurityContextHolder.clearContext();
         var session = request.getSession(false);
         if (session != null) {
+            String sessionId = session.getId();
+            // Close tracked sockets before the HTTP session disappears. Later
+            // frames are rejected by authoritative session validation even if
+            // a client races the close frame.
+            if (webSocketRevocation != null) {
+                webSocketRevocation.closeSocketsForSession(
+                        sessionId, WebSocketSessionRevocationService.REASON_LOGOUT);
+            }
             session.invalidate();
+            if (webSocketRevocation != null) {
+                webSocketRevocation.invalidateCache(sessionId);
+            }
         }
         var cookie = new jakarta.servlet.http.Cookie("EV_SESSION", "");
         cookie.setPath("/");

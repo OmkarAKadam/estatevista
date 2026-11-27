@@ -23,8 +23,10 @@ import org.springframework.web.util.WebUtils;
 public class SecureCsrfTokenRepository implements CsrfTokenRepository {
 
     static final int TOKEN_BYTES = 32;
-    private static final String DEFAULT_CSRF_TOKEN_ATTR_NAME =
+    /** Session attribute holding the single authoritative session-bound token. */
+    public static final String CSRF_SESSION_ATTRIBUTE_NAME =
             "org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository.CSRF_TOKEN";
+    private static final String DEFAULT_CSRF_TOKEN_ATTR_NAME = CSRF_SESSION_ATTRIBUTE_NAME;
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();

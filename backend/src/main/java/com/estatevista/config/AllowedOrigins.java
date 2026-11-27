@@ -13,12 +13,12 @@ import java.util.List;
  * and unresolved {@code ${...}} placeholders at startup instead of silently
  * building an allowlist that can never match a browser origin.</p>
  */
-final class AllowedOrigins {
+public final class AllowedOrigins {
 
     private AllowedOrigins() {
     }
 
-    static List<String> requireExplicit(List<String> origins, String propertyName) {
+    public static List<String> requireExplicit(List<String> origins, String propertyName) {
         if (origins == null || origins.isEmpty()) {
             throw new IllegalStateException(
                     propertyName + " must contain at least one explicit origin");

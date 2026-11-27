@@ -27,6 +27,9 @@ public class RateLimitProperties {
     private Limit favoriteMutation = new Limit(60, 60);
     private Limit inquirySubmissionBurst = new Limit(5, 60);
     private Limit inquirySubmissionSustained = new Limit(30, 3600);
+    private Limit wsConnectionAttempt = new Limit(20, 60);
+    private Limit wsMessageUser = new Limit(30, 60);
+    private Limit wsMessageConversation = new Limit(10, 60);
 
     public boolean isEnabled() {
         return enabled;
@@ -114,6 +117,30 @@ public class RateLimitProperties {
 
     public void setInquirySubmissionSustained(Limit inquirySubmissionSustained) {
         this.inquirySubmissionSustained = inquirySubmissionSustained;
+    }
+
+    public Limit getWsConnectionAttempt() {
+        return wsConnectionAttempt;
+    }
+
+    public void setWsConnectionAttempt(Limit wsConnectionAttempt) {
+        this.wsConnectionAttempt = wsConnectionAttempt;
+    }
+
+    public Limit getWsMessageUser() {
+        return wsMessageUser;
+    }
+
+    public void setWsMessageUser(Limit wsMessageUser) {
+        this.wsMessageUser = wsMessageUser;
+    }
+
+    public Limit getWsMessageConversation() {
+        return wsMessageConversation;
+    }
+
+    public void setWsMessageConversation(Limit wsMessageConversation) {
+        this.wsMessageConversation = wsMessageConversation;
     }
 
     /** Shared threshold/window holder for approved Stage 4 rate-limit scopes. */

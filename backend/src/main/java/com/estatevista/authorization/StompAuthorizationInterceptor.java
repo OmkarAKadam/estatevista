@@ -84,12 +84,16 @@ public final class StompAuthorizationInterceptor implements ChannelInterceptor {
 
     private Message<?> authorize(Message<?> message, StompHeaderAccessor accessor) {
         StompCommand command = accessor.getCommand();
-        if (command == null) {
+        Principal principal = accessor.getUser();
+        if (principal == null) {
             throw denied();
         }
-
-        Principal principal = accessor.getUser();
         AuthenticatedAccount account = accounts.requireActivePrincipal(principal);
+        if (command == null) {
+            // Native STOMP heartbeat: the trusted principal must already exist,
+            // but there is no destination to authorize.
+            return message;
+        }
 
         switch (command) {
             case CONNECT, STOMP -> {
