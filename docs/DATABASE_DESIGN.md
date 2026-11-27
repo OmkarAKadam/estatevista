@@ -563,6 +563,8 @@ The `assigned_agent_id` is a historical assignment snapshot. It must not be dyna
 
 This is important because the current property assignment and the original conversation assignment are separate pieces of information.
 
+Stage 7.1 clarification: the permanent `UNIQUE(buyer_id, property_id)` rule is retained (P-02). A buyer cannot open a second conversation with a newly assigned agent for the same property, and no approved transfer mechanism exists. Existing history is retained regardless of later property status or assignment. If the original assigned agent is inactive, messaging in that conversation is disabled and no fallback or transfer is introduced; the buyer retains read access to history (P-03). New conversation creation requires a `PUBLISHED` property plus an active buyer and active current primary agent, while retrieval of an existing conversation by an authorized active original participant is unaffected (P-13). The `status` and `closed_at` columns remain stored fields only; no conversation status mutation is implemented in Stage 7 (P-04).
+
 ## 11.2 `messages`
 
 Stores individual messages within conversations.
@@ -575,6 +577,7 @@ Stores individual messages within conversations.
 | message_type | VARCHAR(20) | NOT NULL | Message type |
 | content | TEXT | NOT NULL | Message content |
 | sent_at | TIMESTAMPTZ | NOT NULL | Sending timestamp |
+| idempotency_key | UUID | V19 addition: NOT NULL after backfill; UNIQUE with `(conversation_id, sender_id)` | Mandatory client UUID for retry-safe sends; absent in V10 |
 | edited_at | TIMESTAMPTZ | NULL | Edit timestamp |
 | deleted_at | TIMESTAMPTZ | NULL | Soft deletion timestamp |
 
@@ -584,11 +587,14 @@ Initial message type:
 
 Rules:
 
-- Only the buyer and assigned agent can participate in the conversation.
+- Only the original buyer and originally assigned agent can participate in the conversation.
 - The backend must verify that the sender is a valid participant.
-- Messages must be returned in chronological order.
 - Message history must remain available after property archival or unavailability.
 - Message deletion should not physically remove historical records without an approved retention policy.
+- API retrieval is latest-first by `(sent_at DESC, id DESC)` with a deterministic cursor; the client renders the loaded window chronologically (P-06). The V19 index `(conversation_id, sent_at, id)` supports this order, and no monotonic sequence column is authorized.
+- Stage 7.3 serializes inserts for a conversation so generated `sent_at` follows commit order; reconnect recovery uses the same cursor contract (F-7.1-04).
+- Every send carries a mandatory client-generated UUID `idempotencyKey`. The V19 `UNIQUE(conversation_id, sender_id, idempotency_key)` constraint is the duplicate authority; the same key with identical content returns the existing message, and the same key with different content returns a safe conflict (P-05).
+- A sender-only application `PERSISTENCE_ACK` is emitted only after commit; native STOMP `RECEIPT` is not an application persistence acknowledgement and no recipient or read receipt is recorded (P-08).
 
 File attachments and image messages are outside the initial chat MVP unless added later.
 
@@ -612,9 +618,11 @@ Rules:
 - Each conversation has read-state records for its two participants.
 - The backend must verify that the user belongs to the conversation.
 - The last-read message must belong to the same conversation.
-- Read-state records are used to calculate unread message counts.
+- Read-state records are used to calculate the requesting participant's own unread message count.
 
 The initial implementation can use read timestamps and message identifiers rather than storing a separate read receipt row for every message.
+
+Stage 7.1 clarification (P-07/P-10, F-7.1-06): the read position advances only for messages the participant actually viewed, within the same conversation, and only when the transactionally monotonic highest valid viewed position wins under concurrency. The participant's own messages are excluded from that participant's unread count. `unreadCount` is returned only in that requester's conversation list and detail responses; no read-receipt row, event or other-participant position is exposed. V19 adds `idx_conversation_read_states_user(user_id, conversation_id)` to support the participant-scoped lookup.
 
 # 12. Notifications
 
@@ -858,7 +866,7 @@ A buyer opens a property and starts a conversation with its assigned agent.
    - `buyer_id`
    - `property_id`
    - `assigned_agent_id`
-6. The first message is stored in `messages`.
+6. Conversation creation does not accept or persist message content. The first and every subsequent message is sent later through the approved STOMP destination `/app/chat.send` and stored in `messages` only after validation and a successful transaction commit (API §11.1 and §25.1.A).
 7. Read-state records are created for both participants.
 8. Notifications can be generated for the receiving participant.
 
@@ -877,10 +885,11 @@ Expected behavior:
 - The original conversation is not silently transferred.
 - New buyers starting conversations after reassignment are connected to Agent 2.
 - Buyer 1 continues to see the original conversation.
+- Buyer 1 cannot create a second conversation with Agent 2 for Property A: the `UNIQUE(buyer_id, property_id)` rule is permanent, and no approved transfer mechanism exists (P-02). The UI must explain that the conversation remains with the original agent.
 
 This behavior is supported by storing `assigned_agent_id` directly in the `conversations` table.
 
-The exact administrative handling of old conversations when an agent is deactivated remains a pending policy decision.
+Stage 7.1 resolution (P-03): if the original agent is deactivated or otherwise inactive, the conversation history is preserved and Buyer 1 retains read access, but messaging is disabled and no fallback or newly assigned agent is offered. Existing inactive-agent access returns only on reactivation subject to session revocation and authorization rules; this is an approved product limitation, not a pending policy decision.
 
 # 19. Flyway Migration Strategy
 
@@ -919,6 +928,7 @@ Current and proposed migration sequence:
 | V16 | Seed property reference data |
 | V17 | Create property image deletion outbox |
 | V18 | **Authorized for Stage 6.4 only — not created in Stage 6.1:** inquiry status `CHECK` and partial unique index for one active inquiry per buyer/property |
+| V19 | **Authorized for Stage 7.3 only — not created or applied in Stage 7.1:** message idempotency constraint and supporting chat indexes (§25) |
 
 `V1__spring_session_schema.sql` is the framework-owned Spring Session JDBC schema approved by Security Architecture SD-03. It is the only migration that exists at Stage 1.8; the business-schema rows remain proposed and must not reuse version `V1`. The actual current baseline is V1–V17; V1–V17 are immutable for Stage 6.
 
@@ -933,6 +943,8 @@ Migration rules:
 7. Do not rely on Hibernate automatic schema updates in production.
 
 Stage 6 migration gate: V18 is authorized only during Stage 6.4 and only for the two inquiry constraints in §24. No migration file is created in Stage 6.1. Before applying V18, inspect existing statuses and active-inquiry duplicates; report incompatible records and obtain separate owner approval for any remediation. Never silently delete, merge, or rewrite historical records. Stage 6.4 must validate clean V1→V18 installation, V17→V18 upgrade, Flyway validation, and updated migration inventory tests.
+
+Stage 7 migration gate: V19 is authorized only during Stage 7.3 and only for the idempotency constraint and supporting indexes in §25. No V19 file is created or applied in Stage 7.1, and V1–V18 remain unchanged. Before applying V19, inspect existing message rows for retry identity and index conflicts; report incompatible records and obtain separate owner approval for any remediation. Never silently delete, merge, or rewrite historical messages. Stage 7.3 must validate clean V1→V19 installation, V18→V19 upgrade, Flyway validation, duplicate-send behavior, cursor query behavior, and updated migration inventory tests. Materially expanding V19 beyond the approved scope requires new owner approval.
 
 Hibernate should validate the schema rather than independently modify production tables.
 
@@ -963,10 +975,10 @@ The following details are intentionally not finalized in this document. They sho
 | Property attributes | Final residential and commercial subtype fields |
 | Location | Whether location requires a separate normalized location model |
 | Currency | Supported currencies and default display currency |
-| Agent deactivation | Handling of existing properties and conversations remains deferred; Stage 6 inquiry access is resolved in §24 (history retained, deactivation denies access, reactivation restores authorized historical access) |
-| Conversation reassignment | Whether administrators can manually transfer existing conversations |
+| Agent deactivation | Stage 6 inquiry access is resolved in §24 (history retained, deactivation denies access, reactivation restores authorized historical access). Stage 7 chat is resolved by P-03/§25: history retained, messaging disabled for the inactive original agent, no fallback or transfer; property-management handling outside chat remains deferred. |
+| Conversation reassignment | Administrative transfer remains deferred. P-02/§25 resolve the product limitation: original assignment is immutable, reassignment transfers no access, and no second conversation is created for the same buyer/property. |
 | Inquiry workflow | Stage 6 status transitions, closure rules, duplicate policy, and assignment immutability are resolved in §24; retention duration remains deferred |
-| Chat | Message editing, deletion, pagination, and retention |
+| Chat | Resolved in §25: V19 idempotency constraint, cursor ordering, monotonic viewed-only read state, participant `unreadCount`, creation eligibility and Stage 7 status deferral. Still deferred: editing, deletion, attachments, read/delivery receipts, conversation status lifecycle, and retention policy. |
 | Notifications | In-app versus email delivery and delivery preferences |
 | Images | Maximum upload count, file size, and allowed formats |
 | Audit | Exact actions requiring audit records and retention duration |
@@ -1031,6 +1043,8 @@ The `conversation_read_states` table must ensure that:
 
 These rules must be validated in the backend service layer. Additional database constraints or triggers may be introduced if necessary.
 
+Stage 7.1 clarification (P-07/P-10, F-7.1-06): read-state advancement is transactionally monotonic and based only on messages the participant actually viewed in the same conversation; the highest valid viewed position wins under concurrency. The participant's own messages are excluded from that participant's unread count, and only the requester's `unreadCount` is returned in conversation list/detail responses. No read-receipt row, event or other-participant position is approved. V19 adds a user-leading lookup index but no new receipt table.
+
 ### C. Property Assignment Validation
 
 The `properties.primary_agent_id` foreign key guarantees that the referenced user exists.
@@ -1079,6 +1093,11 @@ A case-insensitive unique index should enforce uniqueness on the normalized emai
 | Property deletion | Archive instead of physical deletion |
 | Public property visibility | Only `PUBLISHED` records are publicly retrievable; other statuses require authorization (C-10/D-08) |
 | Message history | Preserve independently of property availability |
+| Message history ordering | Latest-first `(sent_at DESC, id DESC)` cursor retrieval with chronological client rendering; V19 supporting index and no new sequence column |
+| Message idempotency | Mandatory client UUID key with V19 `UNIQUE(conversation_id, sender_id, idempotency_key)`; no exactly-once network claim |
+| Read tracking | Monotonic viewed-only own read state and participant-specific `unreadCount`; no receipts |
+| Conversation status mutation | Deferred beyond Stage 7 by P-04; no enum, transition table or status endpoint implementation in Stage 7 |
+| V19 boundary | Idempotency constraint and supporting order/user indexes only; no other schema change without new owner approval |
 
 ## 23.3 Implementation Restrictions
 
@@ -1096,7 +1115,7 @@ The following rules apply when implementing this design:
 
 The deferred decisions in Section 21 remain open and must be resolved during their relevant development stages. Authentication is not deferred: `SECURITY_ARCHITECTURE.md` SD-01 resolves it as a design, and the Spring Session migration (`V1__spring_session_schema.sql`) exists and was validated locally in Stage 1.8. The password-reset and account-activation token migrations remain implementation tasks.
 
-The approved database design does not imply that every proposed status, workflow, or retention policy is permanently finalized. Stage 6 owner approval resolves only the favorites and inquiry items scoped in §24; all other deferred items remain open.
+The approved database design does not imply that every proposed status, workflow, or retention policy is permanently finalized. Stage 6 owner approval resolves only the favorites and inquiry items scoped in §24. Stage 7.1 owner approval resolves the chat schema decisions scoped in §25; the remaining items in Section 21 and §25 stay open. Neither approval authorizes implementation, migration application, or finding closure.
 
 ## 23.5 Final Approval
 
@@ -1154,4 +1173,62 @@ Before applying V18, inspect for unsupported statuses, duplicate active buyer/pr
 
 ## 24.4 Boundaries
 
-No chat table, conversation status enum, inquiry↔conversation FK, account-management schema, retained-data deletion policy, or retention-duration decision is approved here. Stage 7, Stage 8, and Stage 9 boundaries remain as recorded in `docs/STAGE_6_DECISION_REGISTER.md` §12.
+No chat table, conversation status enum, inquiry↔conversation FK, account-management schema, retained-data deletion policy, or retention-duration decision is approved here. Stage 7, Stage 8, and Stage 9 boundaries remain as recorded in `docs/STAGE_6_DECISION_REGISTER.md` §12. This Stage 6-only statement is not reopened by the Stage 7.1 decisions below.
+
+---
+
+# 25. Stage 7.1 Owner-Approved Schema Reconciliations
+
+**Authority:** `docs/STAGE_7_DECISION_REGISTER.md` §4 (P-01–P-13) and §10 (F-7.1-01–F-7.1-08).
+**Status:** Approved design only. Stage 7.1 creates no migration, applies no schema change, and claims no chat implementation or acceptance evidence.
+
+## 25.1 V19 authorized scope
+
+V19 is authorized for Stage 7.3 only, after the chat persistence and REST work begins. Its complete approved scope is:
+
+```sql
+ALTER TABLE messages
+  ADD COLUMN idempotency_key UUID NULL;
+
+-- Backfill existing rows with generated UUIDs before enforcing NOT NULL.
+ALTER TABLE messages
+  ALTER COLUMN idempotency_key SET NOT NULL;
+
+ALTER TABLE messages
+  ADD CONSTRAINT uk_messages_conversation_sender_idempotency
+  UNIQUE (conversation_id, sender_id, idempotency_key);
+
+CREATE INDEX idx_messages_conversation_order
+  ON messages (conversation_id, sent_at, id);
+
+CREATE INDEX idx_conversation_read_states_user
+  ON conversation_read_states (user_id, conversation_id);
+```
+
+V19 does not add a monotonic sequence column, conversation status `CHECK`, new conversation table, participant table, inquiry/conversation link, receipt table, or any other column or constraint. V1–V18 remain unchanged. Any material expansion of this scope requires a new owner decision before implementation.
+
+## 25.2 Message identity, ordering and recovery
+
+- The message ID and `sent_at` remain server-generated; the client supplies only a mandatory UUID `idempotencyKey` per logical message.
+- The V19 unique constraint is the duplicate authority. The same key with identical content returns the existing message and acknowledgement; the same key with different content returns a safe conflict; concurrent duplicates yield one row, one audit event and one presentation.
+- History retrieval is latest-first by `(sent_at DESC, id DESC)` with an opaque deterministic cursor over `(sent_at, id)`; the client renders the loaded window chronologically.
+- Stage 7.3 serializes inserts per conversation with a per-conversation advisory transaction lock so generated `sent_at` follows commit order. Reconnect recovery reuses the same cursor endpoint and deduplicates by server message ID.
+- No exactly-once network delivery is claimed. An ambiguous acknowledgement failure requires explicit user retry with the same key; automatic replay is prohibited.
+
+## 25.3 Read state and unread counts
+
+- Read state advances only for messages the participant actually viewed in the same conversation, transactionally and monotonically; the highest valid viewed position wins under concurrency.
+- The participant's own messages are excluded from that participant's unread count.
+- `unreadCount` is participant-specific and appears only in the requester's conversation list and detail responses. No read-receipt row, event or other-participant read position is exposed.
+
+## 25.4 Creation eligibility and lifecycle
+
+- New conversation creation requires a `PUBLISHED` property, an active `BUYER`, and an active `AGENT` who is the property's current primary agent.
+- Retrieval of an existing permanent `(buyer_id, property_id)` conversation by an authorized active original participant is independent of later property status or assignment.
+- Reassignment never rewrites `assigned_agent_id`, transfers history, or enables a second conversation for the same buyer/property (P-02).
+- If the original agent is inactive, history is preserved, buyer read access remains, messaging is disabled, and no fallback or transfer is introduced (P-03).
+- Conversation `status` and `closed_at` remain stored fields only; no status mutation is implemented in Stage 7 and no status `CHECK` is added (P-04).
+
+## 25.5 Boundaries
+
+This section resolves architecture contracts only. F-3 socket lifecycle implementation remains a Stage 7.2 gate, chat persistence and V19 remain Stage 7.3 work, and F-8 remnants plus Stage 8/9 obligations are unchanged. No acceptance scenario is executed by this reconciliation.

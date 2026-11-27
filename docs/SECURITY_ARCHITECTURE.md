@@ -27,8 +27,9 @@
 | [`SYSTEM_ARCHITECTURE.md`](SYSTEM_ARCHITECTURE.md) | Modular monolith, technology stack, deployment, WebSocket and authentication principles |
 | [`DATABASE_DESIGN.md`](DATABASE_DESIGN.md) | Entities, ownership fields, constraints, retention, approved §23 clarifications |
 | [`API_SPECIFICATION.md`](API_SPECIFICATION.md) | REST endpoints, WebSocket destinations, error contract, approved §25 clarifications |
-| [`UI_UX_SPECIFICATION.md`](UI_UX_SPECIFICATION.md) | Interface security behaviour, role visibility, chat privacy, and deferred decisions D-01–D-47 (D-01, D-02, D-03, D-04, D-08, D-14, D-17, D-20, D-21, D-33, and D-47 settled) |
+| [`UI_UX_SPECIFICATION.md`](UI_UX_SPECIFICATION.md) | Interface security behaviour, role visibility, chat privacy, and deferred decisions D-01–D-47 (D-01, D-02, D-03, D-04, D-08, D-14, D-17, D-20, D-21, D-22, D-23, D-33, D-37, and D-47 settled) |
 | [`STAGE_6_DECISION_REGISTER.md`](STAGE_6_DECISION_REGISTER.md) | Authoritative Stage 6 favorites/inquiries architecture addendum approved by the project owner on 24 November 2026; no blanket reapproval of this document or the draft UI specification |
+| [`STAGE_7_DECISION_REGISTER.md`](STAGE_7_DECISION_REGISTER.md) | Owner-approved Stage 7.1 decisions P-01–P-13 and findings F-7.1-01–F-7.1-08; authoritative Stage 7 security-contract reconciliation with no implementation claim |
 
 ### 1.2 Status and interpretation
 
@@ -78,7 +79,7 @@ Version 0.5 supersedes 0.4. Version 0.4 is retained in Section 22.4 and remains 
 1. **Delegated technical approval.** The project owner delegated authority to the reviewing technical authority to evaluate and approve technically justified security decisions in this review (11 November 2026). No individual backend, frontend, database, operations, or security reviewer approval is invented; Section 22.2 distinguishes the delegated owner authorization from stakeholder review.
 2. **Five previously pending decisions approved as designs.** SD-01 (server-side session authentication), SD-03 (Spring Session JDBC schema), SD-11 (password reset), SD-12 (agent activation), and SD-48 (Option C hosting/cookie/CORS/WebSocket architecture) become **Approved** where the design is complete and consistent with upstream requirements. Their infrastructure and provider values remain explicit prerequisites.
 3. **SD-53 approved as a design with a version gate.** The session-bound synchronizer CSRF mechanism is approved as a technical design. Stage 1.8 now pins Spring Boot 4.1.2 and Spring Security 7.1.2, and the dependency-version recheck against 7.1.2 is recorded in `DEVELOPMENT_SETUP.md` §12. The wiring and the Section 17 tests remain a non-blocking implementation gate; SD-53 is not Implemented or Verified.
-4. **All remaining Proposed controls approved or retained as Deferred.** Section 18.7 records the delegated determinations for the controls that were Proposed in 0.4. Final totals: **46 Approved, 0 Pending Owner/Infrastructure Input, 0 Proposed, and 7 Deferred**. Every Deferred item remains outside the MVP or dependent on a later product/operations decision with a documented interim control.
+4. **All remaining Proposed controls approved or retained as Deferred.** Section 18.7 records the delegated determinations for the controls that were Proposed in 0.4. The Version 0.5 historical totals are **46 Approved, 0 Pending Owner/Infrastructure Input, 0 Proposed, and 7 Deferred**. Stage 7.1 separately approves SD-29 and SD-40, so the consolidated current totals are **48 Approved and 5 Deferred** (SD-16, SD-17, SD-33, SD-50, SD-51). Every remaining Deferred item stays outside the MVP or dependent on a later product/operations decision with a documented interim control.
 5. **C-05 resolved.** ARC-010–ARC-013 are approved as the architectural provider selections already reflected in the approved deployment model and API contracts. Account creation, plan selection, credentials, and provider configuration remain deployment prerequisites. No account or integration is claimed to exist.
 6. **C-10 / D-08 resolved.** Only `PUBLISHED` properties (and their images) are publicly retrievable. `DRAFT`, `UNAVAILABLE`, `SOLD`, `RENTED`, and `ARCHIVED` records are hidden from public discovery and direct public detail; authorized participants may still reach historical references through authenticated surfaces. This does not change the property lifecycle or create a new status.
 7. **No inflated status.** No decision is marked Implemented or Verified, and no test is claimed as executed. Approval of a design is not evidence of implementation or deployment readiness.
@@ -104,7 +105,7 @@ It is written to be implementation-ready: each control identifies the component 
 - Authentication, session lifecycle, logout, password management, password reset, and account status.
 - Role-based and resource-level authorization for every approved REST endpoint and WebSocket operation.
 - Property-level agent authorization and buyer record isolation.
-- Conversation privacy, immutable original-agent assignment, and reassignment behaviour.
+- Conversation privacy, immutable original-agent assignment, reassignment behaviour, new-conversation eligibility (P-13/P-02/P-03), mandatory send idempotency (P-05), cursor history (P-06), sender-only persistence acknowledgement (P-08) and authoritative session validation (F-7.1-02).
 - REST API hardening: validation, injection prevention, CSRF, CORS, rate limits, error handling, security headers, and IDOR/BOLA prevention.
 - WebSocket/STOMP connection, subscription, destination, sender, and message authorization.
 - Property image upload validation, storage, delivery, and deletion controls.
@@ -147,7 +148,7 @@ Where a source is ambiguous or contradictory, the conflict is recorded in Sectio
 - PostgreSQL is hosted on Neon and accessed only by the backend.
 - Cloudinary (or a compatible object store) hosts property images; the backend owns credentials and performs every upload and deletion. The browser never uploads directly to Cloudinary.
 - TLS is available on both Vercel and Render.
-- The selected deployment can expose the frontend and API under custom hostnames on the same registrable domain (for example `app.example.com` and `api.example.com`). If custom domains are unavailable and the project remains on unrelated `*.vercel.app` and `*.onrender.com` hostnames, Option C is not viable and the deployment shape must be revisited before authenticated features ship (Section 8.5).
+- The selected deployment can expose the frontend and API under custom hostnames on the same registrable domain (for example `app.example.com` and `api.example.com`). Under P-12 this topology is approved; exact hostnames are Stage 7.7 deployment-verification inputs and do not block Stage 7.1 closure or local Stage 7.2–7.6 implementation. Unrelated `*.vercel.app` and `*.onrender.com` hostnames remain unsuitable for the host-only cookie and must be replaced before authenticated features ship (Section 8.5).
 - The approved deployment choices are the target deployment for this document. System Architecture ARC-010–ARC-013 now record Cloudinary, Vercel, Render, and Neon as Approved; accounts, plans, and credentials remain deployment prerequisites (Section 21.3).
 - No security control in this document is considered implemented until it is tested and evidenced under Section 17.
 
@@ -183,7 +184,7 @@ These principles govern every control in this document. When a specific rule is 
 
 | Component | Technology | Security responsibility |
 |---|---|---|
-| Browser frontend | HTML5, CSS3, Bootstrap 5.3.3, Vanilla JavaScript ES Modules | Render role-appropriate UI, validate for usability, avoid unsafe DOM insertion, never store credentials in readable storage, send CSRF token on mutations, close the socket on logout |
+| Browser frontend | HTML5, CSS3, Bootstrap 5.3.3, Vanilla JavaScript ES Modules | Render role-appropriate UI, validate for usability, avoid unsafe DOM insertion, never store credentials in readable storage, send the session-bound token on REST mutations and as a native STOMP `CONNECT` header, close the socket on logout |
 | REST API | Spring MVC, Spring Boot, `/api/v1` | Authenticate, authorize, validate, persist, audit, return safe errors |
 | Authentication and authorization | Spring Security, session management, password encoder | Credential verification, session creation/rotation/invalidation, role and method rules, CSRF, security headers |
 | WebSocket endpoint | Spring WebSocket, STOMP, `/ws` | Authenticate the handshake, authorize CONNECT/SUBSCRIBE/SEND, derive sender identity, persist before broadcast |
@@ -268,7 +269,7 @@ The hostnames in this diagram are examples for a same-site deployment, not produ
 | Registration | Visitor browser | `POST /auth/register` | Public; rate limited; buyer role only; server-side validation; no admin/agent creation |
 | Login | Any browser | `POST /auth/login` | Public; generic failure; rate limited; session rotation; account status check |
 | Authenticated REST | Buyer/agent/admin browser | `https://api.example.com/api/v1/**` (direct, cross-origin) | Host-only session cookie, CSRF token on mutations, exact-origin credentialed CORS, role and ownership checks |
-| Real-time message | Buyer/agent browser | `/app/chat.send` over `wss://api.example.com/ws` (direct) | Host-only session cookie, session-authenticated handshake, exact Origin allowlist, STOMP authorization, participant check, server-derived sender, persistence before broadcast |
+| Real-time message | Buyer/agent browser | `/app/chat.send` over `wss://api.example.com/ws` (direct) | Host-only session cookie, authoritative session validation, session-bound CSRF token on CONNECT, exact Origin allowlist, STOMP authorization, participant check, server-derived sender, mandatory idempotency key, persistence before broadcast, sender-only post-commit acknowledgement and outbound authorization recheck |
 | Private event delivery | Backend | `/user/queue/messages`, `/user/queue/notifications`, `/user/queue/errors` | Per-user destinations; per-session subscription; no arbitrary conversation destinations |
 | Image upload | Agent/admin browser | `POST /properties/{propertyId}/images` on the API host | Session, CSRF, assignment check, multipart limits, magic-byte and image validation; the backend performs a server-side signed Cloudinary request. The browser never uploads to Cloudinary directly. |
 | Image delivery | Public or authenticated browser | Cloudinary URL returned by API | Public images only for `PUBLISHED` properties; authenticated or signed delivery for unpublished images (SD-31, C-10) |
@@ -439,7 +440,7 @@ The model is asset- and boundary-driven. Each threat is mapped to the component 
 | T-18 | Account enumeration | Login, registration, forgot-password, reset | Attacker distinguishes existing from non-existing emails by response, status, or timing | Targeted phishing, credential stuffing | High | **Medium** | Generic login error, neutral reset confirmation, consistent status/timing, registration conflict handled carefully, rate limits | ST-AUTH-08; compare responses and timings for known/unknown emails |
 | T-19 | Password-reset token theft or replay | Reset link, `POST /auth/reset-password` | Token leaks via referrer, logs, shared device, or is reused after a reset | Account takeover | Medium | **Critical** | 256-bit random token, hashed at rest, short expiry, single use, invalidate prior tokens and sessions, `Referrer-Policy: no-referrer`, no logging | ST-AUTH-09 to ST-AUTH-11; reuse, expiry, and referrer tests |
 | T-20 | Audit tampering or sensitive audit data | `audit_logs`, `GET /admin/audit-logs` | Attacker with DB access edits/deletes audit rows; application stores passwords or message content in `before_data` | Loss of accountability, secondary data breach | Low | **High** | Append-only application rules, restricted DB role, no update/delete endpoint, redaction, retention, integrity monitoring, backups | ST-AUDIT-01 to ST-AUDIT-03; attempt update/delete; inspect audit payloads |
-| T-21 | Supply-chain or dependency compromise | Maven dependencies, CDN assets, provider SDKs | Malicious or vulnerable dependency executes in the backend or serves tampered frontend code | Full compromise | Medium | **High** | Pinned versions, dependency scanning, lockfiles where applicable, integrity attributes for CDN assets, minimal dependencies, review updates | ST-CONFIG-02; CI dependency scan; review SBOM |
+| T-21 | Supply-chain or dependency compromise | Maven dependencies, CDN assets, provider SDKs, STOMP client | Malicious or vulnerable dependency executes in the backend or serves tampered frontend code | Full compromise | Medium | **High** | Pinned versions, dependency scanning, lockfiles where applicable, integrity attributes for CDN assets, minimal dependencies, review updates, and a locally vendored STOMP client only after exact version, license, artifact integrity and security review (P-11) | ST-CONFIG-02; CI dependency scan; review SBOM; verify P-11 gate before 7.5 |
 | T-22 | Open redirect through `returnUrl` | Login redirect, protected-route guard | Attacker supplies an absolute or protocol-relative `returnUrl` to redirect users to a phishing site | Credential phishing | Medium | **Medium** | Accept only same-origin relative paths; reject absolute, protocol-relative, backslash, and `javascript:` values; test | ST-UI-01; Playwright redirect suite |
 | T-23 | Clickjacking | Frontend pages, admin console | Attacker frames the site and tricks an admin into clicking destructive actions | Unauthorized admin action | Low | **Medium** | `Content-Security-Policy: frame-ancestors 'none'`, `X-Frame-Options: DENY`, no sensitive actions in frames | ST-CONFIG-03; header check |
 | T-24 | Information disclosure through errors or logs | API error handler, logs, actuator, debug config | Stack trace, SQL, internal path, token, or message content appears in a response or log | Reconnaissance, privacy breach | Medium | **High** | Central exception handler, generic messages, no stack traces, redaction, production debug off, restricted actuator, log review | ST-API-09, ST-CONFIG-04; trigger errors and inspect responses/logs |
@@ -547,7 +548,7 @@ Under this shape:
 | Rotation | Call `changeSessionId()` on successful login and on privilege change | Prevents session fixation |
 | Idle timeout | 30 minutes of inactivity (approved) | Limits abandoned-session exposure |
 | Absolute timeout | 12 hours from authentication (approved) | Limits long-lived sessions even with activity |
-| Logout | `POST /auth/logout` with CSRF; invalidate the session, delete the server-side record, clear the cookie, clear the security context, and close the WebSocket through a session-destroyed listener (plus a client-side close). Do not assume session invalidation closes an established socket by itself. | FR-AUTH-003; UI §6.10; Section 12.15 |
+| Logout | `POST /auth/logout` with CSRF; revoke the session, delete the server-side record, clear the cookie, clear the security context, close tracked sockets, and reject later frames via authoritative session validation (plus a client-side close). Do not assume destruction events close an established socket by themselves. | FR-AUTH-003; UI §6.10; Section 12.15 |
 | Password change | Verify current password; re-encode; invalidate all other sessions for the user; keep the current session and rotate its ID (approved) | FR-AUTH-007; limits stolen-session persistence |
 | Password reset | Invalidate all sessions for the user after a successful reset | The old password may be compromised |
 | Account deactivation/suspension | Invalidate all sessions for the user immediately | FR-AUTH-006 requires active access to end |
@@ -678,7 +679,7 @@ CORS is not an authorization control and does not replace CSRF protection. A dis
 4. The backend validates the header token against the token stored in the authenticated server-side session. A missing, invalid, expired, or session-mismatched token is rejected with `403`, no state change, and a security audit event.
 5. The token is rotated on successful login, session-ID rotation, privilege change, and password change. It is destroyed with the session on logout, idle/absolute expiry, deactivation, and suspension (Section 8.5.7).
 6. The backend validates `Origin` (and `Referer` where present) on state-changing requests in addition to the token. A disallowed origin is rejected even if the token is valid (Section 8.5.9).
-7. The WebSocket handshake is a `GET`; CSRF does not apply to the handshake itself. STOMP `SEND` frames are protected by session authentication, the exact handshake origin, participant authorization, and the same-site cookie. CSRF on STOMP CONNECT remains Deferred (SD-40; Section 8.5.11).
+7. The WebSocket handshake is a `GET`; CSRF does not apply to the handshake itself. The STOMP `CONNECT` frame must carry the session-bound `X-CSRF-TOKEN` value in a native header and is rejected when missing, invalid, stale or mismatched or when the `Origin` is disallowed. `SEND` frames remain protected by authoritative session validation, exact origin, participant authorization and the same-site cookie. CONNECT CSRF is **Approved and required** under SD-40/F-7.1-08 (Section 8.5.11).
 8. `SameSite=Lax` is defence in depth, not a replacement for the synchronizer token.
 9. Never put the CSRF token in a URL, query string, or WebSocket query parameter.
 10. Never place the CSRF token in a cookie. Do not use `CookieCsrfTokenRepository`; it implements double-submit and would reintroduce the cookie-tossing weakness (Section 8.5.8).
@@ -696,7 +697,7 @@ The following lifecycle is normative for the frontend and backend. "Bootstrap" m
 | **Page reload or new tab** | The session cookie is still valid; the bootstrap returns the same session-bound token (or a fresh one if the session was rotated). | Run the bootstrap on application start. Do not attempt to recover the token from storage; none exists. |
 | **Mutating request** | Require `X-CSRF-TOKEN`; compare it to the session token; reject on mismatch. | Attach the in-memory token to every `POST`/`PUT`/`PATCH`/`DELETE`. |
 | **Session-ID rotation or privilege change** | Rotate the session ID and generate a new token; the old token is no longer valid. | Re-bootstrap after an operation that can rotate the session (for example a password change) or on the next `403`. |
-| **Logout** (`POST /auth/logout`) | Require a valid token, invalidate the session, and thereby destroy the token; clear `EV_SESSION`; trigger WebSocket closure. | Clear the in-memory token, user state, and cached private data; close the socket; redirect. |
+| **Logout** (`POST /auth/logout`) | Require a valid token, revoke the session, close tracked sockets, and thereby destroy the token; clear `EV_SESSION`. Authoritative validation uses `SessionRepository.findById`/`Session.isExpired`; destruction events are supplemental only. | Clear the in-memory token, user state, and cached private data; close the socket; redirect. |
 | **Idle or absolute expiry** | The session and token cease to exist. Any request is `401`. | Clear state and redirect to login. Do not retry with an old token. |
 | **Password change** | Verify the current password, rotate the current session, invalidate other sessions, and issue a new token to the current session. | Re-bootstrap and replace the in-memory token. Other tabs will receive `403` and re-bootstrap once. |
 | **Password reset** | Invalidate all sessions for the user, including their tokens. | Any surviving tab receives `401`/`403`, clears state, and signs out. |
@@ -770,13 +771,13 @@ No other public state-changing endpoint is approved. Adding one requires the sam
 
 #### 8.5.11 WebSocket implications
 
-The existing WebSocket design does not use the REST CSRF token, and this document does not silently change that decision.
+The handshake remains a CSRF-exempt HTTP `GET`, but the STOMP `CONNECT` frame now carries the session-bound REST-flow token in a native header.
 
 - The handshake is an HTTP `GET` to `wss://api.example.com/ws`. It carries the host-only `EV_SESSION` cookie and is validated against the exact `Origin` allowlist. CORS does not apply to the handshake.
 - A cross-site page cannot open a WebSocket to the API with the victim's cookie unless its origin is on the allowlist. A browser sends `Origin` on the WebSocket handshake; the server rejects a missing or unknown origin.
-- The server derives the principal from the session, allowlists subscription destinations, checks conversation participation, and persists before broadcasting. Message frames are not simple cross-site form submissions and cannot be sent by an HTML form.
-- **Residual risk:** if the approved frontend origin itself is compromised by XSS, an attacker can act as the user regardless of CSRF; CONNECT-level CSRF would not change that. If an additional origin is ever added to the allowlist, that origin can open a socket, so the allowlist must contain only the exact frontend origin. If SockJS or another HTTP fallback transport is enabled, those transports become subject to classic CSRF and would require the synchronizer token; the approved design assumes native WebSocket only.
-- **Decision:** CONNECT-level CSRF remains **Deferred (SD-40), non-blocking**, with the backend lead as owner. Revisit it if a fallback transport is introduced, if the origin allowlist is broadened, or if a specific bypass is demonstrated. Do not weaken the session, origin, subscription, or participant checks in the meantime.
+- The server derives the principal from the session, validates the native CONNECT token against that same session, allowlists subscription destinations, checks conversation participation, and persists before broadcasting. Message frames are not simple cross-site form submissions and cannot be sent by an HTML form.
+- **Residual risk:** if the approved frontend origin itself is compromised by XSS, an attacker can act as the user regardless of CSRF. If an additional origin is ever added to the allowlist, that origin can open a socket, so the allowlist must contain only the exact frontend origin. If SockJS or another HTTP fallback transport is enabled, those transports become subject to classic CSRF and would require the synchronizer token; the approved design assumes native WebSocket only.
+- **Decision:** CONNECT-level CSRF is **Approved and required** under SD-40/F-7.1-08. The frontend sends the in-memory `X-CSRF-TOKEN` value as a native STOMP `CONNECT` header; the backend rejects missing, invalid, stale or mismatched tokens and disallowed origins before subscriptions. The token must never be placed in a URL, query string, cookie or log. Session, origin, subscription and participant controls remain in force.
 
 ### 8.6 Spring Security configuration shape
 
@@ -789,13 +790,13 @@ This section describes responsibilities, not code.
 | Role matchers | `/api/v1/admin/**` → `ADMIN`; `/api/v1/agents/me/**` → `AGENT`; buyer-only mutations → `BUYER`; shared participant endpoints require an additional ownership check |
 | Deny by default | `anyRequest().authenticated()` or deny; every `permitAll` entry reviewed and justified |
 | Session policy | `IF_REQUIRED`; session fixation `changeSessionId`; cookie as above; Spring Session JDBC |
-| CSRF | Enabled for REST with a session-bound repository (standard `HttpSessionCsrfTokenRepository` extended/wrapped, or an equivalent custom repository under SD-53), the `X-CSRF-TOKEN` header, and no CSRF cookie; expose the token through CORS on the authenticated bootstrap and login responses. Do not use `CookieCsrfTokenRepository`. Ignore only the four documented unauthenticated auth POSTs and the WebSocket handshake path. |
+| CSRF | Enabled for REST with a session-bound repository (standard `HttpSessionCsrfTokenRepository` extended/wrapped, or an equivalent custom repository under SD-53), the `X-CSRF-TOKEN` header, and no CSRF cookie; expose the token through CORS on the authenticated bootstrap and login responses. Do not use `CookieCsrfTokenRepository`. Ignore only the four documented unauthenticated auth POSTs and the WebSocket handshake path; the HTTP handshake stays CSRF-exempt while STOMP `CONNECT` requires the validated session-bound native token. |
 | CORS | Required under Option C: exact frontend origin, `allowCredentials=true`, allowed header `X-CSRF-TOKEN`, exposed header `X-CSRF-TOKEN`, `Vary: Origin`; no wildcard. Configured even though the API is same-site, because the browser origins differ. |
 | Exception handling | JSON `401` for unauthenticated, JSON `403` for authenticated-but-forbidden, no HTML login redirect for `/api/**`; no stack traces |
 | Headers | HSTS, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy`, `Cache-Control: no-store` on auth responses; CSP is served by Vercel for HTML |
 | Password encoder | `BCryptPasswordEncoder(12)` or an approved Argon2id configuration |
 | Authentication provider | Load user by normalized email; check `ACTIVE`; generic failure; no user enumeration |
-| Logout | `POST` only; CSRF required; invalidate the session (which destroys the CSRF token); clear `EV_SESSION`; trigger WebSocket closure through the session-destroyed listener |
+| Logout | `POST` only; CSRF required; revoke the session (which destroys the CSRF token); clear `EV_SESSION`; close tracked sockets and reject later frames via authoritative `SessionRepository.findById`/`Session.isExpired` validation |
 | WebSocket | Handshake interceptor reads the session and populates the principal; STOMP channel interceptor validates CONNECT, SUBSCRIBE, and SEND |
 | Forwarded headers | The browser calls Render directly in Option C. Trust forwarded headers only from Render's edge; configure `server.forward-headers-strategy` and rate-limit using the forwarded client IP only when the immediate peer is trusted. Do not trust a client-supplied `X-Forwarded-For`. |
 | Error and debug | `server.error.include-stacktrace=never`, `include-message=never` (custom validation handler supplies safe details), actuator restricted |
@@ -851,7 +852,7 @@ The follow-ups map to decisions as follows: session tables → SD-03 (migration 
 2. Invalidate the server-side session and remove it from Spring Session; the session-bound CSRF token is destroyed with it.
 3. Clear the host-only `EV_SESSION` cookie with `Max-Age=0` on the API host. There is no CSRF cookie to clear.
 4. Clear the security context.
-5. Close the WebSocket through the server-side session-destroyed listener; the client also closes the socket, clears the in-memory CSRF token and user state, and redirects (UI §6.10, §17.5). Do not rely on session invalidation alone to terminate an established socket.
+5. Close tracked sockets on explicit logout; the client also closes the socket, clears the in-memory CSRF token and user state, and redirects (UI §6.10, §17.5). Authoritative `SessionRepository.findById`/`Session.isExpired` validation rejects subsequent frames; destruction events are supplemental only.
 6. If the session is already expired, return `204` or `200` idempotently; do not reveal whether a session existed.
 
 #### 8.8.4 Current user (`GET /auth/me`)
@@ -883,7 +884,7 @@ If a future requirement introduces a separate service, mobile client, or third-p
 | Missing session | `401` JSON for `/api/**`; no redirect from the API |
 | Expired session | `401`; frontend clears state and redirects once with a session-expired message (UI §18.4) |
 | Insufficient role | `403`; frontend shows access denied and keeps the session |
-| Deactivated account with an existing session | Session revoked; session-destroyed listener closes the WebSocket; next request `401`; frontend signs out with an explanatory message (UI §16.10) |
+| Deactivated account with an existing session | Session revoked; tracked sockets are closed and subsequent frames fail authoritative session validation; next request `401`; frontend signs out with an explanatory message (UI §16.10) |
 | Session store unavailable | Fail closed: `503` or `401`, not an anonymous session |
 | CSRF token missing/invalid | `403`; no state change; audit security event |
 | Login rate limit exceeded | `429` with `Retry-After`; generic message; no account-status disclosure |
@@ -962,7 +963,7 @@ Rules:
 3. A status change must be audited (FR-AUDIT-003).
 4. Public registration always creates a `BUYER` with the current approved status (`ACTIVE`); it must never create `AGENT` or `ADMIN` (FR-AUTH-008, FR-AUTH-009).
 5. A deactivated agent's properties remain assigned until an administrator explicitly reassigns them (UI §10.4). Do not auto-reassign.
-6. A deactivated agent's existing conversations remain associated with that agent (Database Design §18, §23.1.D). The policy for handling those conversations is **Deferred**; it must be approved before implementing agent deactivation.
+6. A deactivated agent's existing conversations remain associated with that original agent (Database Design §18, §23.1.D). Under P-03, history is preserved, protected messaging in those conversations is disabled, and no fallback or transfer is created; implementation is a Stage 7.2/7.5 gate, not a pending policy decision.
 7. Administrators must not be able to deactivate their own account or the last active administrator through the ordinary status endpoint (approved safeguard, SD-15). If it cannot be enforced without an API change, document the gap and enforce it in the service layer.
 8. Reactivating an account restores the ability to log in but does not restore old sessions; the user signs in again.
 9. Account deletion is not implemented. Users are deactivated; properties are archived; conversations, messages, inquiries, and audit records are preserved (Database Design §17; PRD §15). A deletion/erasure workflow remains **Deferred**.
@@ -1135,12 +1136,12 @@ Legend: **Yes** = allowed within the stated scope; **Own** = only the authentica
 | View own inquiries | No | Own | No | No | Buyer-only |
 | View assigned-property inquiries | No | No | Assigned | Yes | Historical inquiry `assigned_agent_id`; admin sees all |
 | Update inquiry status | No | No | Assigned | Yes | Authorized active AGENT/admin; Stage 6 transition matrix approved in `STAGE_6_DECISION_REGISTER.md` §3 Decision 1; buyer status read-only |
-| Create a conversation | No | Yes | No | No | Buyer only; one per buyer-property; current assigned agent captured |
+| Create a conversation | No | Yes | No | No | Active buyer only; `PUBLISHED` property and active current agent required; one permanent row per buyer-property with immutable original agent; existing row returns `200` |
 | View own conversations | No | Own | Assigned | No | Buyer is participant; agent is original `assigned_agent_id`; admin has no list |
 | View conversation details/messages | No | Participant | Participant | No | Buyer or original assigned agent only; admin is not a participant |
-| Send a message | No | Participant | Participant | No | WebSocket; sender derived from principal |
-| Update read state | No | Participant | Participant | No | REST `PATCH /conversations/{conversationId}/read-state` |
-| Update conversation status | No | No | Participant | **No** | Original assigned agent only (Approved, SD-36; API §25.1.E). Administrators have no conversation-status or transcript access. |
+| Send a message | No | Participant | Participant | No | WebSocket; sender derived from principal; mandatory UUID idempotency key; disabled when the original agent is inactive (P-03) |
+| Update read state | No | Participant | Participant | No | REST `PATCH /conversations/{conversationId}/read-state`; monotonic, viewed-only, same-conversation; own `unreadCount` only (P-07/P-10) |
+| Update conversation status | No | No | No | **No** | Deferred/unmapped in Stage 7 by P-04; any future endpoint remains original-agent-only and admin-denied under SD-36 |
 | View own notifications | No | Own | Own | Own | `recipient_id` from session |
 | Create property | No | No | No | Yes | Admin only (PD-03/PD-04; API §25.1.G) |
 | Update property | No | No | Assigned | Yes | Current `primary_agent_id` or admin |
@@ -1154,7 +1155,7 @@ Legend: **Yes** = allowed within the stated scope; **Own** = only the authentica
 | Change account status | No | No | No | Yes | Cannot target own/last active admin where enforceable |
 | View platform statistics | No | No | No | Yes | Admin dashboard |
 | View audit history | No | No | No | Yes | Read-only; append-only records |
-| Read private conversation transcript | No | Participant | Participant | **No** | Not approved for MVP; no endpoint/UI |
+| Read private conversation transcript | No | Participant | Participant | **No** | Participant message-history route is approved; admin transcript viewer/endpoint is not approved |
 
 ### 10.4 Endpoint access matrix
 
@@ -1190,7 +1191,6 @@ The endpoint list is the approved API Specification. This table does not invent 
 | PATCH | `/agents/me` | Agent | Self; permitted fields only; no role/status/assignment | `400`, `401`, `403` |
 | GET | `/agents/me/properties` | Agent | `primary_agent_id = principal` | `401`, `403` |
 | GET | `/agents/me/inquiries` | Agent | `assigned_agent_id = principal` (historical) | `401`, `403` |
-| GET | `/agents/me/conversations` | Agent | `assigned_agent_id = principal` (original) | `401`, `403` |
 
 #### 10.4.3 Property management and discovery
 
@@ -1248,12 +1248,12 @@ Stage 6 clarification: all paths are under `/api/v1`; favorite batch state must 
 
 | Method | Endpoint | Allowed | Ownership / condition | Failure |
 |---|---|---|---|---|
-| POST | `/properties/{propertyId}/conversations` | Buyer | Buyer from session; property has a current active agent; return existing by unique key | `400`, `401`, `403`, `404`, `409` |
-| GET | `/conversations` | Buyer / Agent | Buyer `buyer_id`; agent original `assigned_agent_id`; no admin list | `401`, `403` |
-| GET | `/conversations/{conversationId}` | Participants | Buyer or original assigned agent only | `401`, `403`, `404` |
-| GET | `/conversations/{conversationId}/messages` | Participants | Same; paginated chronological history | `401`, `403`, `404` |
-| PATCH | `/conversations/{conversationId}/read-state` | Participants | Same; `lastReadMessageId` must belong to conversation | `400`, `401`, `403`, `404` |
-| PATCH | `/conversations/{conversationId}/status` | Original assigned agent | **Approved (SD-36):** original assigned agent only; administrators are denied | `400`, `401`, `403`, `404`, `409` |
+| POST | `/properties/{propertyId}/conversations` | Active Buyer | New creation requires a `PUBLISHED` property, active buyer and active current agent; an existing `(buyer_id, property_id)` row returns `200` to an authorized active original participant regardless of later property status; no `409` (P-13/F-7.1-07/P-02) | `400`, `401`, `403`, `404` |
+| GET | `/conversations` | Buyer / Agent | Buyer `buyer_id`; agent original `assigned_agent_id`; no admin list; response includes that requester's own `unreadCount` | `401`, `403` |
+| GET | `/conversations/{conversationId}` | Participants | Buyer or original assigned agent only; own `unreadCount` only | `401`, `403`, `404` |
+| GET | `/conversations/{conversationId}/messages` | Participants | Same; latest-first `(sent_at DESC, id DESC)` cursor with `nextCursor`/`hasMore`/`limit`; client renders chronologically; no offset page or new sequence column (P-06) | `400`, `401`, `403`, `404` |
+| PATCH | `/conversations/{conversationId}/read-state` | Participants | Same; `lastReadMessageId` must belong to conversation; highest valid viewed position wins transactionally; own messages excluded from own unread count (P-07/P-10) | `400`, `401`, `403`, `404` |
+| PATCH | `/conversations/{conversationId}/status` | None in Stage 7 | **Deferred/unmapped in Stage 7 (P-04)**; any future endpoint remains original-agent-only and admin-denied under SD-36 | `404` (unmapped) |
 | GET | `/notifications` | Authenticated | `recipient_id` from session | `401` |
 | GET | `/notifications/unread-count` | Authenticated | Own only | `401` |
 | PATCH | `/notifications/{notificationId}/read` | Owner | `recipient_id` from session | `401`, `403`, `404` |
@@ -1280,7 +1280,7 @@ Stage 6 clarification: all paths are under `/api/v1`; favorite batch state must 
 | Conversations (buyer) | `conversations.buyer_id` | `buyer_id = principal.id` | Buyer retains access after property reassignment/archival |
 | Conversations (agent) | `conversations.assigned_agent_id` | `assigned_agent_id = principal.id` | Original agent only; not `properties.primary_agent_id` |
 | Messages | `messages.conversation_id` + participant | Resolve conversation first; then participant check | Never query a message by ID alone without its conversation |
-| Read states | `(conversation_id, user_id)` | Participant check; message belongs to conversation | No read receipts exposed to the other participant |
+| Read states | `(conversation_id, user_id)` | Participant check; message belongs to conversation; highest viewed position only | Monotonic viewed-only advancement; own `unreadCount` only; no read receipts or other-participant position exposed |
 | Notifications | `notifications.recipient_id` | `recipient_id = principal.id` | `resource_id` does not replace authorization |
 | Properties (agent) | `properties.primary_agent_id` | `primary_agent_id = principal.id` | Current assignment for management |
 | Properties (admin) | none | Platform-wide | Still audit every mutation |
@@ -1336,19 +1336,19 @@ The predicate deliberately does **not** include:
 |---|---|---|---|---|
 | Conversation created with Agent 1 | Yes | Yes | No | No |
 | Property reassigned to Agent 2 | Yes | Yes | No (historical) | No |
-| New conversation after reassignment | New buyer only | No (unless assigned) | Yes (as original for the new conversation) | No |
-| Property becomes unavailable/archived | Yes | Yes | No | No |
-| Agent 1 deactivated | Buyer keeps history; agent cannot authenticate | No (account inactive) | No | Policy deferred |
+| New conversation after reassignment | A different buyer may create a new conversation with Agent 2 for the same property | No access to the new conversation | Yes (as original for the new conversation) | No |
+| Property becomes unavailable/archived | Existing history remains readable; no new chat creation | Existing history readable | No access to the old conversation | No |
+| Agent 1 deactivated | Buyer keeps history; protected messaging in that conversation is disabled; no fallback or transfer | No (account inactive) | No | No |
 | Agent 2 tries a known conversation ID | No | No | `403`/not available | No |
 
 **Implementation rules:**
 
-1. `POST /properties/{propertyId}/conversations` resolves the buyer from the session and the agent from `properties.primary_agent_id` at creation. It never accepts `buyerId` or `assignedAgentId` from the client.
-2. If a conversation already exists for `(buyer_id, property_id)`, return it with `200`; never create a duplicate or resend an initial message (API §25.1.A).
-3. `POST /properties/{propertyId}/conversations` requires the property to have a primary agent; every property does, because creation requires one (SD-35, Approved). If that agent's account is not `ACTIVE`, creation fails safely rather than opening an unattended conversation; the exact status follows the approved API error contract.
+1. `POST /properties/{propertyId}/conversations` resolves the buyer from the session and the agent from `properties.primary_agent_id` only for **new** creation. It never accepts `buyerId` or `assignedAgentId` from the client.
+2. If a conversation already exists for `(buyer_id, property_id)`, return it with `200` to an authorized active original participant regardless of later property status; never create a duplicate, change the original agent, or resend an initial message (API §25.1.A, P-02).
+3. New creation requires a `PUBLISHED` property, an active buyer and an active current agent; a non-eligible property returns a generic `404` and an inactive current agent fails safely. Retrieval of existing authorized history is unaffected (P-13/F-7.1-07).
 4. `GET /conversations`, `GET /conversations/{id}`, `GET /conversations/{id}/messages`, and `PATCH /conversations/{id}/read-state` use the predicate above.
-5. `GET /agents/me/conversations` must not be implemented as "conversations for my currently assigned properties". It must use `assigned_agent_id = principal.id`.
-6. No endpoint may update `conversations.assigned_agent_id`. There is no administrative transfer mechanism in the approved API. If one is ever introduced, it requires a new approved decision and audit. The conversation-status endpoint is limited to the original assigned agent; administrators are denied (SD-36, Approved; API §25.1.E; Database Design §23.1.D).
+5. For `GET /conversations`, agent results must not be implemented as "conversations for my currently assigned properties". They must use the immutable `assigned_agent_id = principal.id`; buyer results must use `buyer_id = principal.id`. Only the requester's own `unreadCount` is returned (P-10).
+6. No endpoint may update `conversations.assigned_agent_id`. There is no administrative transfer mechanism in the approved API and no second conversation for the same buyer/property after reassignment (P-02). If a transfer is ever introduced, it requires a new approved decision and audit. Conversation status mutation is deferred and unmapped in Stage 7 (P-04); any future endpoint remains original-agent-only and admin-denied under SD-36.
 7. Admin inquiry views may show inquiry metadata and the inquiry message, but must not link to or return conversation messages (UI §10.7).
 8. Notifications for a new message go only to the other participant; the notification body uses generic text and does not include message content (UI §18.7).
 
@@ -1405,7 +1405,7 @@ Administrative safeguards:
 | Authenticated but wrong role | `403` | Generic access-denied | Do not include record data |
 | Authenticated but not the owner/assignee | `403` or `404` | Generic "not available" | The approved API defines `403` for insufficient permission and `404` for not accessible; prefer `403` for consistency with UI §8.9/§9.12, and use `404` for genuinely absent records. Avoid a response that confirms the existence of another user's record. |
 | Resource genuinely absent | `404` | Standard error envelope | Do not leak whether it existed |
-| Duplicate/conflict | `409` | Conflict code | Favorites and conversations rely on uniqueness |
+| Duplicate/conflict | `409` | Conflict code | Conversation creation is get-or-create `200`/`201` with no `409`; a repeated message send with the same key and content returns the existing message, the same key with different content returns a safe conflict; favorites use the approved `201`/`200`/`204`/`404` semantics |
 | Invalid business state | `409` or `422` | Validation/business code | Property lifecycle: illegal or same-status transitions return `409`; `422` is reserved for unmet publication prerequisites (PROPERTY_API_DESIGN §4.8, D-06). The two codes are not interchangeable. |
 | Rate limited | `429` | `Retry-After` | Generic, no account-status disclosure |
 | Payload too large / unsupported media | `413` / `415` | File-specific, safe | Upload only |
@@ -1421,8 +1421,8 @@ Frontend behaviour: `401` clears local auth state and redirects to login with a 
 4. **Re-check account status.** A session for a deactivated account must be revoked; if a filter re-checks status, it must fail closed.
 5. **Reject unknown fields.** Prefer DTOs that do not contain protected fields. If a shared DTO is used, explicitly ignore or reject `role`, `accountStatus`, `primaryAgentId`, `assignedAgentId`, `createdBy`, `updatedBy`, `senderId`, `buyerId`, and audit fields.
 6. **Do not trust path IDs for ownership.** A path ID identifies the target; the principal identifies the actor. Both are required.
-7. **Use transactions and uniqueness.** Conversation creation must tolerate concurrent duplicate attempts through its database constraint and return the existing conversation with `200`. Favorite creation must tolerate concurrent duplicate attempts through the existing `UNIQUE(buyer_id, property_id)` constraint: `201` for a new favorite and `200` for an existing favorite on a `PUBLISHED` property, with generic `404` for a nonexistent or non-public property. Duplicate favorite creation does not return `409` (Stage 6 Decision 3 and §5.1 of `STAGE_6_DECISION_REGISTER.md`).
-8. **Do not cache authorization decisions.** Cache only immutable reference data. Re-evaluate role, status, assignment, and participation on each request.
+7. **Use transactions and uniqueness.** Conversation creation must tolerate concurrent duplicate attempts through its permanent `(buyer_id, property_id)` constraint and return the existing conversation with `200`. Favorite creation must tolerate concurrent duplicate attempts through the existing `UNIQUE(buyer_id, property_id)` constraint: `201` for a new favorite and `200` for an existing favorite on a `PUBLISHED` property, with generic `404` for a nonexistent or non-public property. Duplicate favorite creation does not return `409` (Stage 6 Decision 3 and §5.1 of `STAGE_6_DECISION_REGISTER.md`). Message sends use the mandatory UUID key and the V19 `UNIQUE(conversation_id, sender_id, idempotency_key)` constraint (P-05).
+8. **Do not cache authorization decisions.** Cache only immutable reference data. Re-evaluate role, status, assignment, and participation on each request and immediately before every outbound WebSocket send (F-7.1-03).
 9. **Audit denials selectively.** Log authorization failures with principal, route, target type, correlation ID, and reason code; do not log request bodies containing private content.
 10. **Test the matrix, not just the happy path.** Every role × endpoint × ownership combination in Section 10.4 must have a negative test (Section 17).
 
@@ -1728,8 +1728,8 @@ Do not expose `Server`, framework version, or internal build details in headers 
 | `PATCH` | Partial update with a field allowlist; reject protected fields |
 | `DELETE` | Archive property or remove a relationship per API §25.1.C; idempotent where practical |
 | Duplicate favorite | Preserve the V8 unique constraint; Stage 6 returns `201` for a new favorite and `200` for an existing favorite on a `PUBLISHED` property, `404` for non-public/nonexistent add, and `204` for removal. No soft delete. |
-| Duplicate conversation | Unique constraint; return the existing conversation with `200` (API §25.1.A) |
-| Duplicate message | No approved idempotency key yet (D-23); client retries may duplicate; document the risk and add an idempotency key only after approval |
+| Duplicate conversation | Permanent unique constraint; return the existing conversation with `200` (P-02/API §25.1.A); reassignment never creates a second row |
+| Duplicate message | Mandatory client UUID `idempotencyKey` with V19 `UNIQUE(conversation_id, sender_id, idempotency_key)`; same key/content returns the existing message and acknowledgement, same key/different content is a safe conflict; no exactly-once claim (P-05/F-7.1-05) |
 | Concurrent assignment | Use optimistic locking/versioning (approved) or a transaction with a fresh read; return `409` on conflict |
 | Concurrent inquiry status change | Re-read and serialize state inside the transaction; `409` only for an illegal transition; repeating the current status is an idempotent success with no timestamp or audit change. Stage 6 business conflicts use `409`, not `422`. |
 
@@ -1765,9 +1765,10 @@ The approved real-time contract is:
 | Protocol | WebSocket with STOMP (System Architecture §8; API §20) |
 | Client subscriptions | `/user/queue/messages`, `/user/queue/notifications`, `/user/queue/errors` (API §20.2) |
 | Client send destination | `/app/chat.send` (API §20.3) |
-| Read state | `PATCH /conversations/{conversationId}/read-state`; `/app/chat.read` is not used initially (API §25.1.B) |
+| Read state | `PATCH /conversations/{conversationId}/read-state`; `/app/chat.read` is not part of the approved contract; monotonic viewed-only advancement and own `unreadCount` only (P-07/P-10) |
 | Sender identity | Derived from the authenticated connection, never from the payload (API §20.4) |
-| Persistence | Message is persisted before broadcast (API §20.7; System Architecture §8.3) |
+| Message identity | Mandatory client UUID `idempotencyKey`; server-generated message ID and `sent_at`; V19 unique constraint (P-05) |
+| Persistence | Message is persisted before broadcast; sender-only `PERSISTENCE_ACK` is sent after commit; native STOMP `RECEIPT` is non-authoritative (P-08) |
 
 There is no approved conversation-specific topic, no typing indicator, no presence, no attachment message, and no admin transcript. Do not add them without a new approved requirement.
 
@@ -1782,8 +1783,8 @@ There is no approved conversation-specific topic, no typing indicator, no presen
 | Payload | Spoofed `senderId`, forged IDs/timestamps | Ignore client identity/time fields; generate server-side |
 | Content | XSS, oversized content, flooding | Plain text, length limits, rate limits, output escaping |
 | Broadcast | Message leaked to the wrong user | Per-user destinations; recipient derived from conversation, not client input |
-| Session end | Orphaned socket or continued access | Session invalidation, disconnect handling, re-authentication |
-| Reconnect | Missed or replayed messages | REST history fetch, dedupe by message ID, authorization on every fetch |
+| Session end | Orphaned socket or continued access | Authoritative `SessionRepository.findById`/`Session.isExpired` validation at handshake, CONNECT, heartbeat and each protected frame; tracked-socket closure; no reliance on destruction events |
+| Reconnect | Missed or replayed messages | REST cursor history refresh, dedupe by server message ID, no sync endpoint, no automatic mutation replay, authorization on every fetch |
 
 ### 12.3 Connection authentication
 
@@ -1795,7 +1796,7 @@ There is no approved conversation-specific topic, no typing indicator, no presen
 6. The server validates the `Origin` header against the exact approved frontend origins (production and local development). A missing or unknown origin is rejected. Do not use `*`, `setAllowedOriginPatterns("*")`, or origin reflection.
 7. CORS does not apply to the WebSocket handshake; the `Origin` allowlist is the control. The API must not rely on CORS to protect the socket.
 8. If the deployment is cross-site (unrelated hostnames) and the cookie cannot be sent reliably, stop and fix the deployment (Section 8.5.4); do not disable authentication or move the session token into the URL.
-9. The session must be the same session used for REST. A WebSocket connection must not outlive its session. Implement a session-destroyed listener and/or a per-frame or heartbeat session re-check that closes the connection; do not assume Spring Session invalidation closes an established socket by itself.
+9. The session must be the same session used for REST. A WebSocket connection must not outlive its session. Validate authoritative session existence and expiry with `SessionRepository.findById` and `Session.isExpired` at handshake, CONNECT, heartbeat and each protected frame, and close the connection on failure. Spring Session JDBC bulk cron cleanup has no per-socket awareness, so destruction events are supplemental only (F-7.1-02).
 
 ### 12.4 STOMP CONNECT authorization
 
@@ -1804,7 +1805,7 @@ There is no approved conversation-specific topic, no typing indicator, no presen
 3. Do not trust the STOMP `login` header or any client-supplied principal field. If present, ignore it.
 4. Set the authenticated principal on the STOMP session so that `/user/**` destinations resolve correctly.
 5. Reject a second CONNECT on an already-authenticated session if it attempts to change identity.
-6. CSRF is not required for the handshake itself because it is a `GET`; the handshake relies on the session cookie, exact `Origin` validation, and `SameSite=Lax`. The REST `X-CSRF-TOKEN` is not sent on STOMP frames. Requiring a CSRF header on CONNECT is deferred (SD-40; Section 8.5.11). If implemented, validate it against the session and do not put it in the URL or STOMP headers that are logged.
+6. CSRF is not required for the handshake itself because it is a `GET`; the handshake relies on the session cookie, exact `Origin` validation, and `SameSite=Lax`. The STOMP `CONNECT` frame must carry the session-bound `X-CSRF-TOKEN` value in a native header. Validate exact equality and `Origin` before subscriptions; reject missing, invalid, stale or mismatched tokens. Never put the token in a URL, query string, cookie or application log (SD-40/F-7.1-08; Section 8.5.11).
 7. Record the authenticated user ID and session ID in the WebSocket session attributes for authorization and disconnect cleanup. Do not log the session ID or CSRF token.
 
 ### 12.5 Subscription authorization
@@ -1826,7 +1827,7 @@ Reject:
 
 Spring's user-destination resolution maps `/user/queue/*` to the current session's principal. That is necessary but not sufficient: explicitly validate the destination string and reject anything outside the allowlist. Test with a raw STOMP client that attempts to subscribe to another user's queue.
 
-A client must never receive messages for a conversation it is not a participant in. The server sends only to the buyer and the original assigned agent for that conversation.
+A client must never receive messages for a conversation it is not a participant in. The server sends only to the buyer and the original assigned agent for that conversation, and revalidates session, participant set, account status and role immediately before every outbound send (F-7.1-03).
 
 ### 12.6 Destination and operation authorization
 
@@ -1837,9 +1838,9 @@ A client must never receive messages for a conversation it is not a participant 
 | Receive notifications | `/user/queue/notifications` | Per-user destination; recipient derived server-side |
 | Receive errors | `/user/queue/errors` | Per-user destination; no sensitive detail |
 | Update read state | `PATCH /conversations/{conversationId}/read-state` | Authenticated participant; REST, not STOMP |
-| Update conversation status | `PATCH /conversations/{conversationId}/status` | Original assigned agent only (Approved, SD-36); administrators denied |
+| Update conversation status | `PATCH /conversations/{conversationId}/status` | Deferred/unmapped in Stage 7 (P-04); any future endpoint remains original-agent-only and admin-denied under SD-36 |
 
-There is no approved client destination for creating a conversation, listing conversations, fetching history, or updating read state over STOMP. Those are REST operations (API §11–§12).
+There is no approved client destination for creating a conversation, listing conversations, fetching history, updating read state, or resynchronizing missed messages over STOMP. Those are REST operations (API §11–§12; P-09).
 
 ### 12.7 Sender identity and message ownership
 
@@ -1848,21 +1849,24 @@ The payload for `/app/chat.send` is:
 ```json
 {
   "conversationId": "uuid",
-  "content": "I would like to schedule a visit."
+  "content": "I would like to schedule a visit.",
+  "idempotencyKey": "uuid"
 }
 ```
 
 Rules:
 
 1. The sender is `principal.id` from the authenticated connection. Never read `senderId` from the payload.
-2. If the client supplies `senderId`, `id`, `sentAt`, `messageType`, `conversationId` (other than the target), or any audit field, ignore or reject it. Do not persist it.
-3. The server generates the message ID and `sent_at` timestamp. Client timestamps are not authoritative.
-4. The server sets `message_type = TEXT`; no other type is approved.
-5. The server verifies that the conversation exists and that the principal is the buyer or the original assigned agent.
-6. The server verifies that the target conversation ID is a UUID and that it belongs to the authenticated participant; it does not trust the conversation's property or agent fields from the client.
-7. The server persists the message in a transaction and only then broadcasts it. A broadcast must not precede a successful commit.
-8. If persistence fails, no success event is sent; an error goes to `/user/queue/errors`.
-9. If broadcast fails after commit, the message remains persisted; the recipient retrieves it on reconnect or refresh. Do not delete it because delivery failed.
+2. The mandatory `idempotencyKey` is a client-generated UUID identifying one logical message. It is accepted, validated and scoped to the conversation and sender; unknown fields are ignored or rejected (P-05).
+3. If the client supplies `senderId`, `id`, `sentAt`, `messageType`, `conversationId` (other than the target), or any audit field, ignore or reject it. Do not persist it.
+4. The server generates the message ID and `sent_at` timestamp. Client timestamps are not authoritative.
+5. The server sets `message_type = TEXT`; no other type is approved.
+6. The server verifies that the conversation exists and that the principal is the buyer or the original assigned agent. Protected messaging is disabled when the original assigned agent is inactive (P-03).
+7. The V19 unique key `(conversation_id, sender_id, idempotency_key)` is the duplicate authority. A repeated key with identical content returns the existing message and acknowledgement; a repeated key with different content returns a safe conflict.
+8. The server serializes inserts for the conversation so generated `sent_at` follows commit order, persists the message in a transaction and only then broadcasts it (F-7.1-04). A broadcast must not precede a successful commit.
+9. If persistence fails, no success event is sent; an error goes to `/user/queue/errors`.
+10. After commit the server sends a sender-only application `PERSISTENCE_ACK` on `/user/queue/messages`, correlated by `idempotencyKey` and server message ID. Native STOMP `RECEIPT` is non-authoritative; no recipient, delivery or read receipt is emitted (P-08/F-7.1-01).
+11. If broadcast or acknowledgement fails after commit, the message remains persisted and the recipient retrieves it through REST cursor history. An ambiguous acknowledgement failure requires explicit user retry with the same key; automatic replay is prohibited. Do not delete the message because delivery failed.
 
 ### 12.8 Conversation participant verification
 
@@ -1883,7 +1887,7 @@ This predicate is checked:
 - When history is fetched over REST.
 - When read state is updated.
 - When a conversation detail is fetched.
-- When a conversation event is about to be delivered (the recipient is derived from the conversation, not from the sender's claim).
+- Immediately before a conversation event is delivered (the recipient is derived from the conversation, not from the sender's claim), with session, account status and role rechecked at that point (F-7.1-03).
 
 It is **not** satisfied by:
 
@@ -1899,7 +1903,7 @@ It is **not** satisfied by:
 3. Do not create a property-wide topic or broadcast messages to all users interested in a property.
 4. Do not deliver a message to a user who is not a participant, even if that user is the property's current agent.
 5. A property reassignment does not change the conversation's `assigned_agent_id`; the original agent continues to receive events for that conversation and the new agent does not.
-6. A property becoming unavailable or archived does not remove participants or delete history. Whether sending remains enabled is a product rule; the security baseline is that participant authorization is unchanged and no third party gains access.
+6. A property becoming unavailable or archived does not remove participants or delete history. Protected messaging in that conversation is disabled while the original assigned agent is inactive; history remains readable and no fallback agent or transfer is introduced (P-03). Existing authorized history is independent of later property status (P-13).
 7. A buyer's conversation list and message access are scoped by `buyer_id`; an agent's are scoped by `assigned_agent_id` (Section 10.5).
 
 ### 12.10 Spoofing and impersonation prevention
@@ -1911,7 +1915,7 @@ It is **not** satisfied by:
 | Supplying a message ID or timestamp | Server generates both |
 | Connecting with another user's session cookie | Cookie is `HttpOnly`/`Secure`; TLS; short session; rotation; revocation on logout/password change/deactivation |
 | Subscribing to another user's queue | `/user/**` resolves to the session principal; exact destination allowlist; raw STOMP tests |
-| Sending a STOMP frame after logout | A session-destroyed listener closes the socket, and every SEND re-checks the session/principal; a stale frame is rejected even if the socket has not yet closed |
+| Sending a STOMP frame after logout | Authoritative session validation closes tracked sockets and rejects stale frames; every SEND rechecks session, principal, account status and role even if the socket has not yet closed |
 | Replaying a captured frame | Session-bound principal; no bearer token in the frame; rate limits; server-generated IDs |
 | Admin pretending to be a participant | Admin is not a participant; no transcript endpoint; participant predicate excludes admin |
 
@@ -1928,8 +1932,8 @@ It is **not** satisfied by:
 | Attachments | Not approved; reject or ignore attachment fields |
 | Message type | `TEXT` only |
 | Editing/deletion | Not approved; no client operation |
-| Read receipts | Not displayed to the other participant; read state is internal |
-| Duplicate handling | Deduplicate by server message ID on the client; idempotency key is deferred (D-23) |
+| Read receipts | Explicitly excluded; sender-only `PERSISTENCE_ACK` is not a delivery or read receipt; native STOMP `RECEIPT` is non-authoritative |
+| Duplicate handling | Mandatory UUID `idempotencyKey`; V19 unique constraint; same key/content returns the existing message, same key/different content is a safe conflict; explicit retry only, no automatic replay |
 | Error response | Generic code/message; do not echo the full content |
 
 ### 12.12 Rate limiting and abuse prevention
@@ -1951,40 +1955,40 @@ Rate limiting must not rely on a client-supplied user ID. Key by the authenticat
 
 ### 12.13 Persistence, ordering, and broadcast
 
-1. Validate the request.
-2. Begin a transaction; load the conversation and verify participation.
-3. Insert the message with server-generated ID, `sender_id`, `sent_at`, and `TEXT` type.
+1. Validate the request, including the mandatory UUID `idempotencyKey`.
+2. Begin a transaction, acquire the approved per-conversation advisory serialization lock, load the conversation and verify participation, session, account status and role.
+3. Apply V19 uniqueness: reuse the existing row for the same key and content, reject a key reused with different content, and otherwise insert the message with server-generated ID, `sender_id`, `sent_at`, and `TEXT` type.
 4. Commit the transaction.
-5. Broadcast the persisted message to the buyer and the original assigned agent through the server-side user-destination mechanism (the client's own subscription remains `/user/queue/messages`); derive recipients from the conversation, never from a client-supplied topic or user ID.
-6. Create/update unread state and a notification for the recipient, using generic notification text (API §20.7; FR-NOTIF-002).
-7. If a recipient is offline, the message remains in PostgreSQL and is retrieved on reconnect (FR-CHAT-014).
-8. Order by `sent_at` and a deterministic tiebreaker (for example `id`); return chronological order (FR-CHAT-013).
-9. Do not broadcast the client's optimistic temporary message as if it were persisted.
-10. Do not send a success acknowledgement before commit.
+5. Revalidate recipients immediately before dispatch, then broadcast the persisted message to the buyer and the original assigned agent through the server-side user-destination mechanism (the client's own subscription remains `/user/queue/messages`); derive recipients from the conversation, never from a client-supplied topic or user ID.
+6. Send the sender-only application `PERSISTENCE_ACK` after commit, correlated by `idempotencyKey` and message ID. Native STOMP `RECEIPT` is non-authoritative and no recipient, delivery or read receipt is emitted.
+7. Create/update the recipient's unread state and a notification with generic text (API §20.7; FR-NOTIF-002). The requester's own `unreadCount` alone is returned in REST conversation list/detail responses.
+8. If a recipient is offline, the message remains in PostgreSQL and is retrieved through participant-scoped REST cursor history on reconnect (FR-CHAT-014); no sync endpoint exists.
+9. History retrieval is latest-first by `(sent_at DESC, id DESC)` with an opaque deterministic cursor; the client renders the loaded window chronologically. The V19 order index supports this query and no monotonic sequence column is authorized (P-06/F-7.1-04).
+10. Do not broadcast the client's optimistic temporary message as if it were persisted, and do not send an application success acknowledgement before commit.
 
 ### 12.14 Read-state security
 
-- Read state is updated only through `PATCH /conversations/{conversationId}/read-state` for the initial implementation (API §25.1.B; UI §11.9).
+- Read state is updated only through `PATCH /conversations/{conversationId}/read-state` (API §25.1.B; UI §11.9); `/app/chat.read` is not part of the approved contract.
 - The server verifies participation and that `lastReadMessageId` belongs to the same conversation.
+- The position advances only for messages the participant actually viewed, transactionally and monotonically; the highest valid viewed position wins under concurrency. The participant's own messages are excluded from that participant's unread count (P-07/F-7.1-06).
 - A participant can update only their own read state; the user ID comes from the session, not the body.
-- The other participant's read position is never exposed. There are no read receipts (UI §11.1, §11.9).
-- `/app/chat.read` is not used. If it is implemented later, it must apply the same participant and message-ownership checks, and the API contract must be updated first.
-- Debounce client updates; the server must tolerate repeated updates idempotently.
-- Do not use read state to authorize message access.
+- The other participant's read position is never exposed. Only the requester's `unreadCount` appears in conversation list and detail responses; there are no read or delivery receipts (P-10).
+- The client issues the PATCH after viewing the latest page; repeated updates are idempotent.
+- Do not use read state to authorize message access. D-37 is resolved by P-07.
 
 ### 12.15 Disconnect, expiry, and reconnection
 
 | Event | Behaviour |
 |---|---|
-| Logout | Invalidate the session; a server-side session-destroyed listener closes the WebSocket; clear subscriptions and client state (UI §17.5). Do not rely on invalidation alone. |
-| Session idle/absolute expiry | The socket must not outlive the session. A session-destroyed listener or heartbeat re-check closes it; the next SEND is rejected even if the close is delayed; the client redirects to login |
+| Logout | Revoke the session, close tracked sockets and clear subscriptions/client state (UI §17.5). Authoritative session validation rejects later frames; destruction events are not relied on. |
+| Session idle/absolute expiry | The socket must not outlive the session. `SessionRepository.findById`/`Session.isExpired` validation at heartbeat and each protected frame closes or rejects it; the client redirects to login (F-7.1-02) |
 | Network drop | Client reconnects with exponential backoff and jitter; stop on authentication failure (UI §11.10) |
-| Reconnect success | Re-subscribe to the three user queues; fetch missed messages from REST; dedupe by message ID (FR-CHAT-014) |
+| Reconnect success | Re-subscribe to the three user queues after CONNECT CSRF validation; refresh missed messages through the same participant-scoped REST cursor endpoint and deduplicate by server message ID; no sync endpoint and no automatic mutation replay (P-09) |
 | Reconnect with an expired session | Handshake fails; client stops retrying and redirects to login (UI §11.10) |
-| Server restart | Sessions are durable if Spring Session JDBC is used; messages are durable in PostgreSQL; clients reconnect and resync |
-| Multiple tabs | Each tab has its own STOMP session but the same authenticated principal; messages may arrive in each; the UI deduplicates |
-| Account deactivation | Sessions revoked; sockets close; no further messages |
-| Role/assignment change | The participant predicate is re-evaluated on every SEND; a stale socket cannot bypass it |
+| Server restart | Sessions are durable if Spring Session JDBC is used; messages are durable in PostgreSQL; clients reconnect and resync through REST cursor history |
+| Multiple tabs | Each tab has its own STOMP session but the same authenticated principal; messages may arrive in each; the UI deduplicates by server message ID |
+| Account deactivation | Sessions revoked; authoritative validation closes sockets and rejects messages, including when the original agent is inactive (P-03) |
+| Role/assignment change | The participant predicate is re-evaluated on every SEND and immediately before every outbound send; a stale socket cannot bypass it (F-7.1-03) |
 
 ### 12.16 Error handling
 
@@ -2013,10 +2017,10 @@ Rules:
 - The server must validate `Origin` against the exact allowlist. Do not reflect an arbitrary origin.
 - Under Option C, the browser connects directly to `wss://api.example.com/ws` and sends the host-only `EV_SESSION` cookie because the frontend and API are same-site. The cookie must be `SameSite=Lax`; a cross-site socket with `SameSite=None` is a last resort and is not recommended.
 - A same-origin Vercel WebSocket proxy is **not** claimed as supported; it requires a verified deployment spike (Section 8.5.3).
-- STOMP frames do not carry the REST `X-CSRF-TOKEN` by default. The controls are the authenticated session, the exact origin check, the subscription allowlist, the participant check, and the same-site cookie. Message frames are not simple cross-site form submissions.
-- **Residual risk:** the origin allowlist must contain only the exact frontend origin. If the approved origin is compromised by XSS, an attacker acts as the user regardless of CSRF. If an HTTP fallback transport (for example SockJS) is introduced, it becomes subject to classic CSRF and the synchronizer token must be added to that path.
-- CONNECT-level CSRF remains **Deferred (SD-40), non-blocking**, owned by the backend lead. Revisit it if a fallback transport, a broader origin allowlist, or a demonstrated bypass appears. The full reasoning is in Section 8.5.11.
-- A deferred hardening is to require the CSRF token as a STOMP CONNECT header for state-changing frames (SD-40). If implemented, validate it server-side and never put it in the URL or a query parameter.
+- Session-bound CSRF is required on STOMP `CONNECT` as a native `X-CSRF-TOKEN` header; `SEND` frames do not carry it. This is defence in depth alongside the authenticated session, exact origin check, subscription allowlist, participant check and same-site cookie (SD-40/F-7.1-08).
+- **Residual risk:** the origin allowlist must contain only the exact frontend origin. If the approved origin is compromised by XSS, an attacker acts as the user regardless of CSRF. If an HTTP fallback transport (for example SockJS) is introduced, it becomes subject to classic CSRF and must be separately approved.
+- CONNECT CSRF is **Approved and required** under SD-40/F-7.1-08. The backend validates exact session-bound equality and exact `Origin` before subscriptions and rejects missing, invalid, stale or mismatched values. The full reasoning is in Section 8.5.11.
+- The token must never be placed in a URL, query string, cookie or application log. Session, exact origin, subscription allowlist, participant and same-site cookie controls remain in force.
 - Do not enable a permissive `setAllowedOriginPatterns("*")`.
 - Do not accept a `token` query parameter or subprotocol as authentication.
 - Do not disable the origin check because a native client needs to connect; native/mobile clients are out of scope.
@@ -2024,20 +2028,20 @@ Rules:
 ### 12.18 Implementation checklist for chat
 
 - [ ] Handshake goes directly to the approved API host and rejects no-session, bad-origin, and query-token requests.
-- [ ] CONNECT requires a server-populated principal.
+- [ ] CONNECT requires a server-populated principal and validates the session-bound CSRF native header with exact `Origin`.
 - [ ] SUBSCRIBE allows only the three user queues.
 - [ ] SEND allows only `/app/chat.send`.
-- [ ] Sender ID, message ID, and timestamp are server-generated.
-- [ ] Participant predicate is applied to every SEND and history read.
-- [ ] `assigned_agent_id` is used for agent access, not `primary_agent_id`.
+- [ ] Sender ID, message ID and timestamp are server-generated; the mandatory UUID idempotency key is accepted, correlated and unique per conversation/sender.
+- [ ] Participant predicate is applied to every SEND, history read and immediately before every outbound send.
+- [ ] `assigned_agent_id` is the immutable original agent, not `primary_agent_id`; reassignment transfers nothing.
 - [ ] Admin cannot subscribe to or read conversations.
-- [ ] Message is persisted before broadcast.
+- [ ] Message is persisted before broadcast; sender-only `PERSISTENCE_ACK` is sent after commit and native `RECEIPT` is non-authoritative.
 - [ ] Message content is length-limited and plain text.
 - [ ] Rate limits and connection limits are enforced.
-- [ ] Logout and session expiry close the socket through a session-destroyed listener or session re-check; invalidation alone is not assumed to close it.
-- [ ] Reconnect resyncs from REST and deduplicates.
+- [ ] Authoritative `SessionRepository.findById`/`Session.isExpired` validation closes sockets and rejects stale frames; destruction events are supplemental only.
+- [ ] Reconnect uses REST cursor resync, deduplicates by server message ID, adds no sync endpoint and performs no automatic mutation replay.
 - [ ] Errors are generic and contain no content or stack traces.
-- [ ] Tests cover raw STOMP, spoofing, cross-conversation, and reassignment.
+- [ ] Tests cover raw STOMP, spoofing, cross-conversation, reassignment and AC-48–AC-55.
 
 ---
 
@@ -2522,12 +2526,12 @@ Administrators are the highest-privilege role and the most valuable target.
 | Agent self-profile | `GET/PATCH /agents/me` | Agent only; permitted fields; no role/status/assignment |
 | Agent property list | `GET /agents/me/properties` | Current assignments only |
 | Agent inquiry list | `GET /agents/me/inquiries` | Historical `assigned_agent_id` only |
-| Agent conversation list | `GET /agents/me/conversations` | Original `assigned_agent_id` only |
+| Agent conversation list | `GET /conversations` (agent scope) | Original `assigned_agent_id` only |
 
 Rules:
 
 1. The initial password/activation workflow is approved as **SD-12** (D-14 resolved). Do not create an agent with a predictable or admin-known password.
-2. Deactivating an agent does not automatically reassign properties (UI §10.4) and does not transfer conversations (Database Design §18). The handling of a deactivated agent's conversations is **Deferred** and must be approved before that feature ships.
+2. Deactivating an agent does not automatically reassign properties (UI §10.4) and does not transfer conversations (Database Design §18). Under P-03, conversation history is preserved, protected messaging is disabled, and no fallback or transfer is introduced; implementation remains a later-stage gate.
 3. An agent cannot reactivate themselves or change their own status.
 4. Agent profile updates cannot change `user_id`, role, status, assignments, or audit fields.
 5. Agent creation must validate unique, normalized email and return a safe `409`.
@@ -2546,7 +2550,7 @@ Security requirements:
 
 1. Validate the agent's role and active status before assignment (Database Design §23.1.C).
 2. Reassignment changes the property manager only; it does not change `conversations.assigned_agent_id` (Database Design §23.1.D).
-3. The UI must warn that existing conversations remain with the current agent and must not imply a transfer (UI §10.6).
+3. The UI must warn that existing conversations remain with the original assigned agent and must not imply a transfer (UI §10.6, FR-CHAT-012, P-02).
 4. Archive must not physically delete historical records (API §25.1.C).
 5. Every property must have one primary agent at creation; there is no unassigned state (SD-35, Approved; Database Design §23.1.C).
 6. Audit before/after values for status, assignment, and archive.
@@ -2607,7 +2611,7 @@ Rules:
 | Assignment | `PROPERTY_AGENT_ASSIGNED`, `PROPERTY_AGENT_REASSIGNED` | Property ID, previous/new agent ID, actor |
 | Images | `PROPERTY_IMAGE_UPLOADED`, `PROPERTY_IMAGE_UPDATED`, `PROPERTY_IMAGE_DELETED`, `PROPERTY_IMAGE_PRIMARY_CHANGED` | Property/image ID, actor, result |
 | Inquiries | `INQUIRY_STATUS_CHANGED` | Real transitions only: inquiry ID, actor, before/after status, time, correlation ID, and `resolvedAt` change where applicable; never subject or message. Repeating the current status is idempotent and creates no audit row. |
-| Conversations | `CONVERSATION_STATUS_CHANGED` | Conversation ID, before/after status, actor (no message content) |
+| Conversations | `CONVERSATION_STATUS_CHANGED` | Conversation ID, before/after status, actor (no message content) — deferred with status mutation in Stage 7 by P-04; emit only if a future lifecycle is approved |
 | Audit access | `AUDIT_LOG_ACCESSED` (optional) | Admin ID, filters, request ID; no record contents |
 | Security | `SECURITY_ACCESS_DENIED`, `SECURITY_CSRF_FAILURE`, `SECURITY_RATE_LIMIT_TRIGGERED`, `SECURITY_WS_AUTH_FAILURE` | Actor (if known), route/destination, reason code, IP, request ID |
 | Administration | `ADMIN_ACCOUNT_PROVISIONED`, `ROLE_CHANGED` (future) | Target ID, before/after role, actor; dual control for role changes |
@@ -2953,12 +2957,12 @@ Tests must run against a configuration that resembles production for the control
 | ST-API-08 | Oversized JSON body and deeply nested payload | `413`/`400`; no memory exhaustion; no stack trace |
 | ST-API-09 | Error disclosure | No stack trace, SQL, class name, file path, secret, or full private content |
 | ST-API-10 | Unsupported method and wrong content type | `405`/`415`; no state change |
-| ST-API-11 | Duplicate favorite/conversation | Uniqueness enforced; safe `409` or documented idempotent response |
+| ST-API-11 | Duplicate favorite/conversation/message | Favorites `201`/`200`/`204`/`404`; conversation `200`/`201` with no `409`; repeated message key/content returns one row and one acknowledgement, same key/different content conflicts |
 | ST-API-12 | Security headers | HSTS, `nosniff`, `Referrer-Policy`, `frame-ancestors`/`X-Frame-Options` present as configured |
 | ST-API-13 | Cache headers on private responses | `Cache-Control: no-store` where required; no private data in shared caches |
 | ST-API-14 | CORS and CSRF delivery | Exact frontend origin allowed with credentials and `Vary: Origin`; other origins rejected; preflight permits `X-CSRF-TOKEN`; `Access-Control-Expose-Headers` includes `X-CSRF-TOKEN`; no wildcard with credentials; the frontend can read the CSRF header and cannot read `EV_SESSION` |
 
-**CSRF synchronizer-token tests.** These tests are requirements, not evidence of execution. They apply to the approved design in Sections 8.5.2–8.5.9 and must run with CSRF enabled. The suite defines 14 CSRF test IDs (`ST-CSRF-01` to `ST-CSRF-14`); the document's full test inventory is 110 unique IDs across the ST-AUTH, ST-AUTHZ, ST-API, ST-CSRF, ST-WS, ST-CHAT, ST-UPLOAD, ST-CONFIG, ST-UI, ST-RATE, and ST-AUDIT groups. No test in this document has been executed as part of this review.
+**CSRF synchronizer-token tests.** These tests are requirements, not evidence of execution. They apply to the approved design in Sections 8.5.2–8.5.9 and must run with CSRF enabled. The suite defines 14 CSRF test IDs (`ST-CSRF-01` to `ST-CSRF-14`); the document's full test inventory is 111 unique IDs across the ST-AUTH, ST-AUTHZ, ST-API, ST-CSRF, ST-WS, ST-CHAT, ST-UPLOAD, ST-CONFIG, ST-UI, ST-RATE, and ST-AUDIT groups. No test in this document has been executed as part of this review.
 
 | ID | Scenario | Expected result |
 |---|---|---|
@@ -2986,14 +2990,17 @@ Tests must run against a configuration that resembles production for the control
 | ST-WS-03 | Send a payload with another user's `senderId`, a forged `id`, and a forged timestamp | Server ignores/rejects the fields; persisted sender is the principal; ID/time are server-generated |
 | ST-WS-04 | Subscribe to `/topic/**`, `/queue/**`, and another user's queue | Subscription rejected; no messages delivered |
 | ST-WS-05 | Send to a conversation the principal is not part of | Error to `/user/queue/errors`; no persistence; no broadcast; no existence confirmation |
-| ST-WS-06 | Persistence and ordering | Message persisted before broadcast; chronological order; recipient receives it; offline recipient retrieves it from REST |
-| ST-WS-07 | Reconnect and resync | Missed messages retrieved from REST; duplicates deduplicated by message ID |
-| ST-WS-08 | Logout/session expiry with an open socket | Socket closed or next SEND rejected; no further delivery |
+| ST-WS-06 | Persistence, ordering and acknowledgement | Message persisted before broadcast; sender-only `PERSISTENCE_ACK` after commit; native `RECEIPT` non-authoritative; latest-first `(sent_at DESC, id DESC)` cursor with chronological rendering; V19 order index and no sequence column |
+| ST-WS-07 | Reconnect and resync | Missed messages retrieved from the REST cursor endpoint; duplicates deduplicated by server message ID; no sync endpoint and no automatic mutation replay |
+| ST-WS-08 | Logout/session expiry with an open socket | Authoritative session validation closes sockets and rejects frames; no further delivery; destruction events alone are insufficient (AC-49) |
 | ST-WS-09 | Message size/flood | Oversized frame rejected; rate limit triggers an error and does not overwhelm the server |
 | ST-WS-10 | XSS in message content | Delivered as text; rendered with `textContent`; no execution |
-| ST-WS-11 | Read state for a foreign message/conversation | Rejected; read state is scoped to the participant |
+| ST-WS-11 | Read state for a foreign message/conversation | Rejected; highest valid viewed position wins transactionally; own messages excluded from own unread count; no other-participant position |
 | ST-WS-12 | Admin subscribes to a conversation | No conversation topic exists; admin receives no transcript |
 | ST-WS-13 | Query-string/subprotocol token authentication: attempt `wss://api.example.com/ws?token=...` and a token-bearing subprotocol with no session cookie | Handshake rejected; the token is not accepted, logged, or echoed; only the host-only session cookie authenticates |
+| ST-WS-14 | CONNECT CSRF and idempotent retry | Missing/stale/mismatched CONNECT token or bad origin rejected before subscriptions; repeated send key/content returns the existing message and one acknowledgement; same key/different content conflicts; outbound authorization rechecked before delivery |
+
+Stage 7.1 acceptance planning is authoritative in `docs/STAGE_7_DECISION_REGISTER.md` §7 (AC-01–AC-55). No scenario in that ledger, including AC-48–AC-55 for the eight Stage 7.1 findings, has been executed by this documentation review.
 
 ### 17.6 Chat privacy and notification tests
 
@@ -3003,7 +3010,7 @@ Tests must run against a configuration that resembles production for the control
 | ST-CHAT-02 | Property reassigned from Agent 1 to Agent 2; Agent 1 requests the old conversation | Agent 1 still has access; the conversation's `assigned_agent_id` is unchanged |
 | ST-CHAT-03 | Agent 2 requests the historical conversation after reassignment | Denied; the new agent does not inherit history |
 | ST-CHAT-04 | Admin requests a conversation or transcript | Denied by the approved policy (SD-36); no endpoint/UI exists |
-| ST-CHAT-05 | New message notification | Generic text; no message content; only the other participant receives it; unread count updates |
+| ST-CHAT-05 | New message notification | Generic text; no message content; only the other participant receives it; that participant's own `unreadCount` updates and no delivery/read receipt is exposed |
 | ST-CHAT-06 | Buyer retains history after property archival/unavailability | History remains readable; no third party gains access |
 
 ### 17.7 File upload tests
@@ -3128,18 +3135,18 @@ The UI/UX register uses `D-xx` identifiers. This register uses `SD-xx` and maps 
 | SD-26 | Request-size and pagination caps: 1 MB JSON, 16 KB auth, page size ≤ 100, sort allowlist | **Approved** | Non-blocking | API §19 | Enforce server-side |
 | SD-27 | Standard JSON error envelope without stack traces or internal detail | **Approved** | Non-blocking | API §17 | Implement; verify no leakage |
 | SD-28 | Security headers: HSTS, `nosniff`, `Referrer-Policy`, CSP, frame denial, permissions policy | **Approved** | Non-blocking | System Architecture §12.4; UI §18.11 | Configure the CSP and headers at Vercel/Render |
-| SD-29 | Message idempotency key for retries | **Deferred** | Non-blocking (D-23) | API §20; UI §11.10 | Outside MVP; document duplicate risk if retried |
+| SD-29 | Message idempotency key for retries | **Approved** (P-05/F-7.1-05) | Non-blocking | API §20; UI §11.10; `STAGE_7_DECISION_REGISTER.md` §4 | Mandatory client UUID key and V19 `UNIQUE(conversation_id, sender_id, idempotency_key)`; explicit retry only, no exactly-once claim |
 | SD-30 | Upload allowlist JPEG/PNG/WebP (no SVG), 5 MB, dimension/pixel limits, decode/re-encode, strip metadata | **Approved** | Non-blocking (D-25) | API §8.1; UI §9.6, §18.8 | Implement and verify limits before upload ships |
 | SD-31 | Restrict unpublished/archived image delivery (signed URL or backend proxy) | **Approved** | Non-blocking (before draft images) | API §8; DB §7.1 | Implement with the `PUBLISHED`-only visibility rule (C-10) |
 | SD-32 | Clean up orphaned Cloudinary assets when the database write fails | **Approved** | Non-blocking | API §8 | Implement a compensating delete or cleanup task |
 | SD-33 | Antivirus/malware scanning for uploads | **Deferred** | Non-blocking | Not in approved stack | Outside MVP; re-encode and restrict formats in the interim |
 | SD-34 | WebSocket handshake connects directly to the API host and uses the same host-only session; require WSS, an exact origin allowlist, and no query-string token | **Approved** | Non-blocking | System Architecture §8.5; API §20.1; Section 12.3 | Implement with a handshake interceptor; verify cookie scope in deployment |
 | SD-35 | Every property is created with one primary agent; `primary_agent_id` is `NOT NULL`; there is no unassigned state | **Approved** | Resolved (was Blocking) | DB §6.3, §23.1.C; PRD PD-03; API §6.1, §25.1.G; UI §10.5–§10.6 | Already enforceable; create-property requires `primaryAgentId` and the UI unassigned queue is removed |
-| SD-36 | `PATCH /conversations/{id}/status`: original assigned agent only; administrators have no conversation or transcript access | **Approved** | Resolved (was Blocking) | API §25.1.E; DB §23.1.D; UI D-16 | Already enforceable; implement the original-agent check and deny admin access |
+| SD-36 | `PATCH /conversations/{id}/status`: original assigned agent only; administrators have no conversation or transcript access | **Approved** (future authority); Stage 7 status mutation deferred by P-04 | Resolved (was Blocking) | API §25.1.E; DB §23.1.D; UI D-16; `STAGE_7_DECISION_REGISTER.md` §4 | No status endpoint is mapped or implemented in Stage 7; any future lifecycle remains original-agent-only and admin-denied |
 | SD-37 | Allow only `/user/queue/messages`, `/user/queue/notifications`, `/user/queue/errors` subscriptions; reject topics and wildcards | **Approved** | Non-blocking | API §20.2, §20.5, §25.1.E | Implement and test with a raw STOMP client |
 | SD-38 | Chat message limit 2,000 characters, 32 KB frame, 30 messages/min/user, 10/min/conversation | **Approved** | Non-blocking (D-24) | API §20; UI §11.15 | Enforce server-side |
-| SD-39 | Read state via `PATCH /conversations/{id}/read-state`; `/app/chat.read` unused initially | **Approved** | Non-blocking | API §25.1.B; UI D-04, §11.9 | Implement REST only |
-| SD-40 | Require a CSRF token on STOMP CONNECT as defence in depth | **Deferred** | Non-blocking | System Architecture §8.5 | Outside MVP; rely on session, origin, participant, and same-site cookie controls |
+| SD-39 | Read state via `PATCH /conversations/{id}/read-state`; `/app/chat.read` unused initially | **Approved** | Non-blocking | API §25.1.B; UI D-04, §11.9; `STAGE_7_DECISION_REGISTER.md` §4 | REST only; monotonic viewed-only advancement, own `unreadCount`, no receipts (P-07/P-10) |
+| SD-40 | Require a CSRF token on STOMP CONNECT as defence in depth | **Approved** (F-7.1-08) | Non-blocking | System Architecture §8.5; `STAGE_7_DECISION_REGISTER.md` §10 | Session-bound token in a native CONNECT header with exact `Origin` validation; existing controls remain defence in depth |
 | SD-41 | Store all secrets in Render/Vercel secret stores; rotate on exposure; least privilege | **Approved** | Non-blocking | System Architecture §11.2 | Implement before the first production deploy |
 | SD-42 | HTTPS-only frontend/API, WSS-only socket, HSTS after verification, TLS to Neon | **Approved** | Non-blocking | ARC-011–ARC-013 | Verify per deployment |
 | SD-43 | Dedicated DML-only DB role, TLS, network restriction, separate migration role where practical | **Approved** | Non-blocking | DB §19; Neon configuration | Configure and verify |
@@ -3156,7 +3163,7 @@ The UI/UX register uses `D-xx` identifiers. This register uses `SD-xx` and maps 
 
 ### 18.3 Decision summary and resolved blockers
 
-Status totals across the 53 decisions: **46 Approved**, **0 Pending Owner/Infrastructure Input**, **0 Proposed**, and **7 Deferred** (SD-16, SD-17, SD-29, SD-33, SD-40, SD-50, SD-51). No decision is Implemented or Verified.
+The Version 0.5 totals across the 53 decisions were **46 Approved**, **0 Pending Owner/Infrastructure Input**, **0 Proposed**, and **7 Deferred**. Stage 7.1 separately approves SD-29 and SD-40; the consolidated current totals are **48 Approved, 0 Pending Owner/Infrastructure Input, 0 Proposed and 5 Deferred** (SD-16, SD-17, SD-33, SD-50, SD-51). No decision is Implemented or Verified.
 
 The five decisions that were pending in 0.4 are resolved under the delegated technical authority recorded in Section 22.2:
 
@@ -3178,9 +3185,7 @@ No approved decision may be silently changed in code, and no implementation may 
 |---|---|---|
 | SD-16 | Email verification | Do not claim a verified email; registration returns the current approved status |
 | SD-17 | Account deletion/erasure | Deactivate; preserve history and audit |
-| SD-29 | Message idempotency | Warn on retry; do not claim exactly-once delivery |
 | SD-33 | Antivirus scanning | Re-encode, restrict formats, monitor |
-| SD-40 | WebSocket CSRF on CONNECT | Rely on session, origin, participant, and same-site cookie controls |
 | SD-50 | Admin MFA | Strong password, short session, audit, monitoring |
 | SD-51 | Audit retention | Preserve append-only records; do not delete |
 
@@ -3312,14 +3317,14 @@ F-1…F-8 schedule (scheduled is not resolved; Stage 6.2 Phase A verification st
 |---|---|
 | F-1 — Exact Origin/Referer validation | Stage 6.2 Phase A; **RESOLVED — implemented and independently verified** |
 | F-2 — CSRF token regeneration after login | Stage 6.2 Phase A; **RESOLVED — implemented and independently verified** |
-| F-3 — WebSocket session invalidation | Stage 7 before chat completion; **OPEN — deferred** |
+| F-3 — WebSocket session invalidation | Design resolved in Stage 7.1 by F-7.1-02; implementation and verification assigned to Stage 7.2 (AC-49); **OPEN — not implemented** |
 | F-4 — Generic error/denial `no-store` | Stage 6.2 Phase A; **RESOLVED — implemented and independently verified** |
 | F-5 — Absolute/admin timeout and session limits | Stage 8; **OPEN — deferred** |
 | F-6 — Configurable logout cookie name | Stage 9; **OPEN — deferred** |
 | F-7 — Concurrent CSRF bootstrap/token-version hardening | Stage 6.2 Phase A; **RESOLVED — SINGLE-INSTANCE SCOPE ONLY**; multi-instance gate Stage 9 (§22.9) |
-| F-8 — Rate limits, audit timestamps, proactive revocation | Stage 6 route coverage; remaining obligations Stage 8/9; **PARTIALLY ADDRESSED — OPEN** |
+| F-8 — Rate limits, audit timestamps, proactive revocation | Stage 6 route coverage; WebSocket proactive revocation/revalidation is a Stage 7.2 gate under F-7.1-02/03; other remaining obligations Stage 8/9; **PARTIALLY ADDRESSED — OPEN** |
 
-F-8 remaining obligations are independent verification of `last_login_at` capture, remaining audit-timestamp behavior, and proactive revocation/expiry behavior. Every resolved finding requires implementation evidence and independent verification. This addendum preserves server-side sessions, session-bound CSRF, exact-origin CORS, deny-by-default authorization, and per-request account revalidation. No JWT, wildcard CORS, new CSRF exemption, automatic mutation retry, client-derived identity, blanket UI approval, security weakening, blanket document reapproval, or finding closure is approved.
+F-8 remaining obligations outside chat are independent verification of `last_login_at` capture and remaining audit-timestamp behavior. WebSocket proactive revocation/revalidation is scoped to Stage 7.2 and is not treated as a Stage 8/9 remnant. Every resolved finding requires implementation evidence and independent verification. This addendum preserves server-side sessions, session-bound CSRF, exact-origin CORS, deny-by-default authorization, and per-request account revalidation. No JWT, wildcard CORS, new CSRF exemption, automatic mutation retry, client-derived identity, blanket UI approval, security weakening, blanket document reapproval, or finding closure is approved.
 
 ---
 
@@ -3480,10 +3485,10 @@ This checklist is ordered so that blocking decisions and shared foundations are 
 ### 20.1 Before any authenticated feature
 
 - [ ] SD-01 authentication mechanism implemented and verified (UI D-20 settled by SD-01).
-- [ ] SD-48 deployment configuration supplied: exact hostnames, exact-origin CORS, `X-CSRF-TOKEN` exposure, and WebSocket origin; no Vercel WebSocket proxy is assumed.
+- [ ] SD-48 deployment configuration supplied before production verification (Stage 7.7): exact hostnames, exact-origin CORS, `X-CSRF-TOKEN` exposure, and WebSocket origin; no Vercel WebSocket proxy is assumed. Exact values are not Stage 7.1 blockers (P-12).
 - [ ] SD-03 Spring Session JDBC migration written and scheduled.
 - [ ] `EV_SESSION` cookie is host-only on the API host and configured `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`.
-- [ ] Session ID rotated on login; logout invalidates the server-side session and triggers socket closure.
+- [ ] Session ID rotated on login; logout revokes the server-side session, closes tracked sockets and rejects later frames via authoritative session validation.
 - [ ] CSRF token is session-bound, delivered only through the CORS-exposed `X-CSRF-TOKEN` response header, held in memory, and required in the `X-CSRF-TOKEN` request header on every mutation; no CSRF cookie exists.
 - [ ] `/api/**` returns JSON `401`/`403`; no HTML redirect.
 - [ ] Deactivated/suspended accounts cannot authenticate or reuse a session.
@@ -3521,9 +3526,9 @@ This checklist is ordered so that blocking decisions and shared foundations are 
 - [ ] Every protected query is scoped by the principal, assignment, or participant predicate.
 - [ ] No protected resource is loaded with an unscoped `findById` and returned.
 - [ ] Agents are checked against the current `primary_agent_id` on every property mutation.
-- [ ] Conversations are checked against `assigned_agent_id`, not `primary_agent_id`.
-- [ ] Admin has no conversation/transcript access; SD-36 resolved before the status endpoint ships.
-- [ ] `GET /agents/me/conversations` uses the original `assigned_agent_id`.
+- [ ] Conversations are checked against the immutable original `assigned_agent_id`, not `primary_agent_id`; reassignment transfers no access.
+- [ ] Admin has no conversation/transcript access; status mutation is deferred/unmapped in Stage 7 (P-04) and SD-36 governs any future endpoint.
+- [ ] `GET /conversations` agent results use the original `assigned_agent_id`.
 - [ ] `GET /agents/me/inquiries` uses the historical `assigned_agent_id`.
 - [ ] Property assignment validates an active `AGENT`; SD-35 resolved before creation.
 - [ ] Admin cannot read another user's notifications, favorites, or buyer dashboard.
@@ -3541,7 +3546,7 @@ This checklist is ordered so that blocking decisions and shared foundations are 
 - [ ] Rate limits enforced per IP/user with `429` and `Retry-After`.
 - [ ] CORS exact-origin configuration verified with credentials and `Vary: Origin`; no wildcard. `Access-Control-Expose-Headers` includes `X-CSRF-TOKEN`; the frontend can read it but not `EV_SESSION`.
 - [ ] Every mutating endpoint requires a session-bound `X-CSRF-TOKEN`; no CSRF cookie exists; exemptions are limited to the four unauthenticated auth POSTs in Section 8.5.10 and still enforce exact-origin checks.
-- [ ] Duplicate favorite/conversation handled safely with a uniqueness constraint.
+- [ ] Duplicate favorite/conversation handled safely with a uniqueness constraint; message sends use the mandatory UUID key and V19 uniqueness with explicit retry only.
 - [ ] Status transitions validated against the approved map when available (D-07, D-09).
 - [ ] Response DTOs exclude password hashes, tokens, secrets, and audit internals.
 - [ ] Error envelope matches API §17 and includes a correlation ID for server errors.
@@ -3552,20 +3557,21 @@ This checklist is ordered so that blocking decisions and shared foundations are 
 ### 20.5 WebSocket and chat
 
 - [ ] `/ws` handshake goes directly to the approved API host and requires a valid host-only session; unauthenticated upgrade rejected.
+- [ ] No STOMP dependency, CDN client or locally vendored client is introduced before the P-11 gate; a client may be added in 7.5 only after exact version, license, artifact integrity and security-review records exist.
 - [ ] No token is accepted from the query string, subprotocol, or URL.
 - [ ] `Origin` allowlist enforced; no wildcard or origin reflection.
 - [ ] WSS required in production.
-- [ ] CONNECT requires a server-populated principal; client login fields ignored.
+- [ ] CONNECT requires a server-populated principal and a validated session-bound CSRF native header with exact `Origin`; client login fields ignored.
 - [ ] SUBSCRIBE allows only `/user/queue/messages`, `/user/queue/notifications`, `/user/queue/errors`.
 - [ ] `/topic/**`, `/queue/**`, and arbitrary user queues are rejected.
-- [ ] SEND allows only `/app/chat.send`; read state is REST-only (SD-39).
-- [ ] Sender ID, message ID, timestamp, and type are server-generated.
-- [ ] Participant predicate checked on every SEND and history read.
-- [ ] Message persisted before broadcast; failed persistence produces no success event.
-- [ ] Only the buyer and original assigned agent receive conversation events.
-- [ ] Offline recipients retrieve history over REST and deduplicate by message ID.
+- [ ] SEND allows only `/app/chat.send`; read state is REST-only, monotonic and viewed-only (SD-39/P-07).
+- [ ] Sender ID, message ID, timestamp and type are server-generated; the mandatory UUID idempotency key is scoped per conversation/sender.
+- [ ] Participant predicate checked on every SEND, history read and immediately before every outbound send.
+- [ ] Message persisted before broadcast; failed persistence produces no success event; sender-only `PERSISTENCE_ACK` follows commit and native `RECEIPT` is non-authoritative.
+- [ ] Only the buyer and original assigned agent receive conversation events; no fallback or transfer when the original agent is inactive.
+- [ ] Offline recipients retrieve history through REST cursor refresh, deduplicate by server message ID, and have no sync endpoint or automatic mutation replay.
 - [ ] Message length, frame size, send rate, and connection count limits enforced.
-- [ ] Logout/session expiry closes the socket through a session-destroyed listener or session re-check; invalidation alone is not assumed to close it.
+- [ ] Authoritative `SessionRepository.findById`/`Session.isExpired` validation closes sockets and rejects stale frames; destruction events are supplemental only.
 - [ ] Errors are generic and contain no content, stack trace, or existence confirmation.
 - [ ] Chat content is treated as plain text and escaped by the frontend.
 
@@ -3651,11 +3657,11 @@ This checklist is ordered so that blocking decisions and shared foundations are 
 | ID | Risk | Likelihood | Impact | Mitigation / owner |
 |---|---|---|---|---|
 | R-01 | Authentication is implemented incorrectly despite the approved design, causing rework or an insecure interim (for example `localStorage` tokens) | Medium | High | SD-01 is Approved; implement the server-side session design and verify it before building authenticated pages |
-| R-02 | Unrelated `vercel.app`/`onrender.com` hosting makes the host-only session cookie cross-site and unreliable; a Vercel WebSocket proxy is unverified | High with the default free hostnames | High | SD-48 approves Option C; supply custom hostnames, exact-origin CORS, `X-CSRF-TOKEN` exposure, and direct WSS, then verify cookie scope and WebSocket handshake in a real browser before launch |
+| R-02 | Unrelated `vercel.app`/`onrender.com` hosting makes the host-only session cookie cross-site and unreliable; a Vercel WebSocket proxy is unverified | High with the default free hostnames | High | P-12/SD-48 approve Option C; supply exact same-site custom hostnames, exact-origin CORS, `X-CSRF-TOKEN` exposure and direct WSS, then verify cookie scope and WebSocket handshake at Stage 7.7. Exact hostnames are not Stage 7.1 blockers |
 | R-03 | Session/reset/activation tables are absent and migrations are deferred until late | Medium | High | SD-03/SD-11/SD-12 are approved as designs; schedule the Flyway migrations before feature code |
 | R-04 | Agent activation and password reset have no selected email provider or configured sender domain | High | High | SD-11/SD-12 designs are approved; select and configure the provider before building the delivery paths |
 | R-05 | Implementation ignores the approved one-primary-agent rule and creates a nullable or unassigned property | Medium | High | Enforce `primary_agent_id NOT NULL` and required `primaryAgentId` (SD-35, Approved); do not make the column nullable without a new approval |
-| R-06 | Implementation grants administrators conversation-status or transcript access despite the approved prohibition | Medium | High | Enforce original-agent-only status authority and deny admin conversation access (SD-36, Approved) |
+| R-06 | Implementation grants administrators conversation-status or transcript access despite the approved prohibition | Medium | High | Status mutation is deferred/unmapped in Stage 7 by P-04; deny all admin conversation/transcript access and keep SD-36 for any future lifecycle |
 | R-07 | Provider security guarantees (Neon/Cloudinary encryption, backups) are assumed rather than verified | Medium | High | Complete Section 14.13 and Section 16.12 verification before storing production data |
 | R-08 | No MFA and no email verification weaken admin and account-recovery security | Medium | Medium | Compensate with strong passwords, short sessions, audit, monitoring; plan MFA as the next increment |
 | R-09 | No WAF/bot management or antivirus beyond the platform baseline | Medium | Medium | Rate limits, re-encoding, format restrictions, monitoring; revisit if abuse appears |
@@ -3675,7 +3681,7 @@ This checklist is ordered so that blocking decisions and shared foundations are 
 | D-08 non-published status visibility | Public detail/discovery and image delivery | Resolved: `PUBLISHED`-only rule approved (C-10) | No; implement the filter |
 | D-07 property status lifecycle | Agent/admin status controls | Open (Non-blocking) | No; keep controls hidden/deny transitions |
 | D-09 inquiry status transitions | Inquiry status endpoint | Resolved for Stage 6 architecture by `STAGE_6_DECISION_REGISTER.md` §3 Decision 1 | No; implement and verify the approved matrix before transition mutations |
-| Exact hostnames, exact-origin CORS, `X-CSRF-TOKEN` exposure, and WebSocket origin | Session cookie, CSRF, CORS, WebSocket | Architecture approved (SD-48); values not yet recorded | **Yes** for deployment of authenticated features |
+| Exact hostnames, exact-origin CORS, `X-CSRF-TOKEN` exposure, and WebSocket origin | Session cookie, CSRF, CORS, WebSocket | Architecture approved (SD-48/P-12); values not yet recorded | No for Stage 7.1 or local Stage 7.2–7.6; **Yes** only for Stage 7.7 production verification |
 | Neon/Cloudinary/Render/Vercel accounts and plans | Hosting, storage, encryption, backups | Providers approved (ARC-010–ARC-013); accounts/plans not verified | **Yes** for deployment |
 | Email provider and sender domain | Reset/activation delivery | Not selected | **Yes** for enabling reset/activation |
 | Shared rate-limit store (if horizontal scaling) | Brute-force and abuse controls across instances | Not selected | No for single instance; **Yes** before scaling |
@@ -3693,7 +3699,7 @@ These conflicts were rechecked during the 0.5 approval pass. Where the evidence 
 | C-04 | Referenced documents do not exist | `SYSTEM_ARCHITECTURE.md` §8.5, §9.3, §13.1 referenced `WEBSOCKET_SPECIFICATION.md` and `SECURITY_REQUIREMENTS.md` | System Architecture now delegates the WebSocket contract to `API_SPECIFICATION.md` §20 and the security contract to `SECURITY_ARCHITECTURE.md`; the directory tree lists the real files. | **Resolved** |
 | C-05 | Provider decisions marked Proposed | `SYSTEM_ARCHITECTURE.md` ARC-010–ARC-013 | ARC-010–ARC-013 are approved as the architectural provider selections already reflected in the deployment model and API contracts. `SYSTEM_ARCHITECTURE.md` now records them as Approved. Accounts, plans, credentials, regions, and quotas remain deployment prerequisites; no integration is claimed. | **Resolved** |
 | C-06 | Unassigned property state vs `NOT NULL` assignment | `DATABASE_DESIGN.md` §6.3/§23.1.C vs `UI_UX_SPECIFICATION.md` §10.5/§10.6; `API_SPECIFICATION.md` §6.2 omitted an agent | API §6.1 now requires `primaryAgentId` at creation; UI §10.5/§10.6 no longer contain an unassigned queue or badge; §10.5.1 requires a primary agent. SD-35 is Approved. | **Resolved** |
-| C-07 | Admin authority over conversation status vs no admin transcript | `API_SPECIFICATION.md` §11 table vs UI D-16/§10.7 and Database Design §23.1.D | API §11 now limits `PATCH /conversations/{conversationId}/status` to the original assigned agent and states that administrators have no conversation access. SD-36 is Approved. | **Resolved** |
+| C-07 | Admin authority over conversation status vs no admin transcript | `API_SPECIFICATION.md` §11 table vs UI D-16/§10.7 and Database Design §23.1.D | Administrators have no conversation access. SD-36 remains the future authority, but P-04 defers and unmaps all status mutation in Stage 7. | **Resolved** |
 | C-08 | Registration returns `ACTIVE` while email verification is unresolved | `API_SPECIFICATION.md` §3.3.1, §23; `DATABASE_DESIGN.md` §5.2 | Registration stays `ACTIVE`; API §23 now states that email verification is Deferred and that agent activation is approved as a design with delivery prerequisites. No unapproved status was added. | **Resolved** |
 | C-09 | Stale document status headers | `PRD.md`, `FRD.md`, `SYSTEM_ARCHITECTURE.md`, `DATABASE_DESIGN.md`, `API_SPECIFICATION.md`, UI D-01 | Headers were reconciled to their actual status: PRD/FRD record approved decisions without a document-level approval record; System Architecture distinguishes ARC statuses; DB §23 and API §25 record approved clarifications over proposed baselines. UI D-01 is settled. | **Resolved** |
 | C-10 | Public retrieval of non-published properties | `UI_UX_SPECIFICATION.md` D-08 (Blocking in 0.4); `API_SPECIFICATION.md` §7/§25.1.G; `DATABASE_DESIGN.md` status values | Approved conservative rule: only `PUBLISHED` properties and their publicly servable images are retrievable without authorization. `DRAFT`, `UNAVAILABLE`, `SOLD`, `RENTED`, and `ARCHIVED` records are hidden from public discovery and direct public detail; authenticated participants retain historical access. UI D-08 is settled, API §7 states the rule, and Database Design §6.3 aligns without changing the lifecycle. No new status was introduced. | **Resolved** |
@@ -3710,7 +3716,7 @@ These conflicts were rechecked during the 0.5 approval pass. Where the evidence 
 | C-04 | Resolved | None; stale references replaced |
 | C-05 | Resolved | Implement against the approved providers; accounts, plans, and credentials remain deployment prerequisites |
 | C-06 | Resolved | Enforce `primaryAgentId` and `NOT NULL` |
-| C-07 | Resolved | Enforce original-agent-only and deny admin |
+| C-07 | Resolved | Defer status mutation beyond Stage 7 by P-04; deny admin conversations; SD-36 governs any future lifecycle |
 | C-08 | Resolved | Keep registration `ACTIVE`; email verification Deferred |
 | C-09 | Resolved | None; headers reconciled |
 | C-10 | Resolved | Enforce `PUBLISHED`-only public retrieval and image delivery; keep historical access authenticated |
@@ -3718,6 +3724,8 @@ These conflicts were rechecked during the 0.5 approval pass. Where the evidence 
 | C-12 | Resolved | Keep inquiry metadata distinct from transcript access |
 
 **Summary:** all twelve conflicts are resolved by the 0.5 approval pass. C-05 is resolved by approving ARC-010–ARC-013 as architectural provider selections; C-10 is resolved by approving the `PUBLISHED`-only public visibility rule. No conflict was silently waived, no approval was invented, and no provider account or deployment value is claimed to exist.
+
+Stage 7.1 adds conflicts C-11–C-18. Their authoritative resolutions are recorded in `docs/STAGE_7_DECISION_REGISTER.md` §6 and §11: first-message creation, agent endpoint references, `409` creation semantics, contact/inquiry coupling, inactive-agent handling, admin transcript access, idempotency/read-state/acknowledgement/ordering wording, and CONNECT CSRF. This addendum does not reopen the twelve Stage 1.6 conflicts.
 
 ### 21.4 Assumptions
 
@@ -3758,25 +3766,23 @@ The residual risks in Section 7.5 remain after the controls in this document are
 |---|---|---|---|
 | SD-16 | Email verification | DB §5.2; API §23 | Do not claim verification; keep the current registration status |
 | SD-17 | Account deletion/erasure | DB §17; PRD §15 | Deactivate; preserve history/audit |
-| SD-29 | Message idempotency | UI D-23 | Warn on retry; no exactly-once claim |
 | SD-33 | Antivirus scanning | This document | Re-encode, format restrictions, monitoring |
-| SD-40 | WebSocket CSRF on CONNECT | This document | Session, exact origin, subscription allowlist, participant, same-site cookie controls; native WebSocket only |
 | SD-50 | Admin MFA | This document | Strong password, short session, audit, monitoring |
 | SD-51 | Audit retention | DB §13 | Preserve append-only records; no deletion |
 | D-07 | Property status lifecycle | UI D-07 | Hide/deny status actions until the map is approved |
 | D-09 | Inquiry status transitions | UI D-09; `STAGE_6_DECISION_REGISTER.md` §3 Decision 1 | **Resolved for Stage 6 architecture**; implement and verify the approved matrix |
-| D-10 | Buyer closing own inquiry | UI D-10; `STAGE_6_DECISION_REGISTER.md` §3 Decision 1 | **Resolved for Stage 6 architecture**; buyer status is read-only |
-| D-11 | Inquiry vs chat channel choice | UI D-11; `STAGE_6_DECISION_REGISTER.md` §3 Decision 9 | **Resolved for Stage 6 only**; inquiry UI, no chat handlers/FK; Stage 7 remains separate |
+| D-10 | Buyer closing own inquiry | UI D-10; `STAGE_6_DECISION_REGISTER.md` §3 Decision 1 | **Resolved for Stage 6 architecture**; buyer status is read-only. Chat status mutation is separately deferred beyond Stage 7 by P-04 |
+| D-11 | Inquiry vs chat channel choice | UI D-11; `STAGE_6_DECISION_REGISTER.md` §3 Decision 9; `STAGE_7_DECISION_REGISTER.md` §4 P-01 | **Resolved for chat by Stage 7.1 P-01**: separate `Message agent` CTA; no inquiry/favorite prerequisite or combined dialog |
 | D-18 | Draft properties | UI D-18 | No draft action |
 | D-19 | Archived properties in admin lists | UI D-19 | Confirm the admin filter before relying on it |
-| D-22 | Message pagination direction | UI D-22 | Explicit "Load earlier" control |
+| D-22 | Message pagination direction | UI D-22; `STAGE_7_DECISION_REGISTER.md` §4 P-06 | **Resolved by P-06**: latest-first `(sent_at DESC, id DESC)` cursor, prepend older pages, render chronologically |
 | D-24 | Chat size/rate limits | UI D-24 | Server-authoritative approved limits (SD-38) |
 | D-25 | Image limits | UI D-25 | Server-authoritative approved limits (SD-30) |
 | D-26 | Image reorder persistence | UI D-26 | Metadata PATCH only if it carries order |
 | D-31 | Audit filters/pagination | UI D-31 | Use only supported filters; default 20 |
 | D-34 | Synchronous assignment audit | UI D-34 | Do not display an audit reference unless returned |
 | D-35 | Session-expiry UX | UI D-35 | Preserve `returnUrl`; redirect once |
-| D-37 | Mark-as-read timing | UI D-37 | Debounced REST update; server tolerant |
+| D-37 | Mark-as-read timing | UI D-37; `STAGE_7_DECISION_REGISTER.md` §4 P-07 | **Resolved by P-07**: explicit PATCH after viewing the latest page; monotonic highest viewed position |
 | D-40 | Dedicated 403 page | UI D-40 | Inline access-denied panel |
 | D-41 | Admin opening buyer/agent dashboard | UI D-41 | Route guard/redirect decision later |
 
@@ -3795,7 +3801,7 @@ The residual risks in Section 7.5 remain after the controls in this document are
 | Approval | **Approved** under project-owner technical approval delegated to the reviewing technical authority for this review |
 | Approval date | 11 November 2026 |
 | Review date | 11 November 2026 |
-| Next review | At authentication implementation start (SD-53 wiring and Section 17 tests; the 7.1.2 recheck was completed in Stage 1.8) and before the first authenticated deployment (deployment values for SD-48) |
+| Next review | At authentication implementation start (SD-53 wiring and Section 17 tests; the 7.1.2 recheck was completed in Stage 1.8), at Stage 7.2 WebSocket/security foundation gates (CONNECT CSRF, authoritative session validation and F-3), and at Stage 7.7 production verification (SD-48/P-12 deployment values) |
 
 This document approves the security **design** for Stage 1.6. It does not authorize implementation, deployment, or Stage 1.8 work, and it does not grant document-level approval to any upstream document. The decision labels in Section 1.2 and the register in Section 18 are the authoritative interpretation.
 
@@ -3815,12 +3821,12 @@ The delegated owner authorization is valid for the technical determinations reco
 
 ### 22.3 Conditions and prerequisites
 
-1. **Design decisions:** SD-01, SD-03, SD-11, SD-12, and SD-48 (the five formerly pending decisions) are approved; SD-53 and the other 32 formerly Proposed controls (33 in total, including SD-53) are approved; the 7 Deferred controls stay outside the MVP. SD-35 and SD-36 were already Approved.
+1. **Design decisions:** SD-01, SD-03, SD-11, SD-12, and SD-48 (the five formerly pending decisions) are approved; SD-53 and the other 32 formerly Proposed controls (33 in total, including SD-53) are approved; the 7 Deferred controls stay outside the MVP. SD-35 and SD-36 were already Approved. Stage 7.1 separately approves SD-29 and SD-40 and defers chat status mutation under P-04, reducing the current consolidated Deferred count to five.
 2. **Implementation prerequisites:** add the reset/activation token migration (the Spring Session migration exists); select and configure the email provider and sender domain; wire SD-53 against the pinned Spring Boot 4.1.2 / Spring Security 7.1.2 (the version recheck is complete; implementation and tests remain); execute the Section 17 suites.
 3. **Deployment prerequisites:** supply the exact frontend and API hostnames, the exact CORS origin, the `X-CSRF-TOKEN` exposure configuration, and the WebSocket origin allowlist; verify cookie scope and WebSocket handshake in a real browser; verify provider security settings (TLS, backups, encryption, roles) rather than assuming them.
-4. **Cross-document:** C-01–C-12 are resolved; the upstream documents retain their own status metadata.
+4. **Cross-document:** C-01–C-12 are resolved; the upstream documents retain their own status metadata. Stage 7.1 conflicts C-11–C-18 are resolved in `docs/STAGE_7_DECISION_REGISTER.md` §6 and are reflected in this addendum without reopening Stage 1.6 approvals.
 5. **Residual risk:** the design residual risks in Section 7.5 and Section 21.1 are accepted for Stage 1.6 under delegated authority; operational acceptance remains with the deployment owner.
-6. **Change control:** no source code, migration, dependency, environment file, deployment configuration, or runtime behaviour was modified as part of approving this document. The Stage 1.6 documentation corrections are recorded in Section 21.3.
+6. **Change control:** no source code, migration, dependency, environment file, deployment configuration, or runtime behaviour was modified as part of approving this document or the Stage 7.1 reconciliation. The Stage 1.6 documentation corrections are recorded in Section 21.3; Stage 7.1 contract corrections are recorded in `docs/STAGE_7_DECISION_REGISTER.md` §11 and §22.10 below.
 
 ### 22.4 Change history
 
@@ -3831,6 +3837,7 @@ The delegated owner authorization is valid for the technical determinations reco
 | 0.3 | 8–9 November 2026 | Stage 1.6 — Security Architecture (CSRF correction and final review) | Replaced the 0.2 parent-domain `XSRF-TOKEN` double-submit cookie with a session-bound synchronizer token delivered only through the CORS-exposed `X-CSRF-TOKEN` response header and held in memory; no CSRF cookie exists. Added the full token lifecycle, Spring Security feasibility analysis (`HttpSessionCsrfTokenRepository` as the session-bound storage baseline, a thin custom generator/header writer where needed, and `CookieCsrfTokenRepository` explicitly rejected as SD-53), Origin/Referer interaction, public-endpoint exemption reasoning, and WebSocket residual-risk analysis. Corrected the exemption wording so logout and password change remain token-protected, reconciled SD-48 with §18.1, and added a Proposed session-cookie shadowing note. Updated CORS, threat model, data classification, checklists, traceability, and 14 new ST-CSRF tests. Added SD-53; SD-05 rewritten; no status converted to Approved; SD-48 remains Proposed and Blocking. | Superseded by 0.4 |
 | 0.4 | 9 November 2026 | Stage 1.6 — Security Architecture (seven-decision resolution and final review) | Resolved the seven 0.3 blocking decisions where repository evidence supports it. SD-35 and SD-36 become **Approved** from Database Design §23.1.C/§23.1.D, PRD PD-03, and API §25.1.E. SD-01, SD-03, SD-11, SD-12, and SD-48 become **Pending Owner Approval** with a resolution dossier (§18.5). SD-53 remains **Proposed**; its Spring Security 6.5.11/7.1.2 compatibility is verified in §18.6. Corrected ten cross-document conflicts (C-01, C-02, C-03, C-04, C-06, C-07, C-08, C-09, C-11, C-12) in the upstream documents; C-05 and C-10 remain open. Removed the unassigned property state, added required `primaryAgentId`, and limited conversation status to the original assigned agent. Totals: 8 Approved, 5 Pending Owner Approval, 33 Proposed, 7 Deferred. No status inflated; no test executed; no code changed. | Superseded by 0.5 |
 | 0.5 | 11 November 2026 | Stage 1.6 — Security Architecture (delegated approval and closure review) | Under delegated project-owner technical authority: SD-01, SD-03, SD-11, SD-12, and SD-48 become **Approved**, and SD-53 plus the other 32 formerly Proposed controls (33 in total, including SD-53) become **Approved** (SD-53 as a design with a version gate). C-05 is resolved by approving ARC-010–ARC-013 as architectural provider selections; C-10/D-08 is resolved with the `PUBLISHED`-only public visibility rule. Added §18.7 delegated determinations, updated §18.3/§19.2/§21/§22, and reconciled `SYSTEM_ARCHITECTURE.md`, `API_SPECIFICATION.md`, `UI_UX_SPECIFICATION.md`, and `DATABASE_DESIGN.md`. Totals: 46 Approved, 0 Pending, 0 Proposed, 7 Deferred. No Implemented or Verified claim; no code, migration, dependency, environment file, or deployment configuration changed. | **Approved — technical design; Stage 1.6 complete** |
+| Stage 7.1 addendum | 27 November 2026 | Stage 7.1 — documentation and contract reconciliation | Reconciled owner decisions P-01–P-13 and findings F-7.1-01–F-7.1-08: CONNECT CSRF approved, idempotency approved, authoritative session validation, outbound recheck, cursor history, sender-only acknowledgement, creation eligibility, no Stage 7 status mutation, vendored-client gate and stage boundaries. Current consolidated totals: 48 Approved and 5 Deferred. No implementation, migration, dependency, deployment change or acceptance execution is claimed. | **Approved design only; Stage 7.1 documentation closure** |
 
 ### 22.5 Review checklist
 
@@ -3839,7 +3846,7 @@ The delegated owner authorization is valid for the technical determinations reco
 - [x] The five formerly pending decisions and SD-53 have a determination, evidence, and explicit remaining prerequisites in Section 18.
 - [x] Every requirement ID in Section 19 exists in `FRD.md`; no ID was invented.
 - [x] Every endpoint and WebSocket destination in this document exists in `API_SPECIFICATION.md`; no endpoint was invented.
-- [x] The approved conversation/reassignment rules are stated exactly and consistently (PD-07, PD-08, PD-09, FR-CHAT-011, FR-CHAT-012, DB §11.1/§23.1.D, API §25.1.E/§25.1.F).
+- [x] The approved conversation/reassignment rules are stated exactly and consistently (PD-07, PD-08, PD-09, FR-CHAT-011, FR-CHAT-012, DB §11.1/§23.1.D, API §25.1.E/§25.1.F) and Stage 7 decisions P-01–P-13/F-7.1-01–F-7.1-08 are reconciled in §22.10.
 - [x] The admin transcript prohibition is consistent across authorization, API, WebSocket, upload, audit, and UI sections.
 - [x] Blocking decisions are summarised once and cross-referenced, not duplicated inconsistently.
 - [x] The cross-document conflicts in Section 21.3 record the original statement, the correction, and the remaining action; all twelve are resolved.
@@ -3849,7 +3856,7 @@ The delegated owner authorization is valid for the technical determinations reco
 - [x] The CSRF design is a session-bound synchronizer token delivered only through the CORS-exposed `X-CSRF-TOKEN` header; no CSRF cookie exists; `CookieCsrfTokenRepository` is not presented as the implementation.
 - [x] SD-53 compatibility claims cite Spring Security 6.5.11 and 7.1.2; the repository now pins Spring Boot 4.1.2 / Spring Security 7.1.2, and the Stage 1.8 recheck is recorded in `DEVELOPMENT_SETUP.md` §12.
 - [x] Cloudinary uploads are described consistently as backend-mediated, with no direct browser upload and no secret/signature in the browser.
-- [x] WebSocket session invalidation does not assume that Spring Session closes an established socket automatically.
+- [x] WebSocket session invalidation does not assume that Spring Session closes an established socket automatically and uses authoritative `SessionRepository.findById`/`Session.isExpired` validation (F-7.1-02).
 - [x] No decision is marked Implemented or Verified, and no test is described as executed.
 
 ### 22.6 Document control notes
@@ -3882,9 +3889,9 @@ The Stage 1.9 audit reconciled this document with the Stage 1.8 repository and e
 | Authority | Project-owner approval of all 12 Stage 6 architectural decision groups, recorded in `docs/STAGE_6_DECISION_REGISTER.md` |
 | Change | Added Stage 6 cross-references in §§1.1, 1.5, 10.3, 10.4.5, 11.9.1, 11.15, 15.7, 18.8, 19.4, 21.2, and 21.7; recorded exact rate-limit coverage, generic `404` IDOR behavior, favorite mutation semantics, inquiry audit rules, and F-1–F-8 schedule. |
 | Preserved | Version 0.5 approval, Stage 1–5 decisions, Sections 22.1–22.7, historical validation reports, all SD status totals, and all deferred decisions not explicitly scoped to Stage 6. |
-| Not approved by this change | Implementation, deployment, V18 creation/application, chat, Stage 8 account management, blanket UI/UX approval, blanket reapproval of this document, or closure of any F finding. |
+| Not approved by this change | Implementation, deployment, V18 creation/application, chat implementation, Stage 8 account management, blanket UI/UX approval, blanket reapproval of this document, or closure of any F finding. Stage 7.1 separately approves chat architecture contracts only, as recorded in §22.10. |
 
-No finding is marked resolved merely because remediation was scheduled. F-1, F-2, F-4, and F-7 gate Stage 6.2 mutations; F-3 gates Stage 7 chat; F-5 and remaining F-8 obligations are Stage 8/9 work; F-6 is Stage 9 work.
+No finding is marked resolved merely because remediation was scheduled. F-1, F-2, F-4, and F-7 gate Stage 6.2 mutations. F-3 is designed in Stage 7.1 but its implementation and verification gate Stage 7.2 chat security work. F-5 and non-chat F-8 remnants are Stage 8/9 work; WebSocket-specific proactive revocation/revalidation under F-7.1-02/03 is Stage 7.2 work; F-6 is Stage 9 work.
 
 ### 22.9 Stage 6.2 Phase A verification and deployment constraint addendum
 
@@ -3894,7 +3901,7 @@ No finding is marked resolved merely because remediation was scheduled. F-1, F-2
 | Scope | Stage 6.2 Phase A targeted closure verification after security commit `7e9cbaa0cb2dc3a1dcadeb41a697c87aa93409c0` |
 | Evidence | Local ignored validation records under `docs/validation/`: live browser/API 34/34, frontend CSRF behavior 12/12, HTTP concurrency 5/5, authorized mutation verification 33/33 checks (201 creation plus two authorized PATCH mutations accepted, four rejected mutations with no persisted change), and historical full backend suite 457/457 |
 | Resolved | F-1, F-2 and F-4 resolved on implementation plus completed verification; F-7 resolved only within the verified single-instance deployment scope |
-| Preserved | F-3 (Stage 7), F-5 (Stage 8), F-6 (Stage 9), and all remaining F-8 obligations (Stage 8/9) remain open |
+| Preserved | F-3 implementation (Stage 7.2), F-5 (Stage 8), F-6 (Stage 9), and non-chat F-8 remnants (Stage 8/9) remain open; WebSocket-specific revocation/revalidation is Stage 7.2 work under F-7.1-02/03 |
 
 **Resolved status.** F-1 (exact Origin/Referer validation), F-2 (CSRF regeneration after successful login) and F-4 (`Cache-Control: no-store` on private, error and denial API responses) are recorded as resolved on the completed Stage 6.2 Phase A verification evidence. F-7 (concurrent CSRF bootstrap and token-version hardening) is recorded as resolved **only** for the verified single-instance deployment scope: the striped JVM lock serializes deferred bootstrap inside one application instance, and concurrent same-session requests in that instance could not restore or reuse a stale pre-login token in the verified scenarios.
 
@@ -3903,5 +3910,18 @@ No finding is marked resolved merely because remediation was scheduled. F-1, F-2
 Local validation reports and verification scripts under `docs/validation/` remain locally available, ignored and untracked; they are evidence records, not tracked design authority. This addendum records scoped verification status only and does not reapprove this document, authorize Phase B implementation, or close any other finding.
 
 ---
+
+### 22.10 Stage 7.1 reconciliation addendum
+
+| Field | Record |
+|---|---|
+| Date | 27 November 2026 |
+| Authority | Project-owner decisions P-01–P-13 and findings F-7.1-01–F-7.1-08 in `docs/STAGE_7_DECISION_REGISTER.md` |
+| Status | Approved architecture and security contracts only; no implementation, migration, dependency, deployment change or acceptance evidence |
+| Decision changes | SD-29 is Approved: mandatory client UUID `idempotencyKey` with the V19 `UNIQUE(conversation_id, sender_id, idempotency_key)` constraint. SD-40 is Approved: the session-bound `X-CSRF-TOKEN` value is required as a native STOMP `CONNECT` header with exact `Origin` validation. Current consolidated totals are 48 Approved and 5 Deferred. |
+| Preserved decisions | SD-36 remains the authority for any future conversation-status lifecycle, but P-04 defers and unmaps all status mutation in Stage 7. P-12 makes exact same-site hostnames production-verification inputs for Stage 7.7, not Stage 7.1 blockers. P-11 permits a locally vendored STOMP client only after exact version, license, artifact integrity and security-review records exist. |
+| Finding resolutions | F-7.1-01 sender-only post-commit `PERSISTENCE_ACK` with non-authoritative native `RECEIPT`; F-7.1-02 authoritative `SessionRepository.findById`/`Session.isExpired` validation instead of reliance on destruction events; F-7.1-03 reauthorization immediately before every outbound send; F-7.1-04 deterministic `(sent_at DESC, id DESC)` cursor with advisory serialization and no sequence column; F-7.1-05 idempotent explicit retry; F-7.1-06 monotonic viewed-only own read state; F-7.1-07 creation eligibility separated from historical retrieval; F-7.1-08 CONNECT CSRF. |
+| Document reconciliation | This addendum updates the CSRF, session lifecycle, authorization matrix, idempotency, acknowledgement, cursor, read-state, creation-eligibility, audit, test, checklist, risk, conflict and deferred-decision sections. The authoritative Stage 7 ledger is `docs/STAGE_7_DECISION_REGISTER.md` §7; all 55 scenarios remain `NOT EXECUTED`. |
+| Boundaries | F-3 design is resolved here; its implementation and verification are Stage 7.2 gates. WebSocket-specific F-8 revocation/revalidation is Stage 7.2; other F-8 remnants remain Stage 8/9. V19 remains Stage 7.3 work. No chat REST endpoint, STOMP handler, client dependency, migration or acceptance scenario was introduced or executed by Stage 7.1. |
 
 **End of document.**

@@ -8,7 +8,7 @@
 | Full-suite command | `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\postgres-test-cluster.ps1 -Action verify` |
 | Result at last validation | 83 tests, 0 failures, 0 errors, 0 skipped |
 
-**Historical baseline note:** The Stage 2 status and 83-test result above are retained as history. The current cross-stage backend evidence is the Stage 5.8 closure report: `452/452` tests passed with V1–V17 migrations. That result is historical evidence only; the Stage 6.1 documentation reconciliation did not rerun the backend suite and does not claim Stage 6 tests were executed.
+**Historical baseline note:** The Stage 2 status and 83-test result above are retained as history. The current cross-stage backend evidence is the Stage 5.8 closure report: `452/452` tests passed with V1–V17 migrations. That result is historical evidence only; the Stage 6.1 documentation reconciliation did not rerun the backend suite and does not claim Stage 6 tests were executed. Stage 7.1 likewise adds no execution evidence: all 55 Stage 7 acceptance scenarios remain `NOT EXECUTED` (§8 and §10).
 
 This document describes the automated tests that exist, how they are executed,
 and what they do not prove. It does not claim production readiness and does not
@@ -185,12 +185,14 @@ behavior is unverified. Do not claim a green pipeline until it runs.
 
 ## 8. What the tests do not cover
 
+**Historical Stage 2 state:** The `(not implemented)` annotations below describe the validated Stage 2 baseline only; they are not the current Stage 7.1 status. **Current Stage 7.1 status:** Stage 7.1 is a documentation/contract-only stage. Chat contracts are approved, but no chat implementation, migration, dependency, deployment or executed acceptance scenario exists. All 55 scenarios in the Stage 7 acceptance ledger (`docs/STAGE_7_DECISION_REGISTER.md` §7) are `NOT EXECUTED` and none is claimed as passing here.
+
 - Authentication, registration, login, logout, and authorization workflows
-  (not implemented).
+  (Stage 2 historical state: not implemented).
 - Business services, REST endpoints, property CRUD, favorites, inquiries, chat,
-  uploads, notifications, dashboards (not implemented).
-- WebSocket handshake authentication and STOMP authorization (not implemented).
-- SD-53 session-bound CSRF generation/rotation (framework defaults only).
+  uploads, notifications, dashboards (Stage 2 historical state: not implemented).
+- WebSocket handshake authentication and STOMP authorization (Stage 2 historical state: not implemented).
+- SD-53 session-bound CSRF generation/rotation (Stage 2 historical state: framework defaults only; the F-7.1-08 STOMP `CONNECT` design is approved for Stage 7.2 implementation).
 - Structured logging, formal redaction policy, retention, and correlation IDs
   (SD-44 deferred).
 - Browser end-to-end behavior and visual rendering.
@@ -236,9 +238,11 @@ is complete.
 | 8 — Rate limits | Overlapping `300/min/user`, `60/min/admin`, `60/min/user` favorite mutations, `5/min` and `30/hour` inquiry submissions, shared-bucket semantics, server-derived identity, `429` envelope, longest-block `Retry-After`, CORS exposure of that header, and no automatic mutation retry. |
 | 9 — Frontend scope | Functional inquiry CTA replacing the illustrative link, auth prompt, buyer-only submission, role-aware controls, buyer read-only status, accessible loading/empty/error/validation/success states, shared Vanilla JS client, safe DOM rendering, no browser storage of inquiry content, no chat UI/handlers/FK, and no `retryOnCsrfFailure` on mutations. |
 | 10 — V18 gate | No V18 file in Stage 6.1; V1–V17 unchanged; in Stage 6.4 verify data inspection, clean V1→V18, V17→V18, Flyway validation, status CHECK, partial unique index, concurrency behavior, and updated migration inventory tests. |
-| 11 — Security schedule | Stage 6.2 evidence for F-1, F-2, F-4, and F-7 before mutations; F-3 Stage 7; F-5 Stage 8; F-6 Stage 9; F-8 partially open with remaining obligations in Stage 8/9. Scheduling is not resolution. |
+| 11 — Security schedule | Stage 6.2 evidence for F-1, F-2, F-4, and F-7 before mutations; F-3 design approved Stage 7.1 with implementation in Stage 7.2; F-5 Stage 8; F-6 Stage 9; F-8 remainder in Stage 8/9. Scheduling is not resolution. |
 | 12 — Boundaries | No chat, dashboard/account management, deployment, featured endpoint, or other Stage 7–9 work is tested as part of Stage 6 acceptance. |
 
-Stage 6.7 closed rows 1–10 and the Stage 6.2 portion of row 11 within the approved boundary. F-3, F-5, F-6, the F-8 remainder, and all Stage 7–9 work in rows 11–12 remain deferred and are not claimed as verified here.
+Stage 6.7 closed rows 1–10 and the Stage 6.2 portion of row 11 within the approved boundary. F-3 is design-approved at Stage 7.1, but its implementation remains deferred to Stage 7.2; F-5, F-6, the F-8 remainder, and all other Stage 7–9 work in rows 11–12 remain deferred and are not claimed as verified here.
+
+**Stage 7.1 ledger note:** `docs/STAGE_7_DECISION_REGISTER.md` §7 records 55 acceptance scenarios (47 original plus 8 added for F-7.1-01–F-7.1-08). All 55 are `NOT EXECUTED`. Stage 7.1 approves only documentation and architecture contracts; this document does not report chat implementation, test execution or finding closure. The Stage 6 boundary in row 12 is unchanged: no Stage 7–9 work is tested as part of Stage 6 acceptance.
 
 V1–V14 in §9 rule 3 remains the historical Stage 2 wording. The Stage 5.8 baseline is V1–V17, and the authorized V18 is Stage 6.4-only. The historical `452/452` result does not satisfy any new Stage 6 verification row above; Stage 6.7 evidence is recorded separately and is not added to that historical total.

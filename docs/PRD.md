@@ -184,7 +184,7 @@ The platform will provide real-time messaging between buyers and property agents
 Core requirements:
 - Buyers can initiate conversations regarding properties.
 - Conversations are associated with a specific buyer and property.
-- Each conversation has one responsible agent.
+- Each conversation records an immutable snapshot of the original assigned agent at creation; that original agent remains the conversation participant even after the property is reassigned (P-02).
 - Messages are persisted in the database.
 - Participants can access previous messages.
 - Conversations support timestamps and message history.
@@ -197,7 +197,7 @@ A buyer contacting multiple properties will have separate conversations for each
 
 Changing a property's primary assigned agent will not automatically transfer existing private conversations to the new agent.
 
-Existing conversations will retain their original participant relationship unless an explicitly authorized administrative process is introduced.
+Existing conversations retain their original participant relationship permanently: reassignment neither transfers a conversation to the newly assigned agent nor creates a second conversation for the same buyer and property with that agent. The limitation is that the buyer continues to see the original agent in that conversation, and no transfer or fallback-agent conversation is available; conversation history remains readable to the original participants (P-02, P-03).
 
 Conversation history must remain available even when the associated property is no longer available.
 
@@ -421,6 +421,8 @@ The frontend will remain based on Vanilla JavaScript. React will not be introduc
 
 Stage 6 decisions D1–D12 are approved only in `docs/STAGE_6_DECISION_REGISTER.md`. They are Stage 6 architecture decisions, are not additional `PD-…` items, and do not change PD-01–PD-11 or this document's Draft status.
 
+**Stage 7.1 resolution note:** Owner-approved chat decisions P-01–P-13 and findings F-7.1-01–F-7.1-08 are recorded in `docs/STAGE_7_DECISION_REGISTER.md`. They refine the chat interpretation of this PRD without adding `PD-…` items or changing this document's Draft status. Approval is documentation and contract only: Stage 7.1 implements no chat code, migration, dependency or deployment change and executes no acceptance scenario. The three formerly open chat questions in §15 are resolved below by P-01, P-03 and A-06.
+
 ## 15. Assumptions and Pending Decisions
 
 The following details require further specification in subsequent Stage 1 activities:
@@ -428,9 +430,9 @@ The following details require further specification in subsequent Stage 1 activi
 - Exact property listing statuses and lifecycle.
 - Exact residential and commercial property fields.
 - Inquiry status workflow.
-- Whether buyers can contact agents before submitting an inquiry.
-- Chat handling when an agent account becomes inactive.
-- Administrative access to existing conversations.
+- Resolved by P-01: authenticated active buyers use a separate `Message agent` action on a `PUBLISHED` property; an inquiry or favorite is not a prerequisite.
+- Resolved by P-03: if the original agent is inactive, conversation history is preserved and remains readable to the buyer, but messaging in that conversation is disabled and no fallback or newly assigned agent is offered.
+- Resolved by A-06: conversation transcripts are private to the original buyer and original assigned agent; administrators have no list, detail, history, send, read-state or status access.
 - Notification delivery and preferences.
 - Image upload limits and storage policies.
 - Property location and address representation.
