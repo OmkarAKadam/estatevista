@@ -44,6 +44,9 @@ public class RateLimitService {
     public static final String SCOPE_FAVORITE_MUTATION = "favorite_mutation";
     public static final String SCOPE_INQUIRY_SUBMISSION_BURST = "inquiry_submission_burst";
     public static final String SCOPE_INQUIRY_SUBMISSION_SUSTAINED = "inquiry_submission_sustained";
+    public static final String SCOPE_WS_CONNECTION_ATTEMPT = "ws_connection_attempt";
+    public static final String SCOPE_WS_MESSAGE_USER = "ws_message_user";
+    public static final String SCOPE_WS_MESSAGE_CONVERSATION = "ws_message_conversation";
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitService.class);
 
@@ -206,6 +209,15 @@ public class RateLimitService {
         if (SCOPE_INQUIRY_SUBMISSION_SUSTAINED.equals(scope)) {
             return Math.max(1, properties.getInquirySubmissionSustained().getMaxAttempts());
         }
+        if (SCOPE_WS_CONNECTION_ATTEMPT.equals(scope)) {
+            return Math.max(1, properties.getWsConnectionAttempt().getMaxAttempts());
+        }
+        if (SCOPE_WS_MESSAGE_USER.equals(scope)) {
+            return Math.max(1, properties.getWsMessageUser().getMaxAttempts());
+        }
+        if (SCOPE_WS_MESSAGE_CONVERSATION.equals(scope)) {
+            return Math.max(1, properties.getWsMessageConversation().getMaxAttempts());
+        }
         return Math.max(1, properties.getLogin().getMaxAttempts());
     }
 
@@ -236,6 +248,15 @@ public class RateLimitService {
         }
         if (SCOPE_INQUIRY_SUBMISSION_SUSTAINED.equals(scope)) {
             return Math.max(1, properties.getInquirySubmissionSustained().getWindowSeconds());
+        }
+        if (SCOPE_WS_CONNECTION_ATTEMPT.equals(scope)) {
+            return Math.max(1, properties.getWsConnectionAttempt().getWindowSeconds());
+        }
+        if (SCOPE_WS_MESSAGE_USER.equals(scope)) {
+            return Math.max(1, properties.getWsMessageUser().getWindowSeconds());
+        }
+        if (SCOPE_WS_MESSAGE_CONVERSATION.equals(scope)) {
+            return Math.max(1, properties.getWsMessageConversation().getWindowSeconds());
         }
         return Math.max(1, properties.getLogin().getWindowSeconds());
     }

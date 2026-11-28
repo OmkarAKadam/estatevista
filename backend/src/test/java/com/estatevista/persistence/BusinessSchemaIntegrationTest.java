@@ -212,8 +212,8 @@ class BusinessSchemaIntegrationTest {
 
         assertThat(versions).containsExactly(
                 "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15",
-                "16", "17", "18");
-        assertThat(successes).hasSize(18).containsOnly(true);
+                "16", "17", "18", "19");
+        assertThat(successes).hasSize(19).containsOnly(true);
     }
 
     @Test
@@ -316,6 +316,8 @@ class BusinessSchemaIntegrationTest {
         message.setSender(buyer);
         message.setMessageType("TEXT");
         message.setContent("Hello, I would like a viewing.");
+        message.setSentAt(Instant.now());
+        message.setIdempotencyKey(UUID.randomUUID());
         messageRepository.save(message);
 
         ConversationReadState readState = new ConversationReadState();

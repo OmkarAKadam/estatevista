@@ -448,7 +448,7 @@ The site was QA’d at eight viewport sizes with no horizontal overflow reported
 - V1 listing state is carried in the query string with `q`, `type`, `minPrice`, `maxPrice`, and `sort=price-asc|price-desc`. V2 must align parameter names and sort values with the API (`keyword`, `categoryId`, `subtypeId`, `listingType`, `city`, `locality`, `minBedrooms`, `maxBedrooms`, `amenityIds`, `sort=newest|oldest|price_asc|price_desc`, `page`, `size`).
 - V1 property details use `?id=<slug>`; V2 API property identifiers are UUIDs. The UI may accept either a UUID or the slug the API returns, but the final routing rule must be confirmed when the detail endpoint shape is implemented.
 - V1 status labels are Available/Reserved/Sold; V2 database statuses are DRAFT, PUBLISHED, UNAVAILABLE, SOLD, RENTED, ARCHIVED (proposed values, final lifecycle deferred). The UI must not present the V1 three-state model as the final V2 lifecycle.
-- V1 does not define image upload limits, chat pagination direction, delivery receipts, or read receipts. V2 must not invent them.
+- V1 does not define image upload limits, chat pagination direction, delivery receipts, or read receipts. V2 follows the approved P-06/P-08/P-10 contracts for chat history, acknowledgement, and unread state rather than inventing V1 behaviour.
 
 ---
 
@@ -1359,7 +1359,7 @@ The transition between the two must feel like the same product: same brand, typo
 
 ### 7.3 Property Details (`property-details.html?id=`)
 
-**Purpose.** Present one property completely and offer the next actions: favorite, inquire, or start a conversation.
+**Purpose.** Present one property completely and offer separate next actions: favorite, “Enquire about this home”, and “Message agent”. Chat initiation is an independent action with no inquiry or favorite prerequisite (P-01).
 
 **Data sources.**
 
@@ -1390,13 +1390,13 @@ related properties rail
 - Price: large forest tabular number; for rent include the period only when supplied by the API.
 - Badge row: property status (Published/Unavailable/Sold/Rented/Archived), listing type, and featured marker if present.
 - Facts: bedrooms, bathrooms, balconies, area, parking, furnishing — show only fields with values. Two-column tiles at `≥576px`, one column below.
-- Actions: primary “Contact agent” (opens the inquiry dialog or starts the conversation, see 7.3.1), secondary “Save” / “Saved” with `aria-pressed`, and a ghost “Share” only if a share behaviour is implemented natively (`navigator.share` or copy-link). Do not add a share control that does nothing.
+- Actions: primary “Enquire about this home” (opens the inquiry dialog, see 7.3.1), a separate “Message agent” action that explicitly starts or opens the property conversation (see 7.3.1; P-01), secondary “Save” / “Saved” with `aria-pressed`, and a ghost “Share” only if a share behaviour is implemented natively (`navigator.share` or copy-link). Do not add a share control that does nothing. “Message agent” has no inquiry or favorite prerequisite, and the two actions must not be merged into one combined dialog.
 - Disclaimer: short plain-language note that details are provided by the listing agent and should be verified. This replaces V1’s fictional demonstration disclaimer.
 
 **Visibility rules.**
 
 - Public discovery and public detail retrieve only `PUBLISHED` properties. If the API does not return a property (for example `DRAFT`, `UNAVAILABLE`, `SOLD`, `RENTED`, or `ARCHIVED`), the public page renders the V1-style panel: “This property is no longer available.” with “Browse properties” and “Home”. The UI must not render a non-published record from a cached status or a client-supplied override.
-- Authenticated historical surfaces (buyer favorites, inquiries, and conversations; agent and admin management views) may display a non-published property with a prominent status banner above the summary. Inquiry and conversation actions are disabled with an explanation (“This property is no longer accepting inquiries.”). This is the approved C-10/D-08 rule recorded in Section 20.6.
+- Authenticated historical surfaces (buyer favorites, inquiries, and conversations; agent and admin management views) may display a non-published property with a prominent status banner above the summary. New inquiry submission and new conversation creation are disabled with an explanation (“This property is no longer accepting inquiries.” / “You can’t start a new chat for this property.”); existing authorized conversation history remains readable (`FR-CHAT-011`, P-13). This is the approved C-10/D-08 rule recorded in Section 20.6, refined by P-13 in §20.8.
 - A `404` uses the same public panel with “Property not found.”
 
 **Gallery.**
@@ -1411,20 +1411,22 @@ related properties rail
 
 **Related properties.** 1/2/3 column grid, hidden when empty. Cards use the shared renderer.
 
-**7.3.1 Inquiry and conversation actions [Decision required].**
+**7.3.1 Inquiry and conversation actions [Approved — P-01, P-13].**
 
-The approved API exposes two adjacent actions:
+The approved API exposes two separate actions:
 
-- `POST /properties/{propertyId}/inquiries` for a recorded inquiry with a message.
-- `POST /properties/{propertyId}/conversations` for a chat thread, with creation and first-message sending separated by Section 25.1.A.
+- `POST /properties/{propertyId}/inquiries` for a recorded inquiry with a message, initiated by “Enquire about this home”.
+- `POST /properties/{propertyId}/conversations` for a chat thread, initiated only by the separate “Message agent” action; creation and message sending are separated by API §25.1.A.
 
-**[Proposed]** The detail page shows one primary action, “Contact agent”, which opens a single dialog offering the buyer a choice: “Send an inquiry” or “Start a chat”. This prevents two competing primary buttons and avoids duplicate intent. The dialog collects one message and routes to the chosen flow. If the product owner prefers only one channel, the other must be removed from the UI entirely rather than shown disabled. Recorded as D-11 in Section 20.
+**Separate CTAs (settled by P-01).** “Enquire about this home” and “Message agent” are distinct actions. “Message agent” is available to an authenticated active buyer on a `PUBLISHED` property with an active current agent; it has no inquiry or favorite prerequisite. There is no combined “Contact agent” dialog, no channel-choice dialog, and no first-message collection before the chat page opens. D-11 is resolved by P-01 and recorded in §20.6; the former combined-dialog proposal is historical draft text and is superseded.
 
-**Chat flow (settled).** “Start a chat” calls `POST /properties/{propertyId}/conversations` **without** `initialMessage` to create or retrieve the buyer-property conversation, then opens the chat page. The first message is sent separately through `/app/chat.send`, exactly like every later message (API §25.1.A). If the buyer typed a first message in the dialog, the chat composer is prefilled with it and the buyer confirms the send; it is never bundled into conversation creation. The `initialMessage` field was removed from API §11.1 in the Stage 1.6 correction pass and is not used by the UI.
+**Chat flow (settled).** “Message agent” calls `POST /properties/{propertyId}/conversations` **without** `initialMessage` to create or retrieve the buyer-property conversation, then opens the chat page. Message content is sent only from the chat composer through `/app/chat.send`, exactly like every later message (API §25.1.A). `initialMessage` is not used by the UI. Under P-13 a new conversation is created only for a `PUBLISHED` property with an active buyer and active current agent; if the permanent buyer–property conversation already exists, an authorized participant retrieves its history regardless of later property status (P-02). Non-eligible properties hide or disable new-chat creation but never remove access to an existing authorized thread.
 
-**Stage 6 scope note.** For Stage 6, the illustrative contact CTA is replaced with a functional inquiry workflow only. No chat UI, STOMP handler, conversation-creation action, or inquiry↔conversation FK is introduced in Stage 6, and an inquiry is not a prerequisite for chat. The owner-approved decision is recorded in `docs/STAGE_6_DECISION_REGISTER.md` §3 Decision 9; the two-channel proposal above is historical draft text for this document and is superseded for Stage 6 scope. Approval of that scope does not approve this draft document as a whole.
+**Stage 6 scope note.** For Stage 6, the functional inquiry CTA (“Enquire about this home”) is the only buyer mutation on the property page. No chat UI, STOMP handler, conversation-creation action, or inquiry↔conversation FK is introduced in Stage 6, and an inquiry is not a prerequisite for chat. The owner-approved decision is recorded in `docs/STAGE_6_DECISION_REGISTER.md` §3 Decision 9. The Stage 7.1 chat CTA above is approved at contract level only (P-01); its implementation is a later sub-stage, and no acceptance scenario is executed here. Approval of either scope does not approve this draft document as a whole.
 
-**Visitor behaviour.** Clicking “Contact agent” or “Save” while signed out opens an auth prompt: “Sign in to contact the agent” with Log in and Register actions carrying `returnUrl` back to the property. Do not collect the message before authentication and then discard it; preserve the draft in `sessionStorage` only if this is explicitly approved.
+**Visitor behaviour.** Clicking “Message agent”, “Enquire about this home”, or “Save” while signed out opens an auth prompt: “Sign in to contact the agent” with Log in and Register actions carrying `returnUrl` back to the property. Do not collect message text before authentication and then discard it; the auth prompt collects no message content, and no message draft is preserved in `sessionStorage` unless explicitly approved.
+
+**Stage 7.1 resolution note.** Owner-approved decisions P-01–P-13 and resolved findings F-7.1-01–F-7.1-08 (recorded in `docs/STAGE_7_DECISION_REGISTER.md`) settle the chat contract used above. This note records documentation and contract approval only: it does not implement the CTA, execute any acceptance scenario, or change this document’s review status.
 
 **Traceability.** FR-DISC-002, FR-DISC-003, FR-PROP-002, FR-FAV-001, FR-INQ-001, FR-CHAT-001.
 
@@ -1459,7 +1461,7 @@ The approved API exposes two adjacent actions:
 - Page header with eyebrow, `h1` “Talk to EstateVista”, and lede.
 - Two-column layout at `≥992px`: contact form left, contact details right; single column below.
 - Contact details: address, email, phone, office hours. Use approved real details at launch; the V2 draft may keep placeholders but must not present them as verified.
-- Optional notice explaining that property-specific questions should use the property’s “Contact agent” action, which reaches the assigned agent.
+- Optional notice explaining that property-specific questions should use the property’s “Message agent” action, which reaches that conversation’s original agent when one exists.
 
 **Form fields (local validation only).**
 
@@ -1735,8 +1737,9 @@ See Section 11 for the full chat specification. Buyer-specific rules:
 
 - Header shows the agent name, agent role label, and property title with a link to the property.
 - The property context card is collapsible on mobile and shows the property thumbnail, title, and status. If the property is unavailable, show “This property is no longer available” while keeping history readable (FR-CHAT-011).
-- The participant set is fixed at conversation creation. If the property is reassigned to a different agent, the buyer keeps talking to the original agent in this thread (FR-CHAT-012), and the UI must not silently swap the header identity.
-- If the backend returns a reassignment notice, display it as a system line in the thread: “This property was reassigned to another agent on {date}. Your conversation remains with {agent}.” Only show this if the API provides the event.
+- The participant set is fixed at conversation creation and the original `assigned_agent_id` is immutable. If the property is reassigned to a different agent, the conversation remains with the original agent (`FR-CHAT-012`, P-02): no transfer, no new conversation for the same buyer–property pair, and no fallback agent. The UI must not silently swap the header identity and must explain the limitation locally rather than requiring a reassignment event from the API.
+- The buyer can still read the existing history. If the original agent is inactive, messaging in that conversation is disabled and the composer is disabled with an explanation; there is no fallback to the new current agent and no automatic mutation of the thread (P-03).
+- A non-published property cannot open a new chat (P-13); a thread the buyer is already authorized to see remains readable (`FR-CHAT-011`).
 
 **Traceability.** FR-CHAT-004 … FR-CHAT-014.
 
@@ -1943,8 +1946,8 @@ The list layout follows 8.6, with agent-specific rules:
 
 - List only conversations where the agent is a participant.
 - Header identity is the buyer, with property context.
-- Reassignment does not move existing conversations to the new agent (`FR-CHAT-012`). The agent keeps the thread.
-- When a property is reassigned, the agent's list must not silently lose history. If the conversation remains accessible, keep it; the backend decides access. The UI shows “Property reassigned” context if supplied.
+- Reassignment does not move existing conversations to the new agent (`FR-CHAT-012`, P-02). The original agent keeps the thread; the permanent buyer–property uniqueness rule means no second conversation is created with the newly assigned agent, and no history is transferred. Newly assigned agents do not gain historical access automatically.
+- When a property is reassigned, the agent's list must not silently lose history. Keep the original agent's authorized conversations and explain locally that reassignment does not transfer them; do not require an API event for that explanation. The UI shows “Property reassigned” context if supplied.
 - Unavailable property: history remains accessible; show a status note (`FR-CHAT-011`).
 - Sorting: most recent activity first. Filter: All / Unread.
 - Empty: “No conversations yet.” Explain that buyers start conversations from a property page.
@@ -1958,7 +1961,8 @@ See Section 11. Agent-specific rules:
 - Header shows the buyer name and the property title.
 - The property context card is always visible on desktop and collapsible on mobile.
 - No assignment controls, no ability to add participants, no ability to delete the thread.
-- If the property is sold/rented/unavailable, the thread remains usable with a status note; do not close the composer unless the backend rejects sending.
+- If the property is sold/rented/unavailable, the thread remains usable with a status note; new chat creation is not offered for a non-published property (P-13), but authorized history stays readable (`FR-CHAT-011`).
+- If the original agent account is inactive, the thread remains readable but the composer is disabled; there is no fallback recipient and no transfer (P-03).
 
 **Traceability.** FR-CHAT-004 … FR-CHAT-014.
 
@@ -2252,7 +2256,7 @@ The exact category-specific field set is marked “to be finalized during proper
 
 - Agent options show name and agency; only `ACTIVE` agents with the `AGENT` role are selectable (`FR-PROP-007`, API validation).
 - If there are no active agents, show an empty state with “Create agent”.
-- **Reassignment warning.** When the property already has an agent, the dialog must state: “Reassigning changes who manages this property. Existing buyer conversations remain with the current agent.” This reflects `FR-PROP-008` and `FR-CHAT-012`. Do not imply conversations transfer.
+- **Reassignment warning.** When the property already has an agent, the dialog must state: “Reassigning changes who manages this property. Existing buyer conversations remain with the original agent; no new conversation or fallback is created.” This reflects `FR-PROP-008`, `FR-CHAT-012`, and P-02/P-03. Do not imply conversations transfer.
 - Confirm button: “Reassign property”. Busy state while saving.
 - On success, update the row, show a toast including the agent name, and record that an audit entry is expected (`FR-AUDIT-002`). Do not display an audit entry that the API has not returned.
 - On `409`/`422`, explain the conflict and keep the dialog open with the selection intact.
@@ -2359,13 +2363,15 @@ Same pattern as 8.8. Administrator notification types depend on what the backend
 
 ### 11.1 Scope and constraints
 
-- Chat is property-specific and persistent. One conversation per buyer–property pair (`FR-CHAT-003`).
-- The conversation participant set is fixed at creation. A property reassignment does not move the conversation (`FR-CHAT-012`).
-- Messages are persisted before broadcast and retrieved chronologically (`FR-CHAT-005`, `FR-CHAT-013`).
-- Real-time delivery uses WebSocket/STOMP at `/ws`, subscribing to `/user/queue/messages` and publishing to `/app/chat.send`. Notification events arrive on `/user/queue/notifications`. Errors arrive on `/user/queue/errors`.
-- **Read state** is updated through `PATCH /conversations/{conversationId}/read-state`. The `/app/chat.read` destination is not used in the initial implementation. There are **no read receipts**: the UI must never show “Seen”, “Read at”, blue double ticks, or a read indicator for the other participant. Own messages show only sent/pending/failed states.
-- There are **no delivery receipts** beyond the message appearing in history. Do not show a “Delivered” tick.
-- Typing indicators, presence (“online”), attachments, emoji reactions, editing, deleting, and message search are not approved. Do not include them.
+- Chat is property-specific and persistent. One conversation per buyer–property pair, permanently unique even after reassignment (`FR-CHAT-003`, P-02).
+- The conversation participant set is fixed at creation and the original `assigned_agent_id` is immutable. A property reassignment does not move the conversation, create a new one, or transfer access (`FR-CHAT-012`, P-02); no fallback agent is introduced (P-03).
+- New conversations are created only for a `PUBLISHED` property with an active buyer and active current agent; existing authorized history remains readable regardless of later property status (P-13).
+- Messages are persisted before broadcast. History is retrieved latest-first by `(sentAt DESC, id DESC)` cursor and rendered chronologically (`FR-CHAT-005`, `FR-CHAT-013`, P-06).
+- Real-time delivery uses WebSocket/STOMP at the approved `/ws` URL, subscribing to `/user/queue/messages` and publishing to `/app/chat.send`. Notification events arrive on `/user/queue/notifications`. Errors arrive on `/user/queue/errors`. Every SEND carries a mandatory client-generated UUID `idempotencyKey` (P-05).
+- **Acknowledgement:** the UI shows `Sent` only after a matching sender-only application `PERSISTENCE_ACK` on `/user/queue/messages`, correlated by `idempotencyKey` and message ID and emitted after commit (P-08, F-7.1-01). Native STOMP `RECEIPT` is non-authoritative.
+- **Read state** is updated through `PATCH /conversations/{conversationId}/read-state`. The `/app/chat.read` destination is not used. Read advancement is monotonic, applies only to viewed messages in the same conversation, and the highest valid viewed position wins; only own `unreadCount` is exposed (P-07, P-10). There are **no read receipts**: never show “Seen”, “Read at”, blue double ticks, or another participant’s read position.
+- There are **no delivery receipts**. Never show “Delivered” or a delivery tick; `PERSISTENCE_ACK` proves durable acceptance only, not recipient delivery.
+- Typing indicators, presence (“online”), attachments, emoji reactions, editing, deleting, message search, and any conversation status mutation are not approved in Stage 7 (P-04). Do not include them.
 
 ### 11.2 Chat layout
 
@@ -2409,10 +2415,10 @@ Same pattern as 8.8. Administrator notification types depend on what the backend
 | Property | Property title, 12px muted, truncated |
 | Preview | Last message, one line, muted; prefix “You: ” for own messages |
 | Time | Relative (“2h ago”) with an absolute value in the `title` attribute; exact date after 24h |
-| Unread | Pill with count, plus the accessible text “{n} unread” |
+| Unread | Pill with the participant’s own `unreadCount` from `GET /conversations` (or detail), plus the accessible text “{n} unread” |
 | Active | Sage/ivory background and a left indicator; not colour alone |
 
-- Unread counts come from server data; do not compute them from only the loaded page of messages.
+- Unread counts come from the `unreadCount` field in `GET /conversations` and `GET /conversations/{conversationId}` (P-10). There is no standalone chat unread endpoint, and notification unread counts are a separate surface; do not compute chat unread from the loaded message page or from notification counts.
 - A conversation with a failed send shows a small “Not sent” marker in the list until resolved.
 
 ### 11.4 Message bubbles
@@ -2433,29 +2439,29 @@ Message states for own messages:
 | State | Visual | Accessible text |
 |---|---|---|
 | Sending | Bubble at 70% opacity with a small clock icon and “Sending” | “Sending message” |
-| Sent (acknowledged by server event/history) | Full opacity, timestamp | “Sent at {time}” |
+| Sent | Full opacity, timestamp, only after the matching sender-only `PERSISTENCE_ACK` for the same `idempotencyKey`/message ID | “Sent at {time}” |
 | Failed | Bubble with a terracotta left border, alert icon, “Not sent”, and a “Retry” action | “Message not sent. Retry.” |
 
+- `Sent` is never inferred from the native STOMP `RECEIPT` or from a history refresh alone; `PERSISTENCE_ACK` is the authoritative UI signal (P-08, F-7.1-01).
 - Do not display a state until it is known. A message typed while offline should fail immediately with a clear reason rather than sitting in “Sending” forever.
-- Retry resends the same content with a new client-generated idempotency key if the backend supports one; otherwise warn that a duplicate is possible. The idempotency mechanism is deferred.
-- Failed messages are removed from history on retry success or replaced in place; do not duplicate the bubble.
+- Every SEND carries a mandatory client-generated UUID `idempotencyKey` (P-05). Retry is an explicit user action that reuses the same key and content: the same key with the same content returns the existing message, and the same key with different content is a safe conflict. Never automatically replay a failed or ambiguous mutation; history refresh is recovery only.
+- Failed messages are replaced in place on retry success; do not duplicate the bubble or claim exactly-once delivery.
 
 ### 11.5 Date dividers and ordering
 
-- Messages render in chronological order, oldest at the top, newest at the bottom (`FR-CHAT-013`).
+- History is requested latest-first by `(sentAt DESC, id DESC)` cursor and the loaded window renders chronologically, oldest at the top, newest at the bottom (`FR-CHAT-013`, P-06, F-7.1-04).
 - Date dividers: “Today”, “Yesterday”, then a localized date (for example, “6 Nov 2026”).
 - Timestamps come from `sentAt`; the client formats them but never invents a time.
-- If an incoming event has a timestamp older than the last rendered message, insert it in the correct position only if the history window covers that point; otherwise refresh the history rather than appending out of order.
-- Duplicate events for the same message `id` must be ignored. This is required because reconnect + history refresh can deliver the same message twice.
+- If an incoming event has a timestamp older than the last rendered message, insert it in the correct position only if the history window covers that point; otherwise refresh the history cursor rather than appending out of order.
+- Duplicate events for the same message `id` and duplicate sends with the same `idempotencyKey` must be ignored or reconciled in place. Reconnect + history refresh can deliver the same message twice.
 
 ### 11.6 Pagination and loading history
 
-- History loads through `GET /conversations/{conversationId}/messages?page=0&size=30`.
-- The exact pagination direction (newest-first page 0 vs oldest-first) is **deferred** by the API Specification. The UI must be written against one explicit contract and must not guess.
-- **Proposed default:** page 0 returns the most recent 30 messages in chronological order; the client prepends older pages when the user scrolls to the top or selects “Load earlier messages”.
-- Because automatic scroll-triggered loading can jump the viewport, provide an explicit “Load earlier messages” control at the top of the thread in the initial implementation. Prepend older messages while preserving the scroll anchor.
-- Show a small “Beginning of conversation” marker when the earliest page is reached.
-- Initial load: show skeleton bubbles and disable the composer until the history request resolves, so a user cannot send into an unknown context.
+- History loads through `GET /conversations/{conversationId}/messages` using the approved cursor contract: `limit` and the returned `nextCursor`/`hasMore` (P-06). Offset `page`/`size` parameters are not used for messages.
+- Retrieval is latest-first by `(sentAt DESC, id DESC)`; the client loads the latest page first, prepends older pages, and renders the loaded window chronologically. D-22 is resolved by P-06; pagination is no longer deferred.
+- Because automatic scroll-triggered loading can jump the viewport, provide an explicit “Load earlier messages” control at the top of the thread. Prepend older messages while preserving the scroll anchor.
+- Show a small “Beginning of conversation” marker when `hasMore` is false.
+- Initial load: show skeleton bubbles and disable the composer until the latest page resolves, so a user cannot send into an unknown context.
 - History load failure: keep already loaded messages, show an inline “Earlier messages could not be loaded” with Retry.
 - Never load an unbounded history.
 
@@ -2473,27 +2479,25 @@ Message states for own messages:
 2. `Enter` sends; `Shift+Enter` inserts a newline. This is the desktop convention. On touch devices, the send button is the primary action.
 3. Empty or whitespace-only content cannot be sent. The send button is disabled when the composer is empty.
 4. On send:
-   - Create a local message with a temporary client id, state “Sending”, and the current local time.
-   - Publish to `/app/chat.send` with only `conversationId` and `content`. Never send a sender id.
+   - Create a local message with a temporary client id, a newly generated UUID `idempotencyKey`, state “Sending”, and the current local time.
+   - Publish to `/app/chat.send` with `conversationId`, `content`, and `idempotencyKey`. Never send a sender id.
    - Append the bubble immediately, clear the composer, and keep focus in the composer.
-   - On server acknowledgement (matching message event or history refresh), replace the temporary message with the server record and its `sentAt`.
-   - On explicit error from `/user/queue/errors`, timeout, or socket closure before acknowledgement, mark the message “Not sent” with Retry.
+   - On the matching sender-only `PERSISTENCE_ACK` correlated by `idempotencyKey`/message ID, replace the temporary message with the server record and its `sentAt`, and show `Sent`. Native STOMP `RECEIPT` and history refresh are not authoritative for `Sent`.
+   - On explicit error from `/user/queue/errors`, timeout, or socket closure before acknowledgement, mark the message “Not sent” with Retry; do not replay automatically.
 5. Disable the send action while the socket is not connected; keep the text in the composer and explain why it cannot be sent.
 6. Enforce the backend message-size limit. Until it is configured, use a conservative client cap and show a character counter only near the cap. Server rejection is authoritative.
 7. Rate-limit feedback: if the server rejects for rate limiting, show “You’re sending messages too quickly. Try again in a moment.” and re-enable after a short delay.
-8. The first message in a new conversation follows this same path. The conversation is created first through `POST /properties/{propertyId}/conversations`; creation never carries message content, and `initialMessage` is not sent.
+8. The first message in a new conversation follows this same path. The conversation is created first through `POST /properties/{propertyId}/conversations`; creation never carries message content or `initialMessage`. New creation requires an eligible property and participants (P-13); an existing conversation is retrieved instead of duplicated (P-02).
 
 ### 11.9 Read-state behaviour
 
-- Mark a conversation read when:
-  - The thread is open and visible, the newest message is rendered, and the document is not hidden.
-  - The user returns to the tab and the thread is still open.
-  - The user selects the “New messages” pill.
-- Debounce read-state updates (for example, at most once every few seconds) and send the latest `lastReadMessageId`.
-- Use `PATCH /conversations/{conversationId}/read-state`. Do not use `/app/chat.read`.
-- Update the local unread badge optimistically, but reconcile with `GET /notifications/unread-count` on the next page load or event.
-- Do not mark read while the thread is scrolled away from the newest message if the product wants “read” to mean seen. **Proposed:** mark read only when the newest message has been visible for a short dwell period. This avoids marking messages read merely because the page opened. Recorded in Section 20.
-- Never display the other participant's read position.
+- Mark a conversation read only after the latest cursor page has rendered and the target messages have been viewed in that same conversation: the thread is open and visible, the newest message is rendered, and the document is not hidden; or the user returns to the tab with the thread still open; or the user selects the “New messages” pill.
+- Advance only to a viewed `lastReadMessageId` belonging to that conversation. Own messages are appended to the thread but are not a viewed position to PATCH. The highest valid viewed position wins under concurrency; read state is monotonic and never moves backwards (P-07, F-7.1-06).
+- Debounce read-state updates (for example, at most once every few seconds) and send the latest viewed `lastReadMessageId`.
+- Use `PATCH /conversations/{conversationId}/read-state`. Do not use `/app/chat.read`; there is no standalone chat unread endpoint.
+- Clear the conversation’s own `unreadCount` badge only after a successful PATCH, then refresh own chat unread from `GET /conversations` and the conversation detail response. Keep this separate from `GET /notifications/unread-count` and never derive chat unread from notification counts (P-10).
+- Never display the other participant's read position, “Seen”, or delivery receipts (P-08).
+- D-37 is resolved by P-07 and D-30 by P-10; both are recorded in §20.6.
 
 ### 11.10 Connection states
 
@@ -2504,7 +2508,7 @@ Message states for own messages:
 | Reconnecting | Socket closed unexpectedly | Sticky banner under the topbar: “Reconnecting… Messages may be delayed.” with a manual Retry |
 | Offline (browser) | `navigator.onLine === false` | Banner: “You’re offline. Messages can’t be sent.” Send disabled; composer text preserved |
 | Disconnected | Retries exhausted or auth failure | Banner: “You’re disconnected. Reload to reconnect.” with Reload; composer disabled |
-| Auth failure | WebSocket handshake rejected | Stop retrying; show “Your session expired. Sign in again.” and redirect to login after acknowledgement |
+| Auth failure | WebSocket handshake or CONNECT (CSRF/Origin) rejected | Stop retrying; show “Your session expired. Sign in again.”, clear private chat state, and redirect to login after acknowledgement |
 
 - Use exponential backoff with jitter for reconnection; cap attempts and then offer manual reload. Do not retry aggressively.
 - The banner is `role="status"` for reconnecting and `role="alert"` for auth failure. It must not steal focus.
@@ -2513,27 +2517,27 @@ Message states for own messages:
 
 ### 11.11 Reconnection and missed messages
 
-- On reconnect, resubscribe to `/user/queue/messages`, `/user/queue/notifications`, and `/user/queue/errors`.
-- Refresh the current conversation history from the newest page and reconcile by message `id`. This recovers messages missed while disconnected (`FR-CHAT-014`).
-- Refresh the unread count and conversation list.
+- On reconnect, re-handshake at the approved `/ws` URL with the exact `Origin` and the in-memory session-bound CSRF token as a native `X-CSRF-TOKEN` header on STOMP `CONNECT`; resubscribe to `/user/queue/messages`, `/user/queue/notifications`, and `/user/queue/errors` (F-7.1-08). Stop on authentication failure and clear private state.
+- Refresh the current conversation history from the latest cursor page (`limit`, `nextCursor`, `hasMore`) and reconcile by message `id`. This recovers messages missed while disconnected (`FR-CHAT-014`, P-09). No dedicated sync endpoint is used.
+- Refresh the conversation list and own `unreadCount` separately from notification counts.
 - If a replayed event duplicates a rendered message, ignore it.
-- If the reconnect occurs while a message is “Sending”, keep it pending until either the acknowledgement arrives or a timeout marks it failed.
+- If the reconnect occurs while a message is “Sending”, keep it pending until the matching `PERSISTENCE_ACK` arrives or a timeout marks it failed. Recovery never replays the mutation automatically; the user retries explicitly with the same `idempotencyKey`.
 - Do not silently reorder or drop messages.
 
 ### 11.12 Chat header and property context
 
-- Header: participant name, role label (“Property agent” / “Buyer”), and property title linking to the detail page.
+- Header: participant name, role label (“Property agent” / “Buyer”), and property title linking to the detail page. The original participant identity is immutable and never swapped after reassignment (P-02).
 - Property context card: thumbnail, title, location, price, status badge, “View property”.
-- If the property is `SOLD`, `RENTED`, `UNAVAILABLE`, or `ARCHIVED`, show a status note. History remains available (`FR-CHAT-011`). The composer stays enabled unless the backend rejects sending; if it does, explain the restriction.
-- If the property was reassigned, show a system line only when the backend supplies the event. Never change the participant identity in the header.
-- No participant management UI: no add/remove participant, no leave conversation, no block.
+- If the property is `SOLD`, `RENTED`, `UNAVAILABLE`, or `ARCHIVED`, show a status note. History remains available (`FR-CHAT-011`); new chat creation is not offered for a non-published property (P-13). The composer stays enabled unless the original agent is inactive or the backend rejects sending; if it does, explain the restriction.
+- If the property was reassigned, explain locally that the conversation remains with the original agent and no new conversation or fallback is created (P-02). Do not require an API event for that explanation; a system line may still be shown if the backend supplies one.
+- No participant management UI: no add/remove participant, no leave conversation, no block, no transfer, and no conversation status control (P-04).
 
 ### 11.13 Unread and notification integration
 
-- Incoming message for a different conversation → increment that conversation's unread count if supplied, refresh the total, and show a notification event.
-- Incoming message for the open, visible conversation → append and mark read without incrementing the visible unread state.
+- Incoming message for a different conversation → refresh that conversation's own `unreadCount` from `GET /conversations`/detail, refresh the chat total, and show a notification event.
+- Incoming message for the open, visible conversation → append and mark read (PATCH the viewed `lastReadMessageId` only) without incrementing the visible unread state.
 - Notification rows for `NEW_MESSAGE` route to the conversation.
-- The bell count includes unread messages and other notification types as the backend defines. Do not double-count message unread twice.
+- The bell count includes notification unread counts as defined by the backend. Keep it distinct from the conversation-list `unreadCount`; do not double-count message unread or treat one as a substitute for the other.
 - There is no sound by default. Sound, desktop notifications, and email digests are deferred.
 
 ### 11.14 Chat accessibility
@@ -2554,6 +2558,7 @@ Message states for own messages:
 |---|---|
 | No conversations | List empty state; no chat panel |
 | Conversation with no messages | Thread area shows “Start the conversation.” plus property context; composer enabled |
+| Inactive original agent | History remains readable; composer disabled with an unattended explanation; no fallback agent (P-03) |
 | History load error | Inline panel with Retry; composer disabled until resolved |
 | Send error | Bubble marked “Not sent” with Retry; toast optional but not the only signal |
 | Conversation not found / not authorized | Full-panel “This conversation is not available to you.” with a link to conversations; do not confirm existence |
@@ -3444,7 +3449,7 @@ Responsibilities:
 | Base URL | From `config.js`; `/api/v1` prefix; no hard-coded hosts in page modules |
 | Credentials | Session authentication uses the opaque host-only `HttpOnly` cookie (D-20); send `credentials: "include"`. Never store credentials, tokens, or session identifiers in `localStorage` or `sessionStorage`. |
 | Headers | `Accept: application/json`; `Content-Type: application/json` except uploads (`multipart/form-data`) |
-| CSRF | Read the session-bound token from the `X-CSRF-TOKEN` response header, hold it in memory only, and echo it in the `X-CSRF-TOKEN` request header on mutating requests (SD-05, SD-53). No CSRF cookie exists. |
+| CSRF | Read the session-bound token from the `X-CSRF-TOKEN` response header, hold it in memory only, and echo it in the `X-CSRF-TOKEN` request header on mutating requests (SD-05, SD-53). Reuse the same in-memory value as a native `X-CSRF-TOKEN` header on STOMP `CONNECT` with the exact configured `Origin` (F-7.1-08). No CSRF cookie exists; never place a token in a URL, query parameter, or cookie. |
 | Parsing | Parse JSON once; tolerate empty bodies for `204` |
 | Response envelope | Success: `{ success, message?, data, meta? }`; error: `{ success:false, error:{ code, message, details? }, timestamp, path }` |
 | Error normalization | Throw a single `ApiError` with `status`, `code`, `message`, `details[]`, `isNetworkError` |
@@ -3501,22 +3506,22 @@ Responsibilities:
 ### 17.8 WebSocket integration
 
 - `chat/socket.js` owns the STOMP connection, subscriptions, reconnection, and teardown.
-- Connect only on authenticated chat pages (or wherever live notifications are enabled) to avoid idle sockets.
+- Connect only on authenticated chat pages (or wherever live notifications are enabled) to avoid idle sockets. `CONNECT` uses the approved `/ws` URL, the exact configured `Origin`, and the in-memory session-bound CSRF token as a native `X-CSRF-TOKEN` header; no token is placed in a URL or query parameter (F-7.1-08). Stop on authentication failure and clear private state.
 - Subscribe to `/user/queue/messages`, `/user/queue/notifications`, and `/user/queue/errors`. Never subscribe to arbitrary conversation destinations.
-- Publish to `/app/chat.send` with `{ conversationId, content }` only.
-- Do not send sender identity.
+- Publish to `/app/chat.send` with `{ conversationId, content, idempotencyKey }` only; `idempotencyKey` is a mandatory client-generated UUID reused on explicit retry (P-05). Do not send sender identity.
+- The sender-only `PERSISTENCE_ACK` on `/user/queue/messages` is the authoritative `Sent` signal, correlated by `idempotencyKey`/message ID; native STOMP `RECEIPT` is non-authoritative (P-08).
 - Read state uses REST (`PATCH /conversations/{conversationId}/read-state`), not `/app/chat.read`.
 - Provide a single connection-state event that the UI subscribes to; do not let each component open its own socket.
 - On logout or role change, disconnect and clear subscriptions.
-- Reconnection: exponential backoff with jitter, capped; stop on authentication failure.
-- The exact STOMP client library is not chosen in this document; the wrapper isolates it.
+- Reconnection: exponential backoff with jitter, capped; stop on authentication failure. Reconnection uses REST cursor re-fetch, not a sync endpoint (P-09).
+- A locally vendored STOMP client is permitted only after exact version, license, artifact integrity, and security review are recorded; no dependency is introduced by this document (P-11). This approval gates documentation, not implementation.
 
 ### 17.9 Idempotency and duplicate prevention
 
 - Disable submit controls while in flight.
-- For conversation creation, rely on the backend's uniqueness constraint; the UI routes to the existing conversation on `200`.
-- For favorites, treat `409` as already-favorited and render the saved state.
-- For messages, ignore duplicate events by message `id`. If the backend supports a client idempotency key, include it; the mechanism is deferred.
+- For conversation creation, rely on the permanent `(buyer_id, property_id)` uniqueness constraint; the UI routes to the existing conversation on `200` and never creates a second thread after reassignment (P-02).
+- For favorites, treat `200` as already-favorited and render the saved state; duplicate favorite creation does not return `409`.
+- For messages, include a mandatory client-generated UUID `idempotencyKey` on every SEND (P-05). Ignore duplicate events by message `id`; same key/same content returns the existing message, same key/different content is a safe conflict. Retry is explicit and reuses the key; automatic replay of a failed or ambiguous mutation is prohibited.
 - Do not implement client-side “create if missing” loops that can generate duplicates.
 
 ### 17.10 Caching and freshness
@@ -3524,7 +3529,7 @@ Responsibilities:
 - No service worker or offline cache is introduced in this scope.
 - Use HTTP caching only if the backend sets explicit headers; do not add client-side cache layers that can show stale permissions.
 - Re-fetch list data after a mutation that changes the list's membership or ordering.
-- Re-fetch the unread count after marking notifications or messages read only when the local state cannot be reconciled.
+- Re-fetch own chat `unreadCount` from `GET /conversations` and conversation detail after a successful read-state PATCH; keep notification unread counts on a separate surface and never use one for the other (P-10).
 - Avoid polling. Real-time updates come from WebSocket events; a manual Retry is available.
 
 ### 17.11 Error mapping table
@@ -3598,7 +3603,7 @@ The interface is never a security boundary. Every authorization decision is enfo
 - Do not store credentials, tokens, or session identifiers in `localStorage` or `sessionStorage`. Authentication uses the opaque host-only `HttpOnly` session cookie; the frontend never receives a browser-readable credential.
 - Do not render the session token or CSRF token into the DOM.
 - Clear in-memory auth state, including the CSRF token, and disconnect WebSocket on logout.
-- Every mutating request includes the session-bound `X-CSRF-TOKEN` header (SD-05, SD-53).
+- Every mutating request includes the session-bound `X-CSRF-TOKEN` header (SD-05, SD-53). STOMP `CONNECT` sends the same in-memory token as a native header with the exact `Origin`; no token is placed in a URL, query parameter, or cookie, and failure stops retries and clears private state (F-7.1-08).
 
 ### 18.4 Session and timeout behaviour
 
@@ -3864,7 +3869,7 @@ This section records every point where the interface could not be finalized from
 
 Settled items are removed from the unresolved tables and recorded in 20.6. A settled item is not a deferred decision.
 
-**Current register:** 36 unresolved items — **0 Blocking**, **33 Non-blocking**, **3 Out of Scope** — plus 11 settled or removed items (D-01, D-02, D-03, D-04, D-08, D-14, D-17, D-20, D-21, D-33, D-47).
+**Current register:** 31 unresolved items — **0 Blocking**, **28 Non-blocking**, **3 Out of Scope** — plus 16 settled or removed items (D-01, D-02, D-03, D-04, D-08, D-11, D-14, D-17, D-20, D-21, D-22, D-23, D-30, D-33, D-37, D-47). The additional settlements come from the Stage 7.1 contract decisions recorded in §20.8 and do not change this document’s approval status.
 
 ### 20.1 Document-level inconsistencies
 
@@ -3880,7 +3885,6 @@ Settled items are removed from the unresolved tables and recorded in 20.6. A set
 | D-07 | Final property status lifecycle and transitions | Badge labels, allowed agent/admin actions, public visibility, and archive behaviour depend on it | Non-blocking | Decide during property management implementation. Status controls stay hidden until allowed transitions are supplied, so no unsafe action ships. | Proposed map in 4.10; controls shown only when the backend returns allowed transitions |
 | D-09 | Inquiry status transitions and who may set them | Agent/admin status controls and buyer visibility | Non-blocking | Decide during inquiry management implementation. Backend remains authoritative. | Proposed New → In progress → Resolved → Closed |
 | D-10 | Whether buyers can close their own inquiry | Affects buyer inquiry actions | Non-blocking | Decide during inquiry implementation; default is no until approved. | Buyers see status read-only |
-| D-11 | One channel or two on the property page (inquiry vs chat) | Two adjacent primary actions compete; both endpoints exist | Non-blocking | Product UX choice for property details implementation. Either flow is implementable with approved endpoints. | Proposed single “Contact agent” dialog with a choice |
 | D-12 | Contact form delivery | No approved contact endpoint; the V1 form is local-only | **Out of Scope** | Backend contact delivery is not in the MVP and no endpoint is approved. The Contact page remains informational. Revisit only with a new requirement. | Keep the form honest (“validated, not delivered”) or replace with mailto; do not claim delivery |
 | D-13 | Real launch contact details and legal copy | Footer and Contact page currently use demonstration content | Non-blocking | Pre-launch content task. Must be completed before public launch, not before interface implementation. | Use approved details before launch; do not present placeholders as verified |
 | D-15 | Notification delivery preferences (email, SMS, push) | Affects whether a preferences UI is needed | **Out of Scope** | The MVP provides in-app notifications only. Delivery preferences are not an approved requirement. | No preferences UI; in-app only |
@@ -3892,15 +3896,12 @@ Settled items are removed from the unresolved tables and recorded in 20.6. A set
 |---|---|---|---|---|---|
 | D-18 | Whether draft properties can be created and by whom | Affects the create form's “Save as draft” action | Non-blocking | Decide during property management implementation. The form omits the action until approved. | Omit draft action unless approved |
 | D-19 | Whether archived properties remain visible in admin lists | Affects archive feedback and filters | Non-blocking | Decide during admin property management implementation. | Assume the admin filter can retrieve them; confirm |
-| D-22 | Message pagination direction and ordering contract | Scroll/prepend behaviour and “load earlier” | Non-blocking | Decide during chat implementation. The UI uses an explicit Load earlier control. | Proposed newest page 0 in chronological order |
-| D-23 | Message idempotency key support | Retry after unknown outcome could duplicate | Non-blocking | Decide during chat implementation with the messaging contract. | Retry with a warning until idempotency is confirmed |
 | D-24 | Chat message size and rate limits | Composer cap and error copy | Non-blocking | Server enforces the real limits; the UI can adapt during chat implementation. | Conservative client cap; server authoritative |
 | D-25 | Image formats, maximum size, and maximum count | Upload guidance and pre-checks | Non-blocking | Decide during image upload implementation; the server already validates. | Read from configuration; generic message until approved |
 | D-26 | Image reorder persistence | Whether move up/down can save | Non-blocking | Decide during image manager implementation based on the metadata contract. | Use `PATCH .../images/{imageId}` if it carries order; otherwise read-only |
 | D-27 | Property detail identifier: UUID or slug | Routing and links | Non-blocking | Decide during property details implementation. | Accept the API identifier; do not assume slug support |
 | D-28 | `amenityIds` query serialization (repeated vs comma-separated) | Filter requests | Non-blocking | Confirm while wiring discovery filters. | Use repeated parameters; confirm with backend |
 | D-29 | Whether the property detail response includes favorite state | Avoids an extra status call | Non-blocking | Confirm during favorites/detail integration. | Use `GET /favorites/{propertyId}/status` until confirmed |
-| D-30 | Whether conversation list returns last-message preview and unread counts | Two-pane preview and list design | Non-blocking | Decide during chat list implementation. | Render only supplied fields; degrade to a simple row |
 | D-31 | Audit log filters and pagination shape | Audit toolbar and paging | Non-blocking | Decide during audit implementation. | Include only filters the endpoint supports; default 20 |
 | D-32 | Whether `GET /admin/overview` and `GET /dashboard/admin` return the same data | Duplicate calls and inconsistent stats | Non-blocking | Decide during dashboard implementation (Stage 8). | Prefer `/dashboard/admin`; use `/admin/overview` for activity if it is the only source |
 | D-34 | Whether property assignment is audited synchronously | Whether the UI can show an audit reference | Non-blocking | Decide during assignment/audit implementation. | Do not display audit confirmation unless returned |
@@ -3911,7 +3912,6 @@ Settled items are removed from the unresolved tables and recorded in 20.6. A set
 | # | Decision needed | Current UI stance | Classification | Rationale and stage |
 |---|---|---|---|---|
 | D-36 | Filter application model (auto-apply vs explicit Apply) | Explicit Apply for text/number; selects may apply immediately; needs consistency sign-off | Non-blocking | Discovery-page interaction detail; decide during listing implementation. |
-| D-37 | Mark-as-read timing (on open vs after dwell + visibility) | Proposed dwell + visible + newest message; needs approval | Non-blocking | Chat interaction detail; decide during chat implementation. |
 | D-38 | Whether “Undo” is offered for favorite removal | Only if re-adding is safe and implemented; otherwise no Undo | Non-blocking | Favorites interaction detail; decide during favorites implementation. |
 | D-39 | Whether a share control is included | Only if a real share/copy behaviour is implemented | Non-blocking | Optional UI enhancement; not required by the PRD. Decide during property details implementation. |
 | D-40 | Whether a 403 page is added | Proposed `403.html`; otherwise use an inline access-denied panel everywhere | Non-blocking | Routing/presentation detail; decide during dashboard shell implementation. |
@@ -3950,12 +3950,17 @@ The following are explicitly **not** part of this specification and must not be 
 | D-02 Property creation and assignment permissions | API §25.1.G; PRD PD-03, PD-04, PD-05; FR-PROP-010 | Administrators create properties and assign one primary agent. Assigned agents manage only their assigned properties. Agents cannot create properties and cannot reassign them. The agent create-property route and action are removed. FR-PROP-001 was reconciled in the Stage 1.6 correction pass. |
 | D-03 Conversation creation and first message | API §25.1.A | Conversation creation and message sending are separate operations. `POST /properties/{propertyId}/conversations` creates or returns the existing conversation and never carries message content. The first message is sent through `/app/chat.send`. `initialMessage` is not used, and the stale API §11.1 field was removed in the Stage 1.6 correction pass. |
 | D-04 Read state | API §25.1.B | REST `PATCH /conversations/{conversationId}/read-state` is authoritative for the initial implementation. `/app/chat.read` is not required, was removed from API §20, and is not used. |
-| D-33 Conversation access after property reassignment | `DATABASE_DESIGN.md` critical conversation rules 2–7 and “Agent Reassignment Scenario”; API §25.1.F; PRD PD-09; FR-CHAT-012 | Every conversation stores the original `assigned_agent_id` as a historical snapshot. Reassigning a property does not transfer existing conversations. The original agent remains associated with them and retains authorized access to the history; the newly assigned agent does not automatically gain access to historical conversations. The UI must never swap the participant identity in the header or assume a transfer. |
+| D-33 Conversation access after property reassignment | `DATABASE_DESIGN.md` critical conversation rules 2–7 and “Agent Reassignment Scenario”; API §25.1.F; PRD PD-09; FR-CHAT-012; P-02/P-03 | Every conversation stores the original `assigned_agent_id` as a historical snapshot. Reassigning a property does not transfer existing conversations. The original agent remains associated with them and retains authorized access to the history; the newly assigned agent does not automatically gain access to historical conversations. The UI must never swap the participant identity in the header or assume a transfer. Buyer–property uniqueness is permanent: no new conversation or fallback agent is created after reassignment, and an inactive original agent preserves history while disabling messaging. |
+| D-11 Property-detail chat action | `docs/STAGE_7_DECISION_REGISTER.md` P-01; FR-CHAT-001 | Separate “Enquire about this home” and “Message agent” actions are approved. “Message agent” has no inquiry or favorite prerequisite; there is no combined dialog and no message collection before authentication. The former “Contact agent” combined-dialog proposal is superseded. |
+| D-22 Message pagination direction and ordering | P-06; F-7.1-04; FR-CHAT-013 | History is cursor-based, latest-first by `(sent_at DESC, id DESC)`, rendered chronologically, with `nextCursor`, `hasMore`, and `limit`. |
+| D-23 Message idempotency key support | P-05; F-7.1-05 | A mandatory client-generated UUID `idempotencyKey` is sent on every `/app/chat.send`; the same key with the same content returns the existing message, the same key with different content is a safe conflict, and recovery is by explicit retry only with no automatic replay. |
+| D-30 Conversation unread surface | P-10 | Own `unreadCount` is carried in `GET /conversations` and `GET /conversations/{id}`; there is no standalone chat unread endpoint and no other participant position is exposed. |
+| D-37 Mark-as-read timing | P-07; F-7.1-06 | Advance only for viewed messages in the same conversation after the latest page renders; the state is monotonic, the highest valid viewed position wins, and no read receipts are shown. |
 | D-17 Agent property creation | Duplicate of D-02 | Removed as a duplicate. D-02 records the settled rule. |
 | D-47 FRD property-creation wording | `FRD.md` FR-PROP-001; API §25.1.G; PRD PD-03/PD-04/PD-05 | `FR-PROP-001` now states that administrators create and assign properties and that agents update only assigned properties. The wording no longer conflicts with the API or PRD, so the item is settled and removed from the unresolved register. |
 | D-08 Non-published public visibility | Security Architecture v0.5 §18.7, §21.3 (C-10); PRD §6.1; FRD FR-DISC-010; Database Design §6.3; API §7 | Only `PUBLISHED` properties and their publicly servable images are retrievable without authorization. `DRAFT`, `UNAVAILABLE`, `SOLD`, `RENTED`, and `ARCHIVED` records are hidden from public discovery and public detail; authenticated participants retain historical access through their own surfaces. Public pages never render a non-published record from a cached or client-supplied status. The lifecycle is unchanged. |
 | D-14 Agent initial password and activation | Security Architecture v0.5 §9.5, §18.7 (SD-12); API §5.1; FR-AUTH-008 | Administrators create an agent as `INACTIVE`; the system issues a 256-bit single-use activation token with a 72-hour expiry, and the agent sets their own password through the purpose-scoped reset flow. No admin-known or temporary password is displayed or emailed. Delivery depends on the email-provider prerequisite (SD-11). |
-| D-20 Authentication mechanism | Security Architecture v0.5 §8, §18.7 (SD-01); System Architecture §9.3; API §3 | Server-side session authentication with an opaque host-only `HttpOnly` session cookie; Spring Session JDBC storage; session-bound CSRF token delivered through the `X-CSRF-TOKEN` response header; no JWT and no browser-readable credential. The UI isolates credential handling in `api.js`/`auth.js`, uses `credentials: "include"`, holds the CSRF token in memory only, and never stores credentials in browser storage. Deployment hostnames remain an SD-48 prerequisite. |
+| D-20 Authentication mechanism | Security Architecture v0.5 §8, §18.7 (SD-01); System Architecture §9.3; API §3; F-7.1-08 | Server-side session authentication with an opaque host-only `HttpOnly` session cookie; Spring Session JDBC storage; session-bound CSRF token delivered through the `X-CSRF-TOKEN` response header; no JWT and no browser-readable credential. The UI isolates credential handling in `api.js`/`auth.js`, uses `credentials: "include"`, holds the CSRF token in memory only, and never stores credentials in browser storage. The same in-memory token is sent as a native `X-CSRF-TOKEN` header on STOMP `CONNECT` with the exact `Origin`; no token is placed in a URL, query parameter, or cookie (F-7.1-08). Exact production hostnames are Stage 7.7 deployment-verification inputs (P-12) and do not block Stage 7.1. |
 | D-21 Password reset token and delivery | Security Architecture v0.5 §9.6, §18.7 (SD-11); API §3.3 | 256-bit single-use token, stored only as a SHA-256 hash, 30-minute expiry, neutral responses, all sessions revoked on success. Delivered by email; the email provider and sender domain remain a deployment prerequisite. The UI does not promise delivery or invent expiry copy beyond the approved rule. |
 
 **Resolution and classification log**
@@ -3973,6 +3978,7 @@ The following are explicitly **not** part of this specification and must not be 
 | 9 Nov 2026 | D-47 settled by correcting `FRD.md` FR-PROP-001; removed from the unresolved register. |
 | 11 Nov 2026 | D-08 settled by the `PUBLISHED`-only public visibility rule (C-10) in Security Architecture v0.5; removed from the unresolved register. |
 | 11 Nov 2026 | D-14, D-20, and D-21 settled by Security Architecture v0.5 (SD-12, SD-01, SD-11); removed from the unresolved register. No Blocking item remains. |
+| 26 Nov 2026 | Stage 7.1 contract reconciliation: D-11 resolved by P-01, D-22 by P-06, D-23 by P-05, D-30 by P-10, and D-37 by P-07; each removed from the unresolved register. Documentation and contract approval only; no UI implementation or executed acceptance scenario. |
 
 The unresolved items change interface behaviour, implementation detail, or documentation metadata. None of them changes the approved backend contract. No Blocking item remains; the Non-blocking items gate only the feature that implements them.
 
@@ -3982,7 +3988,31 @@ The unresolved items change interface behaviour, implementation detail, or docum
 
 `docs/STAGE_6_DECISION_REGISTER.md` records owner approval on 24 November 2026 for Stage 6 UI scope only. Its scoped rules control over historical draft text where they conflict: the functional inquiry CTA replaces the illustrative contact CTA; only authenticated BUYER accounts submit inquiries; anonymous users receive an auth prompt; AGENT/ADMIN accounts receive no buyer mutation controls; buyer inquiry status is read-only; loading, empty, error, validation, and success states are accessible. The shared Vanilla JavaScript client is reused, untrusted content is rendered with safe DOM APIs, and inquiry content is never stored in browser storage or exposed in URLs/logs/error toasts. Stage 6 has no chat UI, STOMP handler, conversation-creation UI, or inquiry↔conversation FK.
 
-This cross-reference resolves D-09, D-10, D-11, and D-29 for Stage 6 only and adds no new UI/UX `D-01…D-47` item. It does not approve this draft document, change its review status, alter approval counts or sign-off fields, or reopen any Stage 1–5 decision.
+This cross-reference resolves D-09, D-10, and D-29 for Stage 6 only and adds no new UI/UX `D-01…D-47` item. D-11 is settled globally by P-01 in §20.8 rather than only for Stage 6. It does not approve this draft document, change its review status, alter approval counts or sign-off fields, or reopen any Stage 1–5 decision.
+
+---
+
+### 20.8 Stage 7.1 chat contract resolution note
+
+`docs/STAGE_7_DECISION_REGISTER.md` records owner approval of P-01–P-13 and the resolution of F-7.1-01–F-7.1-08. This section records their effect on the UI contract only:
+
+| Decision | UI contract effect |
+|---|---|
+| P-01 | Separate “Enquire about this home” and “Message agent” actions; no inquiry/favorite prerequisite; D-11 resolved. |
+| P-02 | Permanent `(buyer_id, property_id)` uniqueness; immutable original `assigned_agent_id`; no transfer, new conversation, or participant swap after reassignment. |
+| P-03 | Inactive original agent preserves history, disables messaging/composer, and provides no fallback. |
+| P-04 | No conversation status mutation or status control in Stage 7. |
+| P-05 | Mandatory UUID `idempotencyKey`; same key/content returns the existing message; same key/different content is a safe conflict; explicit retry only, no automatic replay. |
+| P-06 | Cursor history `(sent_at DESC, id DESC)`, latest-first load, prepend older pages, chronological rendering; D-22 resolved. |
+| P-07 | Monotonic viewed-only read state in the same conversation; highest valid position wins; own unread only; D-37 resolved. |
+| P-08 | Sender-only application `PERSISTENCE_ACK` after commit, correlated by `idempotencyKey`/message ID; native `RECEIPT` non-authoritative; never “Delivered” or “Seen”. |
+| P-09 | REST cursor reconnection; no sync endpoint. |
+| P-10 | Own `unreadCount` in conversation list/detail; D-30 resolved. |
+| P-11 | Locally vendored STOMP client only after exact version, license, integrity, and security review are recorded; no dependency is introduced here. |
+| P-12 | Exact hostnames are Stage 7.7 deployment inputs, not Stage 7.1 blockers. |
+| P-13 | New chat only for `PUBLISHED` property + active buyer + active current agent; existing history readable. |
+
+**Stage boundary.** Stage 7.1 approval is at documentation and architecture-contract level only. It does not implement UI, modify application code or dependencies, execute acceptance scenarios (all remain `NOT EXECUTED` in the Stage 7 decision register), or approve this draft document. Implementation and verification remain gated to later sub-stages.
 
 ---
 
@@ -4028,14 +4058,19 @@ This cross-reference resolves D-09, D-10, D-11, and D-29 for Stage 6 only and ad
 | All four roles have distinct navigation and access rules | Pass |
 | Every public route from V1 is covered | Pass |
 | Dashboard routes follow the proposed architecture structure | Pass |
-| Every endpoint referenced exists in the approved API contract | Pass, except where explicitly marked deferred (image limits, message pagination) |
+| Every endpoint referenced exists in the approved API contract | Pass, except where explicitly marked deferred (image limits); message pagination follows the P-06 cursor contract |
 | No endpoint invented for the contact form | Pass |
-| No delivery/read receipts specified | Pass |
+| No delivery/read receipts specified | Pass; `PERSISTENCE_ACK` is sender-only durable acceptance, not a receipt (P-08) |
 | Admin has no conversation transcript access | Pass |
 | Status labels map to existing palette and are never colour-only | Pass |
 | Admin-only property creation is represented consistently | Pass |
 | Agents have no create-property or reassignment action | Pass |
 | Conversation creation never uses `initialMessage` | Pass |
+| Separate property CTAs with no inquiry/favorite prerequisite | Pass (§7.3.1, P-01) |
+| Message history uses latest-first cursor and chronological rendering | Pass (§11.5–11.6, P-06) |
+| Every SEND carries a mandatory `idempotencyKey` with explicit retry only | Pass (§11.4, §11.8, §17.9, P-05) |
+| Own unread surface and viewed-only monotonic read state | Pass (§11.3, §11.9, §11.13, P-10/P-07) |
+| Stage 7.1 boundary: contract approval only, no implementation or executed scenarios | Pass (§20.8) |
 | Every remaining deferred item has one classification | Pass (Blocking, Non-blocking, or Out of Scope) |
 | D-02 and D-03 are recorded as settled, not deferred | Pass |
 | D-04 and D-33 are recorded as settled; D-17 removed as a duplicate | Pass |
@@ -4056,9 +4091,10 @@ This cross-reference resolves D-09, D-10, D-11, and D-29 for Stage 6 only and ad
 | API endpoints match `API_SPECIFICATION.md` | Cross-checked against the endpoint tables |
 | Statuses match the documented values in `DATABASE_DESIGN.md` | Cross-checked; final lifecycle remains D-07 |
 | Deferred items classified exactly once | Reviewed against the D-01–D-47 register |
-| Settled items removed from unresolved tables | D-01, D-02, D-03, D-04, D-08, D-14, D-17, D-20, D-21, D-33, D-47 checked |
+| Settled items removed from unresolved tables | D-01, D-02, D-03, D-04, D-08, D-11, D-14, D-17, D-20, D-21, D-22, D-23, D-30, D-33, D-37, D-47 checked |
 | Role permissions match API §25.1.G and PRD PD-03–PD-05 | Cross-checked |
 | Conversation flow matches API §25.1.A | Checked against §7.3.1 and §11.8 |
+| Stage 7.1 P-01–P-13 / F-7.1-01–F-7.1-08 reconciled | Cross-checked against `docs/STAGE_7_DECISION_REGISTER.md`; contract-level only, no scenario executed |
 | Markdown links resolve to existing files | Verified relative paths |
 | No application code modified | This task changed only this document; pre-existing working-tree changes are unrelated |
 
@@ -4067,10 +4103,11 @@ This cross-reference resolves D-09, D-10, D-11, and D-29 for Stage 6 only and ad
 - Account activation and password-reset flows are settled as designs (D-14, D-21); the email provider and sender domain remain deployment prerequisites, so the UI must not promise delivery until they are configured.
 - Non-published public visibility is settled (D-08): only `PUBLISHED` records are publicly retrievable.
 - Image limits, reorder persistence, and storage behaviour are deferred and classified Non-blocking.
-- Chat pagination direction, idempotency, and message limits are deferred and classified Non-blocking.
+- Chat pagination direction and message idempotency are settled by P-06 and P-05; message size/rate limits remain deferred and classified Non-blocking.
 - Property and inquiry lifecycles are proposed, not final; classified Non-blocking.
 - Agent property creation is settled: administrators create and assign; agents cannot create or reassign (D-02).
-- Conversation access after property reassignment is settled: the original agent retains historical access and the newly assigned agent does not automatically gain it (D-33).
+- Conversation access after property reassignment is settled: the original agent retains historical access and the newly assigned agent does not automatically gain it (D-33); uniqueness is permanent, no conversation transfers and no fallback is created (P-02/P-03).
+- Stage 7.1 settles the chat CTA, acknowledgement, read-state, and unread contract at documentation level only; no UI implementation or acceptance-scenario execution is claimed (§20.8).
 - Backend contact-form delivery is Out of Scope; the Contact page remains informational (D-12).
 - Dashboard metrics are provisional pending Stage 8 and classified Non-blocking.
 
@@ -4090,16 +4127,16 @@ These gaps are documented and classified in §20. No Blocking item remains; the 
 | Prepared | 7 November 2026 |
 | Corrected | 7 November 2026 |
 | Revised | 12 November 2026 (Stage 1.9 audit corrections; prior revision 11 November 2026) |
-| Approved | **No** (this document); the former Blocking decisions D-08, D-14, D-20, and D-21 are settled by Security Architecture v0.5 |
+| Approved | **No** (this document); the former Blocking decisions D-08, D-14, D-20, and D-21 are settled by Security Architecture v0.5; Stage 7.1 P-01–P-13/F-7.1-01..08 are approved at contract level only |
 | Next action | User review and approval of this specification; the remaining items are Non-blocking or Out of Scope |
 
-This document has not been approved. It must not be cited as an approved baseline until the review below is complete. Owner approval recorded in `docs/STAGE_6_DECISION_REGISTER.md` applies only to the Stage 6 favorites/inquiries scope in §20.7 and does not approve this document, add a sign-off, or change the review record below.
+This document has not been approved. It must not be cited as an approved baseline until the review below is complete. Owner approval recorded in `docs/STAGE_6_DECISION_REGISTER.md` applies only to the Stage 6 favorites/inquiries scope in §20.7. Stage 7.1 approval recorded in `docs/STAGE_7_DECISION_REGISTER.md` approves P-01–P-13 and the F-7.1-01–F-7.1-08 resolutions at documentation and architecture-contract level only (§20.8); it adds no UI implementation claim, executes no acceptance scenario, and does not approve this document, add a sign-off, or change the review record below.
 
 ### 22.2 Review record
 
 | Role | Name | Review date | Outcome | Notes |
 |---|---|---|---|---|
-| Product owner | — | — | Pending | Confirm D-07, D-09, D-10, D-11, D-13, D-19 and the Non-blocking interaction decisions |
+| Product owner | — | — | Pending | Confirm D-07, D-09, D-10, D-13, D-19 and the Non-blocking interaction decisions; D-11 is settled by P-01 |
 | Backend lead | - | - | Pending | Confirm the remaining API and integration decisions. The former Blocking items D-08, D-14, D-20, and D-21 are settled by Security Architecture v0.5; SD-01, SD-03, SD-11, SD-12, and SD-48 there are Approved as designs with implementation/deployment prerequisites recorded. |
 | Frontend lead | — | — | Pending | Confirm component naming, module boundaries, D-36–D-46 |
 | Design reviewer | — | — | Pending | Confirm V1 continuity and status palette |
@@ -4122,6 +4159,7 @@ This document has not been approved. It must not be cited as an approved baselin
 | 1.4 | 11 Nov 2026 | Stage 1.6 approval reconciliation | Settled D-08 (only `PUBLISHED` publicly retrievable), D-14 (agent activation), D-20 (server-side session authentication), and D-21 (password reset) from Security Architecture v0.5; removed them from the unresolved register; updated counts to 36 unresolved (0 Blocking, 33 Non-blocking, 3 Out of Scope) plus 11 settled; aligned the §7.3 public-detail visibility treatment and the `SYSTEM_ARCHITECTURE.md` ARC status in the related-documents table |
 | 1.5 | 12 Nov 2026 | Stage 1.9 documentation audit | Removed stale deferrals for authentication, CSRF, reset-token lifetime, and agent activation; aligned §1.2, §5.3, §7.7–7.9, §10.4, §17.2, §17.5, and §18.3 with SD-01/SD-05/SD-11/SD-12 and D-14/D-20/D-21. Unresolved register unchanged at 36 items; status remains Draft — Pending Review and Approval; no approval or stakeholder sign-off added |
 | — | 24 Nov 2026 | Stage 6 documentation reconciliation | Added §20.7 and scoped Stage 6 notes for inquiry CTA/validation, favorite retention/state, conflict handling, and API client behavior. Document version, status, unresolved counts, review outcomes, and sign-off fields are unchanged. |
+| — | 26 Nov 2026 | Stage 7.1 contract reconciliation | Applied reviewed P-01–P-13 and F-7.1-01–F-7.1-08 to §7.3.1, §8.7, §9.8–9.9, §11, §17, §18, §20, §21, and §22; resolved D-11/D-22/D-23/D-30/D-37 and added §20.8. Documentation and contract approval only; no UI implementation, dependency change, or executed acceptance scenario; document version, status, review outcomes, and sign-off fields are unchanged. |
 
 ### 22.4 Approval sign-off
 

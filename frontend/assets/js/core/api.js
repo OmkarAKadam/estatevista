@@ -77,6 +77,15 @@ export function hasCsrfToken() {
   return csrfToken !== null;
 }
 
+/**
+ * Return the current session-bound token for the native WebSocket CONNECT
+ * header. The value stays in this module's memory; callers must not copy it to
+ * storage, URLs, logs, or DOM attributes.
+ */
+export function getCsrfToken() {
+  return csrfToken;
+}
+
 export function clearCsrfToken() {
   csrfBootstrapGeneration += 1;
   csrfToken = null;

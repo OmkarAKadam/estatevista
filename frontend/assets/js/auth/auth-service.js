@@ -17,6 +17,7 @@
  */
 
 import { ApiError, apiRequest, clearCsrfToken, ensureCsrfToken } from "../core/api.js";
+import { runChatTeardowns } from "../chat/chat-lifecycle.js";
 import {
   getAuthRevision,
   getAuthState,
@@ -173,6 +174,10 @@ export function initializeSession() {
  * succeeded.
  */
 export async function logout() {
+  // Close live sockets before the server invalidates the session. The registry
+  // holds only teardown callbacks, never tokens, identities or message bodies.
+  runChatTeardowns();
+
   try {
     await apiRequest("/auth/logout", {
       method: "POST",

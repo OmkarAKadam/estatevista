@@ -294,46 +294,48 @@ Users shall not be able to access unauthorized inquiry records.
 ## 9. Property-Specific Chat
 
 ### FR-CHAT-001 — Initiate Conversation
-Authenticated buyers shall be able to initiate a conversation concerning a property.
+Authenticated active buyers shall be able to initiate a conversation concerning a `PUBLISHED` property with an active current primary agent. Property details expose a separate `Message agent` action; no inquiry or favorite prerequisite exists. Existing permanent conversations are retrieved by an authorized active original participant regardless of later property status or assignment (P-01, P-13).
 
 ### FR-CHAT-002 — Conversation Association
-Each conversation shall be associated with one buyer, one property, and one responsible agent.
+Each conversation shall be associated with one buyer, one property, and an immutable snapshot of the original assigned agent (`assigned_agent_id`) captured at creation. Later property reassignment does not change that conversation participant (P-02).
 
 ### FR-CHAT-003 — Unique Conversation
-The system shall maintain one conversation per buyer-property combination.
+The system shall maintain one permanent conversation per buyer-property combination. Reassignment neither transfers an existing conversation to the new agent nor creates a second conversation with that agent for the same buyer and property (P-02).
 
 ### FR-CHAT-004 — Send Message
-Authorized conversation participants shall be able to send messages.
+Authorized conversation participants shall be able to send messages through STOMP over the WebSocket connection. Every `/app/chat.send` frame carries a mandatory client-generated UUID `idempotencyKey`; a same-key retry with identical content returns the existing message, while the same key with different content is a safe conflict. Messaging in a conversation whose original agent is inactive is disabled, with no fallback or transfer (P-03, P-05).
 
 ### FR-CHAT-005 — Persistent Messages
 Messages shall be stored in PostgreSQL.
 
 ### FR-CHAT-006 — Message History
-Authorized participants shall be able to retrieve previous conversation messages.
+Authorized participants shall be able to retrieve previous conversation messages in latest-first cursor pages ordered by `(sent_at DESC, id DESC)` and render the loaded window chronologically (P-06).
 
 ### FR-CHAT-007 — Real-Time Delivery
-The system shall deliver new messages to connected participants through WebSocket communication.
+The system shall deliver new messages to connected participants through WebSocket communication. Delivery frames to participants are separate from the sender-only application acknowledgement (P-08).
 
 ### FR-CHAT-008 — Message Timestamps
 Every message shall have a server-generated timestamp.
 
 ### FR-CHAT-009 — Unread Messages
-The system shall maintain unread message information for conversation participants.
+Read state advances only for messages the participant actually viewed in the same conversation, transactionally and monotonically; the highest valid viewed position wins under concurrency. The participant's own messages are excluded from that participant's unread count, and only the requester's own `unreadCount` is returned in conversation list and detail responses. No delivered or seen receipt is emitted (P-07, P-10).
 
 ### FR-CHAT-010 — Conversation Access Control
-Only authorized participants may access private conversations.
+Only the original buyer and original assigned agent may access private conversations; administrators are excluded (A-06).
 
 ### FR-CHAT-011 — Property Availability
 Property unavailability shall not automatically delete or terminate conversation history.
 
 ### FR-CHAT-012 — Agent Reassignment
-Changing a property's assigned agent shall not silently change existing conversation participants.
+Changing a property's assigned agent shall not silently change existing conversation participants; agents manage their current properties, while conversations remain bound to the original `assigned_agent_id` (P-02).
 
 ### FR-CHAT-013 — Message Ordering
-Messages shall be retrievable in a consistent chronological order.
+Messages shall be retrievable in a consistent chronological order. Cursor retrieval uses the deterministic `(sent_at DESC, id DESC)` order; no new monotonic sequence column is introduced (P-06, F-7.1-04).
 
 ### FR-CHAT-014 — Connection Recovery
-Users reconnecting after temporary disconnection shall be able to retrieve messages they missed.
+Users reconnecting after temporary disconnection shall refresh conversation list and history through the approved participant-scoped REST endpoints using the latest-first cursor and deduplicate messages by server message ID. No separate sync endpoint, automatic replay or conversation status mutation is introduced in Stage 7 (P-04, P-09).
+
+**Stage 7.1 contract note:** P-01–P-13 and F-7.1-01–F-7.1-08 are approved in `docs/STAGE_7_DECISION_REGISTER.md`. These refinements are documentation only; no requirement above is claimed implemented or tested by Stage 7.1. The sender receives a `PERSISTENCE_ACK` after commit correlated by the idempotency key, native STOMP `RECEIPT` is non-authoritative, and failed sends require explicit user retry rather than automatic replay (P-05, P-08).
 
 ## 10. Notifications
 

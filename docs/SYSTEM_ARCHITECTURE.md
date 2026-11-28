@@ -694,36 +694,47 @@ sequenceDiagram
     Server->>Server: Verify Conversation Access
     Server->>DB: Persist Message
     DB-->>Server: Saved Message
-    Server-->>Buyer: Message Confirmation
-    Server-->>Agent: Real-Time Message Event
+    Server->>Server: Recheck authorization before dispatch
+    Server-->>Buyer: PERSISTENCE_ACK after commit (sender only)
+    Server-->>Agent: Real-Time Message Event (separate delivery frame)
 ```
 
-A message must be persisted successfully before it is broadcast as a successfully accepted message.
+A message must be persisted successfully before it is broadcast as a successfully accepted message. The sender-only application `PERSISTENCE_ACK` is emitted after transaction commit and correlated by the mandatory UUID `idempotencyKey`; it is a distinct frame from the real-time delivery frame sent to participants. Native STOMP `RECEIPT` is non-authoritative for application sends, and no recipient, `Delivered` or `Seen` receipt is emitted. Failed persistence produces a safe error carrying the same correlation key, with recovery only through explicit user retry and no automatic replay (P-05, P-08, F-7.1-01).
 
 ## 8.4 Conversation Rules
 
-1. One conversation exists per buyer-property combination.
-2. Each conversation has one responsible agent.
-3. Messages are stored persistently.
-4. Only authorized participants can access messages.
-5. Unavailable properties do not automatically delete conversations.
-6. Agent reassignment does not silently transfer existing conversations.
-7. Messages must remain retrievable after reconnection.
-8. The backend determines the sender identity from the authenticated connection, not from an arbitrary client-supplied sender ID.
+1. One permanent conversation exists per buyer-property combination; reassignment neither transfers an existing conversation to the newly assigned agent nor creates a second conversation with that agent for the same buyer and property (P-02).
+2. Each conversation records an immutable snapshot of the original assigned agent (`assigned_agent_id`) as its participant. Agents manage their current assigned properties, while conversation access remains bound to the original agent identity (P-02).
+3. New conversation creation requires a `PUBLISHED` property with an active buyer and an active current primary agent; retrieval of an existing permanent conversation by an authorized active original participant is unaffected by later property status or assignment changes (P-13).
+4. If the original agent is inactive, history is preserved and remains readable to the buyer, but messaging in that conversation is disabled and no fallback or transfer is introduced (P-03).
+5. Messages are stored persistently.
+6. Only the original buyer and original assigned agent may access messages; administrators are excluded from private conversations (A-06).
+7. Unavailable properties do not automatically delete conversations.
+8. Agent reassignment does not silently transfer existing conversations.
+9. Messages remain retrievable after reconnection through latest-first `(sent_at DESC, id DESC)` cursor pages rendered chronologically; no new monotonic sequence column is introduced (P-06, F-7.1-04).
+10. Reconnection uses participant-scoped REST list/history refresh and message-ID deduplication; no sync endpoint, automatic replay or conversation status mutation is introduced in Stage 7 (P-04, P-09).
+11. The backend determines the sender identity from the authenticated connection, not from an arbitrary client-supplied sender ID.
+12. Every STOMP SEND carries a mandatory UUID `idempotencyKey`; V19, authorized only in Stage 7.3, adds `UNIQUE (conversation_id, sender_id, idempotency_key)` as the authoritative duplicate guard. No exactly-once network delivery is claimed (P-05).
 
 ## 8.5 WebSocket Security
 
 The WebSocket connection must use the application's authentication mechanism.
 
+Authoritative session validation is required at the handshake, STOMP `CONNECT`, heartbeat and every protected frame: resolve the trusted session ID from handshake attributes and validate session existence and expiry through `SessionRepository.findById(sessionId)` and `Session.isExpired()`. Spring Session destruction events alone are not authoritative because JDBC expiry cleanup is cron-based and has no per-socket awareness; missing, expired or mismatched sessions fail closed (F-7.1-02).
+
+The STOMP `CONNECT` frame must carry the session-bound CSRF token from the existing in-memory `X-CSRF-TOKEN` flow as a native header. The backend requires exact token equality against the token stored in the validated session and independently requires an exact `Origin` match; missing, invalid, stale or mismatched tokens and disallowed origins are rejected before subscriptions. Host-only cookies and REST CSRF behavior are unchanged (F-7.1-08).
+
 The backend must validate:
 
-- Connection authentication.
-- Conversation membership.
-- Message sender identity.
-- Subscription permissions.
-- Message destination authorization.
+- Connection authentication, session existence and expiry.
+- Conversation membership against the original buyer/original agent participant pair; administrators are denied.
+- Message sender identity from the authenticated connection.
+- Subscription permissions and message destination authorization.
+- Authorization again immediately before every outbound dispatch, including participant set, account status, role and session state, so a queued frame is suppressed if authorization was revoked after SEND or subscription (F-7.1-03).
 
 Clients must not be allowed to subscribe to arbitrary private conversation destinations.
+
+Same-site custom domains are approved (P-12); exact production hostnames are Stage 7.7 deployment-verification inputs and are not Stage 7.1 blockers or prerequisites for local Stage 7.2–7.6 implementation.
 
 Exact endpoint and destination contracts are defined in `API_SPECIFICATION.md` §20.
 
@@ -748,9 +759,9 @@ The platform supports four access categories:
 2. Authorization determines what the user can access.
 3. Backend authorization is mandatory.
 4. Frontend access restrictions are only interface-level controls.
-5. Agents can access only their assigned properties and authorized conversations.
+5. Agents can access only their currently assigned properties, while private conversations remain bound to the original `assigned_agent_id` recorded at creation.
 6. Buyers can access only their own private records.
-7. Administrators have authorized platform-wide access.
+7. Administrators have authorized platform-wide access but are excluded from private buyer-agent conversations (A-06).
 
 ## 9.3 Authentication Strategy
 
@@ -1022,6 +1033,10 @@ The following constraints are mandatory unless formally revised:
 ### 16.1 Stage 6 architecture cross-reference
 
 Owner-approved Stage 6 favorites/inquiries architecture is recorded in `docs/STAGE_6_DECISION_REGISTER.md`. It controls Stage 6 interpretation of REST contracts, favorite retention and batched state synchronization, the inquiry status matrix and duplicate policy, immutable historical assignment, exact rate-limit overlap, generic `404` IDOR behavior, no chat surface or inquiry↔conversation FK, and the Stage 6.4-only V18 authorization. This cross-reference does not modify ARC-001–ARC-015, ARC-016, the document's Draft for Review status, or any Stage 7–9 boundary. V18 is authorized only in Stage 6.4 and must not be created during Stage 6.1.
+
+### 16.2 Stage 7.1 architecture contract cross-reference
+
+Owner-approved Stage 7.1 chat decisions P-01–P-13 and findings F-7.1-01–F-7.1-08 are recorded in `docs/STAGE_7_DECISION_REGISTER.md`. They control §8 interpretation of conversation identity, creation eligibility, idempotency, cursor history, read state, acknowledgement, reconnection and WebSocket security. This is a documentation and architecture-contract approval only: Stage 7.1 does not modify ARC-001–ARC-016, implement chat, create migrations, introduce dependencies, execute acceptance scenarios or change any Stage 7–9 boundary.
 
 ---
 

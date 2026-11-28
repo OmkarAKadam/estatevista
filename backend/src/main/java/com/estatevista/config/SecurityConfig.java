@@ -173,6 +173,21 @@ public class SecurityConfig {
                                 .hasRole("BUYER")
                         .requestMatchers(HttpMethod.GET, "/api/v1/inquiries/{inquiryId}")
                                 .hasAnyRole("BUYER", "AGENT", "ADMIN")
+                        // Stage 7.3: private chat is participant-only. Exact routes
+                        // are declared so ADMIN receives deny-by-default and the
+                        // deferred status route cannot be matched by a variable.
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/v1/properties/{propertyId}/conversations")
+                                .hasRole("BUYER")
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/conversations",
+                                "/api/v1/conversations/{conversationId}",
+                                "/api/v1/conversations/{conversationId}/messages")
+                                .hasAnyRole("BUYER", "AGENT")
+                        .requestMatchers(HttpMethod.PATCH,
+                                "/api/v1/conversations/{conversationId}/read-state")
+                                .hasAnyRole("BUYER", "AGENT")
                         // Stage 6.5: explicit management routes. Literal agent/admin
                         // inquiry paths are declared before the broader prefixes.
                         .requestMatchers(

@@ -787,6 +787,8 @@ class PropertyAssignmentIntegrationTest {
         message.setSender(fixture.buyer());
         message.setMessageType("TEXT");
         message.setContent("Historical conversation message");
+        message.setSentAt(Instant.now());
+        message.setIdempotencyKey(UUID.randomUUID());
         messageRepository.saveAndFlush(message);
         return new History(inquiry, conversation, message);
     }

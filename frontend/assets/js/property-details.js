@@ -129,6 +129,17 @@
     });
   }
 
+  /** Publish the active property to the REST-only chat CTA bridge. */
+  function publishChatProperty(propertyId, property) {
+    window.EVPropertyChatPending = {
+      propertyId: propertyId || null,
+      property: property || null
+    };
+    if (window.EVPropertyChat && typeof window.EVPropertyChat.setActiveProperty === "function") {
+      window.EVPropertyChat.setActiveProperty(propertyId, property);
+    }
+  }
+
   function syncFavoriteControls() {
     if (window.EVFavorites && CARD) {
       CARD.syncFavoriteControls(window.EVFavorites.getSnapshot());
@@ -794,6 +805,7 @@
     if (window.EVInquiryProperty && typeof window.EVInquiryProperty.setActiveProperty === "function") {
       window.EVInquiryProperty.setActiveProperty(activeId, property);
     }
+    publishChatProperty(activeId, property);
   }
 
   function setRetryVisible(visible) {
@@ -827,6 +839,7 @@
     if (window.EVInquiryProperty && typeof window.EVInquiryProperty.setActiveProperty === "function") {
       window.EVInquiryProperty.setActiveProperty(null, null);
     }
+    publishChatProperty(null, null);
     clearDetailSkeleton();
     clearRelatedSkeleton();
     if (!lastErrorWasRateLimit) {

@@ -47,14 +47,27 @@ export function renderAuthNavigation(state = getAuthState()) {
   const buyerOnlyLinks = document.querySelectorAll(
     "[data-favorites-nav], [data-inquiries-nav]"
   );
-  const buyer = Boolean(
-    state.status === "authenticated" && state.user && state.user.role === "BUYER"
+  const participantLinks = document.querySelectorAll("[data-conversations-nav]");
+  const authenticated = Boolean(
+    state.status === "authenticated" && state.user
+  );
+  const active = Boolean(
+    authenticated &&
+      (!state.user.accountStatus || state.user.accountStatus === "ACTIVE")
+  );
+  const buyer = Boolean(active && state.user.role === "BUYER");
+  const participant = Boolean(
+    active && (state.user.role === "BUYER" || state.user.role === "AGENT")
   );
 
-  /* Favorites and inquiry history are BUYER-only surfaces. Links are hidden
-     without changing layout-adjacent controls and never trigger a request. */
+  /* Favorites and inquiry history are BUYER-only surfaces. Conversations are
+     available to active BUYER and AGENT accounts. Links are hidden without
+     changing layout-adjacent controls and never trigger a request. */
   buyerOnlyLinks.forEach((link) => {
     link.hidden = !buyer;
+  });
+  participantLinks.forEach((link) => {
+    link.hidden = !participant;
   });
 
   const containers = document.querySelectorAll("[data-auth-nav]");

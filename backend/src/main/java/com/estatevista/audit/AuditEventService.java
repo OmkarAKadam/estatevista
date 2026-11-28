@@ -52,6 +52,7 @@ public class AuditEventService {
     public static final String ACTION_CSRF_FAILURE = "SECURITY_CSRF_FAILURE";
     public static final String ACTION_ACCESS_DENIED = "SECURITY_ACCESS_DENIED";
     public static final String ACTION_WS_AUTH_FAILURE = "SECURITY_WS_AUTH_FAILURE";
+    public static final String ACTION_WS_SESSION_REVOKED = "SECURITY_WS_SESSION_REVOKED";
     public static final String ACTION_PROPERTY_CREATE = "PROPERTY_CREATE";
     public static final String ACTION_PROPERTY_UPDATE = "PROPERTY_UPDATE";
     public static final String ACTION_PROPERTY_STATUS_CHANGED = "PROPERTY_STATUS_CHANGED";
@@ -64,6 +65,10 @@ public class AuditEventService {
     public static final String ACTION_IMAGE_CLEANUP = "PROPERTY_IMAGE_CLEANUP";
     public static final String ACTION_IMAGE_FAILURE = "PROPERTY_IMAGE_FAILURE";
     public static final String ACTION_INQUIRY_STATUS_CHANGED = "INQUIRY_STATUS_CHANGED";
+    public static final String ACTION_CONVERSATION_CREATE = "CONVERSATION_CREATE";
+    public static final String ACTION_MESSAGE_CREATE = "MESSAGE_CREATE";
+    public static final String ACTION_MESSAGE_REJECTED = "MESSAGE_REJECTED";
+    public static final String ACTION_READ_STATE_UPDATE = "READ_STATE_UPDATE";
 
     private static final Logger log = LoggerFactory.getLogger(AuditEventService.class);
     private static final String AUDITED_ATTRIBUTE_PREFIX =
@@ -224,6 +229,62 @@ public class AuditEventService {
                 before, after, null));
     }
 
+    /**
+     * Records a conversation creation in the caller's transaction. Only server
+     * identifiers are accepted; no message content is ever passed to audit.
+     */
+    public void recordConversationCreatedInTransaction(
+            UUID conversationId, UUID actorId, UUID propertyId, UUID assignedAgentId) {
+        writeInCurrentTransaction(ACTION_CONVERSATION_CREATE, "CONVERSATION", conversationId, actorId,
+                "{\"outcome\":\"SUCCESS\",\"propertyId\":" + jsonUuid(propertyId)
+                        + ",\"assignedAgentId\":" + jsonUuid(assignedAgentId) + "}");
+    }
+
+    /**
+     * Records one persisted message in the caller's transaction so a rollback
+     * cannot leave an audit row without a message. Content is deliberately not
+     * an argument and therefore cannot be persisted here.
+     */
+    public void recordMessageCreatedInTransaction(
+            UUID messageId, UUID actorId, UUID conversationId, UUID idempotencyKey,
+            Instant occurredAt) {
+        writeInCurrentTransaction(ACTION_MESSAGE_CREATE, "MESSAGE", messageId, actorId,
+                "{\"outcome\":\"SUCCESS\",\"conversationId\":" + jsonUuid(conversationId)
+                        + ",\"idempotencyKey\":" + jsonUuid(idempotencyKey)
+                        + ",\"occurredAt\":\"" + occurredAt + "\"}");
+    }
+
+    /**
+     * Records a rejected chat send in the independent audit sink. A rejection has
+     * no durable message row, so this write must survive the failed persistence
+     * transaction. Only safe identifiers, a coarse reason, and a correlation ID
+     * are accepted; message content is deliberately not an argument.
+     */
+    public void recordMessageRejected(
+            UUID actorId,
+            UUID conversationId,
+            UUID messageId,
+            UUID idempotencyKey,
+            String reason,
+            UUID correlationId) {
+        String payload = "{\"outcome\":\"REJECTED\",\"conversationId\":"
+                + jsonUuid(conversationId)
+                + ",\"messageId\":" + jsonUuid(messageId)
+                + ",\"idempotencyKey\":" + jsonUuid(idempotencyKey)
+                + ",\"reason\":" + jsonToken(reason)
+                + ",\"correlationId\":\""
+                + (correlationId == null ? UUID.randomUUID() : correlationId) + "\"}";
+        write(ACTION_MESSAGE_REJECTED, "MESSAGE", messageId, actorId, payload, null);
+    }
+
+    /** Records a monotonic read-state advance without exposing message content. */
+    public void recordReadStateUpdatedInTransaction(
+            UUID conversationId, UUID actorId, UUID lastReadMessageId, Instant occurredAt) {
+        writeInCurrentTransaction(ACTION_READ_STATE_UPDATE, "CONVERSATION_READ_STATE", conversationId, actorId,
+                "{\"outcome\":\"SUCCESS\",\"lastReadMessageId\":" + jsonUuid(lastReadMessageId)
+                        + ",\"occurredAt\":\"" + occurredAt + "\"}");
+    }
+
     /** Records the eventual provider-cleanup outcome for a committed deletion. */
     public void recordImageCleanup(
             UUID propertyId, UUID imageId, UUID actorId, String outcome) {
@@ -294,6 +355,28 @@ public class AuditEventService {
     public void recordWebSocketAuthFailure(String principalName, String destination) {
         write(ACTION_WS_AUTH_FAILURE, "SECURITY", null, parseActorId(principalName),
                 securityPayload("DENIED", "FORBIDDEN", safeDestination(destination)), null);
+    }
+
+    /**
+     * Records a Stage 7.2 WebSocket lifecycle, revocation or boundary event.
+     * Only an actor UUID, an allowlisted reason/destination classification,
+     * the outcome and a random correlation UUID are persisted. Session IDs,
+     * cookies, CSRF tokens and message content are never accepted here.
+     */
+    public void recordWebSocketSecurityEvent(
+            UUID actorId, String action, String reason, String destination, UUID correlationId) {
+        String safeAction = action != null && action.matches("SECURITY_WS_[A-Z_]{1,40}")
+                ? action : ACTION_WS_AUTH_FAILURE;
+        String payload = "{\"outcome\":" + jsonToken(outcomeOf(action))
+                + ",\"reason\":" + jsonToken(reason)
+                + ",\"scope\":" + jsonToken(destinationScope(destination))
+                + ",\"correlationId\":\"" + (correlationId == null ? UUID.randomUUID() : correlationId)
+                + "\"}";
+        write(safeAction, "SECURITY", correlationId, actorId, payload, null);
+    }
+
+    private static String outcomeOf(String action) {
+        return ACTION_WS_SESSION_REVOKED.equals(action) ? "REVOKED" : "DENIED";
     }
 
     private void write(
@@ -421,6 +504,35 @@ public class AuditEventService {
 
     private static String safeScope(String scope) {
         return scope != null && scope.matches("[a-z_]+") ? scope : "unknown";
+    }
+
+    /**
+     * Maps a STOMP destination or lifecycle scope to a short audit-safe token.
+     * Session-specific suffixes added by Spring are stripped so no identifier is
+     * persisted, while the queue classification remains useful to operators.
+     */
+    private static String destinationScope(String destination) {
+        if (destination == null || destination.isBlank()) {
+            return "unknown";
+        }
+        if (destination.matches("[A-Za-z_]{1,40}")) {
+            return destination;
+        }
+        if ("/app/chat.send".equals(destination)) {
+            return "chat_send";
+        }
+        if (destination.startsWith("/user/queue/") || destination.startsWith("/queue/")) {
+            String queue = destination.substring(destination.lastIndexOf('/') + 1);
+            int suffix = queue.indexOf('-');
+            if (suffix > 0) {
+                queue = queue.substring(0, suffix);
+            }
+            return switch (queue) {
+                case "messages", "notifications", "errors" -> queue;
+                default -> "unknown";
+            };
+        }
+        return "unknown";
     }
 
     private static String safeDestination(String destination) {

@@ -12,6 +12,12 @@ authentication integration. Property management, chat handling, Cloudinary
 upload, and production deployment remain outside this document's completed
 scope.
 
+**Stage 7.1 current boundary:** The Stage 1/2 setup evidence and limitations
+below are retained as history and are not a Stage 7.1 implementation claim.
+Stage 7.1 approves documentation and architecture contracts only: no chat code,
+migration, dependency, deployment change or executed acceptance scenario is
+produced. All 55 scenarios in the Stage 7 ledger remain `NOT EXECUTED`.
+
 Approved source-of-truth documents:
 
 - `docs/PRD.md`
@@ -60,6 +66,12 @@ dependencies are required and are pinned in `backend/pom.xml`:
 
 `spring-boot-starter-web` is deprecated in Boot 4; the project uses
 `spring-boot-starter-webmvc`.
+
+**Stage 7.1 dependency gate (P-11):** No STOMP client dependency is introduced in
+Stage 7.1. A locally vendored, pinned client is permitted only after exact
+version, license, artifact-integrity and security-review records exist; absence
+of those records blocks 7.5 integration. CDN-only loading, npm, a bundler and
+`package.json` remain outside the approved frontend architecture.
 
 ---
 
@@ -278,6 +290,14 @@ $env:DB_PASSWORD = ""
 - `flyway.clean-disabled` is `true`.
 - A fresh database must migrate through all 14 versions before the application
   starts. Startup fails if Hibernate validation finds a schema mismatch.
+
+The V1–V14 description above is the historical Stage 2 baseline; later stages
+added V15–V18. **Stage 7.1 migration gate:** V19 is authorized only in Stage 7.3
+for the message idempotency constraint and supporting chat indexes. No V19 file
+is created or applied in Stage 7.1, and V1–V18 remain unchanged. Conversation
+`status`/`closed_at` remain stored fields only; no conversation status mutation
+or `PATCH /conversations/{id}/status` implementation is approved in Stage 7
+(P-04).
 
 PostgreSQL folds unquoted identifiers to lowercase, so the physical tables are
 `spring_session`, `spring_session_attributes`, `users`, `properties`, and so on.
@@ -628,6 +648,11 @@ No unavailable check is reported as PASS.
 
 ## 11. Known limitations and deferred work
 
+**Historical Stage 1/2 note:** The limitations below describe the validated
+Stage 2 baseline. Later stages added authentication and business features; the
+Stage 7.1 boundary is documentation/contract only, with implementation deferred
+to later sub-stages as noted in §15.
+
 - No authentication, registration, login, logout, or authorization rules.
 - No business modules, property CRUD, chat handling, or Cloudinary integration.
 - No WebSocket message handlers or STOMP authorization.
@@ -694,6 +719,7 @@ Spring Security **7.1.2**:
 | Response header delivery | Not provided by default | Custom `X-CSRF-TOKEN` response-header writer required |
 | Failure response | `SecurityConfig`'s `accessDeniedHandler` is already used by `CsrfFilter`; a tokenless `POST` returned `403 {"error":"FORBIDDEN"}` | JSON shape exists; add the approved audit event and a contract test |
 | CORS exposure | Header exposure is already configured | Compatible |
+| STOMP `CONNECT` native-header CSRF (F-7.1-08) | Spring Security 7.1.2 supports a session-bound token in a STOMP native header | Frontend sends its in-memory `X-CSRF-TOKEN`; 7.2 backend work must resolve the trusted session and require exact token equality plus exact `Origin`. Host-only cookies and REST CSRF are unchanged |
 
 **Result:** the approved design remains implementable on Spring Security 7.1.2
 with no blocking API removal, but two framework defaults must not be used
@@ -711,6 +737,14 @@ architecture.
 This caveat is also recorded in the `SecurityConfig` Javadoc so it is visible
 to the next stage.
 
+**Stage 7.1 addition (F-7.1-08):** The frontend sends the in-memory
+`X-CSRF-TOKEN` value in a STOMP `CONNECT` native header. In 7.2 the backend must
+resolve the trusted session ID from handshake attributes, require exact equality
+with the session-bound token and independently validate the exact `Origin`;
+missing, invalid, stale or mismatched values are rejected before subscriptions.
+This is an approved design contract only and is not claimed implemented or
+tested in Stage 7.1.
+
 ---
 
 ## 13. External prerequisites for later stages
@@ -724,6 +758,14 @@ These are intentionally not configured and must not be claimed operational:
 - Cloudinary cloud name, API key, and API secret.
 - Domain/TLS certificates and cookie domain decisions.
 - Monitoring, log aggregation, and alerting.
+
+**P-12 deployment note:** Same-site custom domains are approved. Exact
+frontend/API hostnames are Stage 7.7 deployment-verification inputs; they do not
+block Stage 7.1 closure or local Stage 7.2–7.6 implementation. No wildcard
+origin or domain-widened cookie is authorized. **P-11 client gate:** no STOMP
+dependency exists in Stage 7.1; introduction of a locally vendored pinned client
+requires exact version, license, integrity and security-review records before
+7.5 integration.
 
 ---
 
@@ -813,3 +855,12 @@ integration review and final Stage 2 verification. Business services,
 authentication, and API endpoints remain in later stages. SD-44 (structured
 logging, formal redaction policy, retention) and SD-53 (CSRF wiring) remain
 incomplete; no production-readiness claim is made.
+
+**Current Stage 7.1 boundary:** Stage 7.1 is documentation and architecture
+contract only. Chat implementation starts in Stage 7.2; V19 is authorized only
+in Stage 7.3; the vendored STOMP client gate applies before 7.5 (P-11); exact
+same-site hostnames are Stage 7.7 deployment inputs (P-12). No conversation
+status mutation or `PATCH /conversations/{id}/status` endpoint is implemented in
+Stage 7 (P-04), and all 55 Stage 7 acceptance scenarios remain `NOT EXECUTED`.
+The Stage 1/2 limitations above are historical and are not updated by this
+documentation-only stage.

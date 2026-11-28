@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Conversation — EstateVista</title>
+  <meta name="description" content="Private, property-specific conversation with an EstateVista agent.">
+  <link rel="icon" href="../../assets/images/brand/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400..700&amp;family=Inter:wght@400..700&amp;display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <link rel="stylesheet" href="../../assets/css/theme.css">
+  <link rel="stylesheet" href="../../assets/css/components.css">
+  <link rel="stylesheet" href="../../assets/css/chat.css">
+</head>
+<body class="ev-chat-page" data-chat-scope="buyer" data-chat-role="BUYER">
+  <a class="ev-skip-link" href="#main">Skip to main content</a>
+
+  <header class="site-header" data-site-header>
+    <nav class="navbar navbar-expand-lg site-nav" aria-label="Primary">
+      <div class="container ev-container">
+        <a class="site-brand" href="../../index.html">
+          <img class="site-brand__mark" src="../../assets/images/brand/favicon.svg" alt="" width="36" height="36" aria-hidden="true">
+          <span class="site-brand__name">EstateVista</span>
+        </a>
+        <button class="navbar-toggler site-nav__toggle" type="button" data-bs-toggle="collapse" data-bs-target="#primaryNav"
+                aria-controls="primaryNav" aria-expanded="false" aria-label="Open navigation menu">
+          <span class="site-nav__bar" aria-hidden="true"></span>
+        </button>
+        <div class="collapse navbar-collapse site-nav__panel" id="primaryNav">
+          <ul class="navbar-nav site-nav__list ms-lg-auto">
+            <li class="nav-item"><a class="nav-link site-nav__link" href="../../index.html" data-nav-link>Home</a></li>
+            <li class="nav-item"><a class="nav-link site-nav__link" href="../../properties.html" data-nav-link>Properties</a></li>
+            <li class="nav-item" data-favorites-nav hidden><a class="nav-link site-nav__link" href="../../favorites.html" data-nav-link>Favorites</a></li>
+            <li class="nav-item" data-inquiries-nav hidden><a class="nav-link site-nav__link" href="inquiries.html" data-nav-link>Inquiries</a></li>
+            <li class="nav-item" data-conversations-nav hidden><a class="nav-link site-nav__link" href="conversations.html" data-nav-link>Conversations</a></li>
+            <li class="nav-item"><a class="nav-link site-nav__link" href="../../about.html" data-nav-link>About us</a></li>
+            <li class="nav-item"><a class="nav-link site-nav__link" href="../../contact.html" data-nav-link>Contact us</a></li>
+          </ul>
+          <div class="site-auth" data-auth-nav data-auth-login-href="../../login.html" data-auth-register-href="../../register.html" data-auth-home-href="../../index.html"></div>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <section class="ev-section" aria-labelledby="chatThreadHeading">
+      <div class="container ev-container">
+        <div class="ev-panel ev-chat-guard" data-chat-guard hidden>
+          <h2 data-chat-guard-title>Sign in to view this conversation</h2>
+          <p data-chat-guard-message role="status" aria-live="polite"></p>
+          <a class="btn btn-primary" data-chat-login-link href="../../login.html">Log in</a>
+          <a class="btn btn-secondary" href="../../properties.html">Browse properties</a>
+        </div>
+
+        <div class="ev-panel" data-chat-loading hidden>
+          <p class="ev-chat-loading" role="status" aria-live="polite">Loading your conversation…</p>
+          <div class="ev-chat-skeleton" aria-hidden="true"></div>
+          <div class="ev-chat-skeleton" aria-hidden="true"></div>
+          <div class="ev-chat-skeleton" aria-hidden="true"></div>
+        </div>
+
+        <div class="ev-panel ev-chat-critical" data-chat-critical hidden>
+          <h2 id="chatThreadHeading" data-chat-critical-title>Conversation unavailable</h2>
+          <p data-chat-critical-message role="alert"></p>
+          <a class="btn btn-primary" href="conversations.html">Back to conversations</a>
+        </div>
+
+        <article class="ev-panel ev-chat-workspace" data-chat-workspace hidden aria-labelledby="chatThreadTitle">
+          <header class="ev-chat-header">
+            <a class="ev-chat-header__back" href="conversations.html">← All conversations</a>
+            <div class="ev-chat-header__identity">
+              <h1 class="ev-chat-header__title" id="chatThreadTitle" data-chat-title>Conversation</h1>
+              <p class="ev-chat-header__role" data-chat-role-label>Private conversation</p>
+            </div>
+            <div>
+              <p class="ev-chat-header__connection" role="status" aria-live="polite">
+                <span class="ev-chat-header__dot" data-chat-connection-dot aria-hidden="true"></span>
+                <span data-chat-connection-text>Connecting…</span>
+              </p>
+              <p class="ev-chat-header__role" data-chat-read-indicator aria-live="polite"></p>
+            </div>
+          </header>
+
+          <div class="ev-chat-property" data-chat-property hidden>
+            <img class="ev-chat-property__image" data-chat-property-image src="../../assets/images/brand/favicon.svg" alt="" width="64" height="64" aria-hidden="true">
+            <div class="ev-chat-property__summary">
+              <span class="ev-chat-property__title" data-chat-property-title></span>
+              <span data-chat-property-status></span>
+            </div>
+          </div>
+
+          <div class="ev-connection-banner" data-chat-connection-banner role="status" aria-live="polite" hidden>
+            <span data-chat-connection-message></span>
+            <span class="ev-connection-banner__actions">
+              <button class="btn btn-outline-secondary btn-sm" type="button" data-chat-reconnect hidden>Reconnect</button>
+              <a class="btn btn-outline-secondary btn-sm" data-chat-login-link href="../../login.html" hidden>Log in</a>
+            </span>
+          </div>
+
+          <div class="ev-alert ev-alert--error" data-chat-error role="alert" hidden>
+            <p data-chat-error-message></p>
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-chat-retry-load>Try again</button>
+          </div>
+
+          <div class="ev-chat-history-wrap">
+            <button class="btn btn-link btn-sm" type="button" data-chat-load-older hidden>Load older messages</button>
+            <p class="ev-chat-beginning text-muted small" data-chat-beginning hidden>Beginning of conversation</p>
+            <div class="ev-chat-history" data-chat-history role="log" aria-label="Message history" aria-live="polite" aria-relevant="additions" tabindex="0">
+              <ul class="ev-chat-history__list" data-chat-message-list></ul>
+              <p class="ev-chat-empty" data-chat-empty hidden>No messages yet. Send the first message below.</p>
+            </div>
+            <button class="ev-chat-new-messages" type="button" data-chat-new-messages hidden>New messages — jump to latest</button>
+          </div>
+
+          <form class="ev-chat-composer" data-chat-composer>
+            <label class="ev-chat-composer__label" for="chatMessage">Message</label>
+            <div class="ev-chat-composer__field">
+              <textarea class="ev-chat-composer__input" id="chatMessage" data-chat-input rows="2" maxlength="2000"
+                        placeholder="Write a message about this property" aria-describedby="chatMessageHelp chatMessageFeedback"></textarea>
+              <button class="btn btn-primary ev-chat-composer__send" type="submit" data-chat-send>Send</button>
+            </div>
+            <p class="ev-chat-composer__helper" id="chatMessageHelp">
+              <span>Messages are private to this conversation.</span>
+              <span data-chat-count>0 / 2000</span>
+            </p>
+            <p class="ev-chat-composer__feedback" id="chatMessageFeedback" data-chat-feedback role="status" aria-live="polite" hidden></p>
+          </form>
+        </article>
+
+        <noscript>
+          <div class="ev-panel">
+            <h2>JavaScript required</h2>
+            <p>Conversations are private and loaded from the EstateVista API. Enable JavaScript to read and send messages.</p>
+          </div>
+        </noscript>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container ev-container">
+      <div class="site-footer__bottom">
+        <p>© <span data-current-year>2026</span> EstateVista. Fictional content, built for demonstration.</p>
+        <p>HTML · CSS · vanilla JavaScript · Bootstrap 5</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../../vendor/stompjs/7.5.0/stomp.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous" defer></script>
+  <script src="../../assets/js/main.js" defer></script>
+  <script type="module" src="../../assets/js/auth/auth-init.js"></script>
+  <script type="module" src="../../assets/js/chat/chat-thread-page.js"></script>
+</body>
+</html>

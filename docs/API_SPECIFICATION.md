@@ -267,7 +267,7 @@ Agent account creation is handled separately through agent management.
 | PATCH | `/agents/me` | Agent | Update permitted profile fields |
 | GET | `/agents/me/properties` | Agent | Retrieve assigned properties |
 | GET | `/agents/me/inquiries` | Agent | Retrieve authorized inquiries |
-| GET | `/agents/me/conversations` | Agent | Retrieve assigned conversations |
+| GET | `/conversations` (agent scope) | Agent | Retrieve conversations where the agent is the original `assigned_agent_id` (§11) |
 
 Agent profile updates must not allow agents to modify their role, account status, or property assignments.
 
@@ -653,7 +653,7 @@ Conversations are property-specific and persistent.
 | GET | `/conversations/{conversationId}` | Participants | Retrieve conversation details |
 | GET | `/conversations/{conversationId}/messages` | Participants | Retrieve message history |
 | PATCH | `/conversations/{conversationId}/read-state` | Participants | Update read progress |
-| PATCH | `/conversations/{conversationId}/status` | Original assigned agent | Update conversation status |
+| PATCH | `/conversations/{conversationId}/status` | Original assigned agent | **Deferred beyond Stage 7 by P-04**; not implemented or mapped in Stage 7 |
 
 Administrators do not have conversation access or conversation-status authority in the MVP. They may view inquiry metadata and the inquiry message, but not conversations or message transcripts (Database Design §23.1.D; API §25.1.E; UI D-16).
 
@@ -663,17 +663,16 @@ Administrators do not have conversation access or conversation-status authority 
 
 Request body: none.
 
-The backend must:
+The backend must distinguish retrieval of an existing conversation from creation of a new one:
 
-1. Identify the authenticated buyer.
-2. Retrieve the property.
-3. Determine its current assigned agent.
-4. Check whether a conversation already exists for the buyer-property pair.
-5. Return the existing conversation if found.
-6. Otherwise, create a conversation with the current agent assignment.
-7. Create participant read-state records.
+1. Identify the authenticated active buyer from the server-side session.
+2. Check whether the permanent `(buyer_id, property_id)` conversation already exists.
+3. If it exists and the requester is an authorized active original participant, return it with `200` regardless of the property's later status or current assignment. Never mutate its participants or snapshot.
+4. Otherwise, require a `PUBLISHED` property, an active `BUYER` and an active `AGENT` as the current primary agent. A non-eligible or nonexistent property returns generic `404` (P-13).
+5. Within a transaction, lock and refresh the property and user rows in stable UUID order, create the conversation with the current agent as the immutable `assigned_agent_id`, and rely on `uk_conversations_buyer_property` as the concurrency authority. On a unique violation, re-read and return the existing conversation; never return `409`.
+6. Create participant read-state records for the buyer and original assigned agent.
 
-The first message, like every subsequent message, is sent through the approved messaging mechanism (`/app/chat.send`). Conversation creation does not accept or persist an `initialMessage` (API §25.1.A).
+The first message, like every subsequent message, is sent through the approved messaging mechanism (`/app/chat.send`). Conversation creation does not accept or persist an `initialMessage` (API §25.1.A). If the original assigned agent is inactive, protected messaging in that conversation is disabled and no fallback or transfer is created (P-03).
 
 Success: `200 OK` for an existing conversation or `201 Created` for a new conversation.
 
@@ -685,18 +684,32 @@ Response:
   "data": {
     "conversationId": "uuid",
     "propertyId": "uuid",
+    "propertyTitle": "string",
+    "propertyStatus": "PUBLISHED",
     "buyerId": "uuid",
     "assignedAgentId": "uuid",
+    "unreadCount": 0,
+    "lastMessageId": "uuid or null",
+    "lastMessageAt": "timestamp or null",
     "createdAt": "2026-11-06T10:30:00Z"
   }
 }
 ```
 
-The database unique constraint on `(buyer_id, property_id)` must handle concurrent creation attempts safely.
+`unreadCount` is participant-specific and is included in both conversation list and detail responses (P-10). The database unique constraint on `(buyer_id, property_id)` is the concurrency authority for creation.
 
 ## 11.2 Retrieve Messages
 
-`GET /conversations/{conversationId}/messages?page=0&size=30`
+`GET /conversations/{conversationId}/messages?limit=30[&before=<cursor>|&after=<cursor>]`
+
+Message history is the approved cursor-pagination exception to the generic zero-based offset rules in §18. There is no `page`, `size`, `totalElements` or `totalPages` parameter for this endpoint.
+
+- Retrieval order is latest-first: `sentAt DESC, id DESC`.
+- The caller renders the loaded window in chronological order (oldest at the top, newest at the bottom).
+- `limit` defaults to `30` and has a maximum of `100`; invalid values return `400`.
+- `before` returns the next older page; `after` returns messages newer than the cursor for reconnection recovery. `before` and `after` are mutually exclusive.
+- A cursor is an opaque server-validated encoding of `(sentAt, id)`. A malformed, foreign-conversation or tampered cursor returns `400`; message content is never encoded in a URL.
+- Concurrent inserts, reconnect recovery and commit/timestamp order differences must not shift, duplicate or omit rows.
 
 Success: `200 OK`
 
@@ -710,19 +723,19 @@ Success: `200 OK`
       "senderId": "uuid",
       "messageType": "TEXT",
       "content": "Is this property still available?",
+      "idempotencyKey": "uuid",
       "sentAt": "2026-11-06T10:30:00Z"
     }
   ],
   "meta": {
-    "page": 0,
-    "size": 30,
-    "totalElements": 1,
-    "totalPages": 1
+    "limit": 30,
+    "nextCursor": "opaque cursor or null",
+    "hasMore": true
   }
 }
 ```
 
-The exact message pagination direction and ordering strategy will be finalized during chat implementation.
+The V19 index `(conversation_id, sent_at, id)` supports this order. No monotonic sequence column is introduced by Stage 7.1.
 
 # 12. Message APIs
 
@@ -948,7 +961,7 @@ Rules:
 - Maximum page size: 100 unless a specific endpoint requires a stricter limit.
 - Invalid sort fields must be rejected.
 - Sorting must use an explicit allowlist.
-- Large message histories must use pagination.
+- Large message histories must use the cursor contract in §11.2; they are the explicit exception to zero-based offset pagination.
 
 ## 19.1 Stage 6 Endpoint-Specific Contracts
 
@@ -971,7 +984,7 @@ REST handles normal resource operations. WebSocket/STOMP handles real-time messa
 /ws
 ```
 
-The endpoint is hosted by the Spring Boot backend. The approved design uses native WebSocket (no SockJS fallback) at `/ws`, with the same server-side session as REST, an exact `Origin` allowlist, and no query-string token (Security Architecture SD-01, SD-34, SD-48). Exact production origins and the hostnames in SD-48 remain deployment configuration. The handshake authentication and STOMP authorization are not implemented in Stage 1.8.
+The endpoint is hosted by the Spring Boot backend. The approved design uses native WebSocket (no SockJS fallback) at `/ws`, with the same server-side session as REST, an exact `Origin` allowlist, and no query-string token (Security Architecture SD-01, SD-34, SD-48). The handshake is a `GET` and needs no CSRF token itself; the STOMP `CONNECT` frame must carry the session-bound token from the existing `X-CSRF-TOKEN` flow in a native header. Missing, invalid, stale or mismatched tokens and disallowed origins are rejected before subscriptions. Stage 7.2 implemented and verified this handshake/CONNECT boundary against real Spring Session JDBC sessions and native WebSocket/STOMP frames; the `X-CSRF-TOKEN` repository remains the single session-bound CSRF system. Exact production origins and the hostnames in SD-48 remain deployment configuration (P-12). No application chat handler, message persistence, frontend STOMP client, V19 migration, or Stage 7.3–7.7 acceptance scenario is claimed by Stage 7.2.
 
 ## 20.2 Client Subscription Destinations
 
@@ -981,13 +994,13 @@ The endpoint is hosted by the Spring Boot backend. The approved design uses nati
 | `/user/queue/notifications` | Receive private notifications | Authenticated user |
 | `/user/queue/errors` | Receive messaging errors | Authenticated user |
 
-Clients must not subscribe directly to arbitrary conversation destinations without server-side authorization.
+Clients must not subscribe directly to arbitrary conversation destinations without server-side authorization. Stage 7.2 enforces this allowlist, a three-subscription-per-connection cap, and fail-closed outbound authorization immediately before dispatch. Participant-scoped conversation delivery remains a Stage 7.4 obligation and is not claimed here.
 
 ## 20.3 Client Message Destinations
 
 | Destination | Purpose |
 |---|---|
-| `/app/chat.send` | Send a message |
+| `/app/chat.send` | Send a message (Stage 7.2 permits only this STOMP destination; no application handler or persistence is implemented until Stage 7.4) |
 
 ## 20.4 Send Message Payload
 
@@ -1002,11 +1015,12 @@ Payload:
 ```json
 {
   "conversationId": "uuid",
-  "content": "I would like to schedule a visit."
+  "content": "I would like to schedule a visit.",
+  "idempotencyKey": "uuid"
 }
 ```
 
-The sender ID must be derived from the authenticated connection. The client must not be trusted to supply its own sender identity.
+`idempotencyKey` is mandatory and must be a client-generated UUID reused for retries of the same logical message. The same key with the same content returns the existing persisted message; the same key with different content returns a safe conflict. The sender ID is derived from the authenticated connection; the client is never trusted to supply its own identity. Unknown fields, including `senderId`, `id`, `sentAt` and audit fields, are rejected or ignored and are never persisted. A native STOMP `receipt` header, if supplied, is transport metadata only and is not the persistence acknowledgement (P-05/P-08).
 
 ## 20.5 Incoming Message Event
 
@@ -1016,18 +1030,34 @@ Destination:
 /user/queue/messages
 ```
 
-Payload:
+Authorized participants receive `MESSAGE_CREATED` frames:
 
 ```json
 {
+  "type": "MESSAGE_CREATED",
   "id": "uuid",
   "conversationId": "uuid",
   "senderId": "uuid",
   "messageType": "TEXT",
   "content": "I would like to schedule a visit.",
+  "idempotencyKey": "uuid",
   "sentAt": "2026-11-06T10:30:00Z"
 }
 ```
+
+After commit, the sender alone also receives `PERSISTENCE_ACK` on the same user queue:
+
+```json
+{
+  "type": "PERSISTENCE_ACK",
+  "id": "uuid",
+  "conversationId": "uuid",
+  "idempotencyKey": "uuid",
+  "sentAt": "2026-11-06T10:30:00Z"
+}
+```
+
+No recipient-delivery or read-receipt frame is emitted. Native STOMP `RECEIPT` is not authoritative for application sends (F-7.1-01).
 
 ## 20.6 Read-State Updates
 
@@ -1037,19 +1067,19 @@ Read state is updated only through the REST endpoint:
 PATCH /conversations/{conversationId}/read-state
 ```
 
-The `/app/chat.read` STOMP destination is not part of the initial contract. It may be introduced later only if real-time read-receipt behaviour requires it and the API change is approved (API §25.1.B).
+The `/app/chat.read` STOMP destination is not part of the contract and is not a read-receipt channel. Read state advances only for messages the participant actually viewed, is transactionally monotonic, and excludes the participant's own messages from that participant's unread count (P-07/F-7.1-06).
 
 ## 20.7 Messaging Rules
 
-1. Authenticate WebSocket connections.
-2. Validate conversation participation for every send operation.
-3. Persist messages before broadcasting them.
-4. Broadcast only to authorized participants.
-5. Maintain chronological message history.
-6. Handle disconnected users through persistent message storage.
-7. Update unread counts and notification records.
-8. Never trust conversation IDs or sender IDs without authorization checks.
-9. Prevent duplicate message processing where practical.
+1. Authenticate WebSocket connections and require a valid session-bound CSRF token on STOMP CONNECT.
+2. Validate authoritative session existence/expiry and account status at CONNECT, heartbeat and each protected frame; never rely solely on session-destruction events.
+3. Validate conversation participation for every send operation and again immediately before every outbound dispatch.
+4. Reject missing or reused-invalid `idempotencyKey` values according to the P-05 conflict rules; persist with the V19 unique constraint as authority.
+5. Persist messages before broadcasting them; broadcast only to authorized participants derived from the conversation.
+6. Send the application-level `PERSISTENCE_ACK` to the sender only after commit; emit no recipient or read receipts.
+7. Retrieve history latest-first by `(sentAt DESC, id DESC)` with a deterministic cursor; render chronologically.
+8. Handle disconnected users through REST cursor refresh and ID deduplication; never automatically replay an ambiguous mutation.
+9. Advance read state only for viewed messages, transactionally and monotonically; expose only the requester's `unreadCount`.
 10. Use server-side rate limits and message-size limits.
 
 # 21. API Security Requirements
@@ -1107,9 +1137,9 @@ The following details require final decisions during their corresponding impleme
 | Search | Full-text search and geographic search implementation |
 | Favorites | Stage 6 mutation, retention, pagination, and batch-status decisions are approved in §9 and `docs/STAGE_6_DECISION_REGISTER.md` §5.1; they were implemented and verified in Stage 6.7. |
 | Inquiries | Stage 6 status transitions, duplicate policy, actor authority, pagination, and DTO rules are approved in §10.2 and `docs/STAGE_6_DECISION_REGISTER.md` §5.2; they were implemented and verified in Stage 6.7. Retention duration remains deferred. |
-| Conversations | Handling conversations when an agent is deactivated |
-| Chat | Editing, deletion, attachments, and delivery acknowledgements |
-| Chat Pagination | Cursor-based versus page-based history retrieval |
+| Conversations | Resolved by P-02/P-03: permanent uniqueness and immutable original agent are retained; deactivation preserves history, disables protected messaging and introduces no fallback or transfer |
+| Chat | Resolved as designs in `docs/STAGE_7_DECISION_REGISTER.md`: mandatory idempotency key, V19 constraint/index scope, cursor history, monotonic own read state and `unreadCount`, sender-only persistence acknowledgement, REST reconnection, STOMP `CONNECT` CSRF, publication eligibility, and Stage 7 status deferral. Editing, deletion, attachments, receipts, status mutation, exact client-version values and exact hostnames remain deferred |
+| Chat Pagination | Resolved by P-06/F-7.1-04: latest-first deterministic cursor retrieval with chronological rendering |
 | Notifications | Email delivery and notification preferences |
 | Dashboard | Final metrics and aggregation requirements |
 | Audit | Retention period and exact audited operations |
@@ -1172,15 +1202,11 @@ The first message, like subsequent messages, must be sent through the approved m
 
 ### B. Read-State Handling
 
-The specification currently defines read-state updates through both REST and STOMP.
-
-For the initial implementation, use:
+The REST endpoint is the only read-state mutation:
 
 `PATCH /conversations/{conversationId}/read-state`
 
-as the authoritative read-state update operation.
-
-The `/app/chat.read` STOMP destination is not required for the initial implementation. It may be introduced later if real-time read-receipt behavior requires it.
+The `/app/chat.read` STOMP destination is not part of the approved contract and is not a read-receipt channel; it must not be introduced by assumption. Read state advances only for messages the participant actually viewed, within the same conversation, and the transactionally monotonic highest valid viewed position wins under concurrency. Only the requester's own `unreadCount` is returned in conversation list and detail responses (P-07/P-10, F-7.1-06). No read-receipt event or UI is approved.
 
 ### C. Property Archiving
 
@@ -1219,13 +1245,18 @@ The WebSocket implementation must authenticate connections and authorize every m
 
 In particular:
 
-- Clients cannot choose their sender identity.
+- A new conversation is created only for a `PUBLISHED` property with an active buyer and an active current primary agent; an existing permanent conversation is retrieved by an authorized active original participant regardless of later property status or assignment (P-13, F-7.1-07).
+- Clients cannot choose their sender identity, buyer identity, agent assignment, conversation snapshot or message identity.
 - Clients cannot subscribe to arbitrary private conversation destinations.
-- Only the buyer and originally assigned agent can access a conversation.
-- Message persistence must succeed before broadcasting.
-- Reconnection must allow retrieval of missed messages from PostgreSQL.
+- Only the original buyer and originally assigned agent can access a conversation; administrators are denied, and reassignment neither transfers history nor creates a second conversation for the same buyer/property (P-02).
+- Conversation status mutation is deferred beyond Stage 7 by P-04; no `PATCH /status` route is implemented or mapped in Stage 7.
+- Every `/app/chat.send` frame carries a mandatory client-generated UUID `idempotencyKey`. The V19 unique key `(conversation_id, sender_id, idempotency_key)` is the duplicate authority; the same key with different content returns a safe conflict (P-05).
+- Message persistence must succeed before broadcasting, and participant/session/account authorization must be rechecked immediately before every outbound dispatch (F-7.1-03).
+- After commit, a sender-only application `PERSISTENCE_ACK` correlated by idempotency key is emitted. Native STOMP `RECEIPT` is non-authoritative, and no recipient, delivery or read-receipt frame is emitted (P-08, F-7.1-01).
+- Read state is REST-only and monotonic; only the requester's own `unreadCount` is returned in conversation list and detail responses (P-07/P-10).
+- Reconnection reuses participant-scoped REST cursor history and deduplicates by server message ID; no separate sync endpoint is approved (P-09).
 
-The exact authentication handshake is defined as a server-side session with an exact WebSocket `Origin` allowlist and no query-string token (Security Architecture SD-01, SD-34, SD-48, approved as designs).
+The exact authentication handshake is defined as a server-side session with an exact WebSocket `Origin` allowlist and no query-string token. The STOMP `CONNECT` frame must carry the session-bound token from the existing `X-CSRF-TOKEN` flow in a native header; missing, invalid, stale or mismatched tokens and disallowed origins are rejected before subscriptions (Security Architecture SD-01, SD-34, SD-40, SD-48; P-12/F-7.1-08). Exact production hostnames remain deployment-verification inputs.
 
 ### F. Agent and Inquiry Access
 
@@ -1269,9 +1300,17 @@ Authorized participants may retrieve historical references through authenticated
 | Frontend communication | Fetch API |
 | Backend | Spring Boot |
 | Standard operations | REST |
-| Real-time messaging | WebSocket + STOMP |
+| Real-time messaging | WebSocket + STOMP over native `/ws`; no SockJS fallback |
+| Conversation initiation | Explicit buyer action; new creation requires a `PUBLISHED` property plus active buyer and active current agent; no `initialMessage` |
+| Conversation uniqueness | Permanent `UNIQUE(buyer_id, property_id)` with immutable original `assigned_agent_id`; no transfer on reassignment |
+| Message history pagination | Latest-first cursor by `(sent_at DESC, id DESC)` with chronological client rendering; no new sequence column |
+| Message identity and duplicates | Server-generated message ID/timestamp plus mandatory client UUID `idempotencyKey` and V19 unique constraint |
+| Send acknowledgement | Sender-only application `PERSISTENCE_ACK` after commit; native STOMP `RECEIPT` is non-authoritative |
+| WebSocket CSRF | Session-bound token from the `X-CSRF-TOKEN` flow in a STOMP `CONNECT` native header with exact `Origin` validation |
+| Read state | REST-only monotonic advancement for viewed messages; participant-specific `unreadCount`; no read or delivery receipts |
+| Conversation status mutation | Deferred beyond Stage 7 by P-04; no `PATCH /status` implementation in Stage 7 |
 | Identifiers | UUID |
-| Pagination | Zero-based |
+| Pagination | Zero-based for standard collections; cursor for message history as specified in §11.2 |
 | Default property page size | 12 |
 | Default management page size | 20 |
 | Maximum general page size | 100 |
@@ -1301,9 +1340,11 @@ Authorized participants may retrieve historical references through authenticated
 
 ## 25.4 Deferred Decisions
 
-All decisions listed in Section 23 remain deferred unless explicitly resolved by this review.
+All decisions listed in Section 23 remain deferred unless explicitly resolved by this specification, the Stage 6 decision register, or the Stage 7 decision register.
 
-Session authentication, the CSRF header contract, the password-reset token mechanics, agent activation, and public property visibility are resolved as designs (Security Architecture SD-01, SD-05, SD-11, SD-12, SD-53, and C-10/D-08); their implementation, email-provider, token-migration, hostname, and test prerequisites remain. The Spring Session migration exists, and the SD-53 recheck against Spring Security 7.1.2 is recorded in `DEVELOPMENT_SETUP.md` §12. Stage 6 favorites and inquiry contracts are resolved by the owner decisions in `docs/STAGE_6_DECISION_REGISTER.md` and were implemented and verified in Stage 6.7; this specification is not itself the test evidence. Detailed status transitions for conversations, upload limits, notification delivery, and chat enhancements must be finalized before their respective implementations.
+Session authentication, the CSRF header contract, the password-reset token mechanics, agent activation, and public property visibility are resolved as designs (Security Architecture SD-01, SD-05, SD-11, SD-12, SD-53, and C-10/D-08); their implementation, email-provider, token-migration, hostname, and test prerequisites remain. The Spring Session migration exists, and the SD-53 recheck against Spring Security 7.1.2 is recorded in `DEVELOPMENT_SETUP.md` §12. Stage 6 favorites and inquiry contracts are resolved by the owner decisions in `docs/STAGE_6_DECISION_REGISTER.md` and were implemented and verified in Stage 6.7; this specification is not itself the test evidence.
+
+Stage 7.1 chat contracts are resolved by `docs/STAGE_7_DECISION_REGISTER.md`: V19 idempotency/index scope, latest-first cursor history, monotonic own read state and participant `unreadCount`, sender-only persistence acknowledgement, REST reconnection, STOMP `CONNECT` CSRF, creation eligibility versus historical retrieval, no status mutation in Stage 7, and the separate property `Message agent` action. Remaining deferred items are conversation status mutation (P-04/D-10), message editing/deletion/attachments/read and delivery receipts, a new V19 ordering-sequence column (D-11), exact STOMP-client version/license/integrity verification values (P-11), exact production hostnames (P-12), upload limits, notification delivery, and Stage 8/9 obligations. These remain future gates and are not Stage 7.1 implementation approvals.
 
 ## 25.5 Final Approval
 

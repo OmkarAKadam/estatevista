@@ -171,6 +171,8 @@ class ResourceAuthorizationIntegrationTest {
         message.setSender(buyer);
         message.setMessageType("TEXT");
         message.setContent("Hello");
+        message.setSentAt(Instant.now());
+        message.setIdempotencyKey(UUID.randomUUID());
         messageRepository.saveAndFlush(message);
 
         readStateId = new ConversationReadStateId(conversation.getId(), buyer.getId());

@@ -59,6 +59,21 @@ app:
     inquiry-submission-sustained:
       max-attempts: 1000
       window-seconds: 3600
+    ws-connection-attempt:
+      max-attempts: 1000
+      window-seconds: 60
+    ws-message-user:
+      max-attempts: 1000
+      window-seconds: 60
+    ws-message-conversation:
+      max-attempts: 1000
+      window-seconds: 60
+  websocket-security:
+    # Lifecycle tests invoke the revalidation method directly rather than
+    # depending on a background tick. The configured value stays in the
+    # approved bounded range.
+    revalidation-interval-ms: 60000
+    validation-cache-ttl-ms: 0
   image-cleanup:
     # Tests drive the worker deterministically; no background poller runs.
     enabled: false
