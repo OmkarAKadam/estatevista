@@ -583,7 +583,7 @@ P-01–P-13 are approved by the owner. Their future implementation remains gated
 - **Current implementation evidence:** `getWebSocketUrl()` exists but is unused; no STOMP/SockJS client library is present; frontend uses classic scripts plus ES module bridges.
 - **Identified conflict or gap:** A STOMP client is needed, but introducing a dependency requires owner approval.
 - **Available options:**
-  1. Vendor a pinned, audited MIT-licensed STOMP JS UMD build locally with license file, exact version and integrity record; no build system.
+  1. Vendor a pinned, audited Apache-2.0-licensed STOMP JS UMD build locally with license file, exact version and integrity record; no build system. The delivered `@stomp/stompjs` 7.5.0 license classification was reconciled with the verified upstream artifact during consolidated verification; the artifact and version were unchanged.
   2. Hand-write minimal STOMP frame handling in project code.
   3. Introduce npm/bundler/package.json (disallowed by Stage 7.1 constraints).
 - **Recommended option:** Option 1, subject to license/security verification and exact version pinning before use; no CDN-only loading.

@@ -213,6 +213,39 @@ export function advanceRecoveryCursor(current, page) {
   return textOrEmpty(page?.nextCursor) || current || null;
 }
 
+/**
+ * An `after` page is newest-first and its next cursor is its oldest visible
+ * row. Continuing with `after` would repeat that window, so recovery switches
+ * to `before` pages and walks back until it reaches the pre-reconnect floor
+ * message or the beginning of history.
+ */
+export function nextRecoveryRequest(page, floorMessageId = null) {
+  if (!page?.hasMore || !page.nextCursor) {
+    return null;
+  }
+  if (floorMessageId && page.messages.some((message) => message.id === floorMessageId)) {
+    return null;
+  }
+  return Object.freeze({ direction: "before", cursor: page.nextCursor });
+}
+
+/** Clear every private thread field before auth invalidation or page teardown. */
+export function clearThreadPrivateState(state) {
+  if (!state || typeof state !== "object") {
+    return state;
+  }
+  state.conversation = null;
+  state.messages = [];
+  state.olderCursor = null;
+  state.recoveryCursor = null;
+  state.recoveryFloorId = null;
+  state.lastRead = null;
+  state.unreadCount = 0;
+  state.hasUnseen = false;
+  state.composerBlocked = false;
+  return state;
+}
+
 export function reconcileAck(message, ack) {
   if (!message || !ack || !isAckCorrelatable(ack)) {
     return message;

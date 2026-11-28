@@ -177,29 +177,53 @@ public class ConversationService {
     }
 
     private CreatedConversation createEligibleConversation(UUID buyerId, UUID propertyId) {
+        // The first read only identifies which user rows may need locking. Every
+        // eligibility decision below is made again after the rows are locked so
+        // a status change committed between the read and the lock cannot be
+        // silently ignored.
         Property property = properties.findById(propertyId).orElseThrow(ConversationService::notFound);
-        if (property.getStatus() != PropertyStatus.PUBLISHED
-                || property.getPrimaryAgent() == null) {
-            throw notFound();
-        }
-        User agent = users.findById(property.getPrimaryAgent().getId())
-                .orElseThrow(ConversationService::notFound);
-        if (agent.getAccountStatus() != AccountStatus.ACTIVE
-                || !PlatformRole.AGENT.name().equals(agent.getRole().getName())) {
-            throw notFound();
-        }
+        UUID initialAgentId = property.getPrimaryAgent() == null
+                ? null
+                : property.getPrimaryAgent().getId();
+        users.findById(buyerId).orElseThrow(ConversationService::notFound);
 
         // Stable UUID order avoids deadlocks between simultaneous creations that
-        // involve the same buyer and agent rows.
-        List<UUID> userIds = new ArrayList<>(List.of(buyerId, agent.getId()));
-        userIds.sort(UUID::compareTo);
-        entityManager.createNativeQuery(
-                        "select id from users where id in (:ids) order by id for update")
-                .setParameter("ids", userIds)
-                .getResultList();
+        // involve the same user rows.
+        List<UUID> initialUserIds = new ArrayList<>();
+        initialUserIds.add(buyerId);
+        if (initialAgentId != null) {
+            initialUserIds.add(initialAgentId);
+        }
+        initialUserIds.sort(UUID::compareTo);
+        lockUsers(initialUserIds);
         entityManager.createNativeQuery("select id from properties where id = :id for update")
                 .setParameter("id", propertyId)
                 .getResultList();
+
+        property = properties.findById(propertyId).orElseThrow(ConversationService::notFound);
+        entityManager.refresh(property);
+        requirePublishedAgent(property);
+
+        User agent = users.findById(property.getPrimaryAgent().getId())
+                .orElseThrow(ConversationService::notFound);
+        if (!agent.getId().equals(initialAgentId)) {
+            // A reassignment committed before the property lock may name an
+            // agent that was not in the first lock set. Lock that row in the
+            // same stable UUID order before trusting its status.
+            List<UUID> reassignedUserIds = new ArrayList<>(List.of(buyerId, agent.getId()));
+            reassignedUserIds.sort(UUID::compareTo);
+            lockUsers(reassignedUserIds);
+            entityManager.refresh(property);
+            requirePublishedAgent(property);
+            agent = users.findById(property.getPrimaryAgent().getId())
+                    .orElseThrow(ConversationService::notFound);
+        }
+
+        User buyer = users.findById(buyerId).orElseThrow(ConversationService::notFound);
+        entityManager.refresh(buyer);
+        requireActiveRole(buyer, PlatformRole.BUYER);
+        entityManager.refresh(agent);
+        requireActiveRole(agent, PlatformRole.AGENT);
 
         Conversation raced = conversations.findByBuyerIdAndPropertyId(buyerId, propertyId).orElse(null);
         if (raced != null) {
@@ -220,6 +244,28 @@ public class ConversationService {
         audit.recordConversationCreatedInTransaction(
                 conversation.getId(), buyerId, propertyId, agent.getId());
         return new CreatedConversation(response(conversation, buyerId), true);
+    }
+
+    private void lockUsers(List<UUID> userIds) {
+        entityManager.createNativeQuery(
+                        "select id from users where id in (:ids) order by id for update")
+                .setParameter("ids", userIds)
+                .getResultList();
+    }
+
+    private static void requirePublishedAgent(Property property) {
+        if (property.getStatus() != PropertyStatus.PUBLISHED
+                || property.getPrimaryAgent() == null) {
+            throw notFound();
+        }
+    }
+
+    private static void requireActiveRole(User user, PlatformRole role) {
+        if (user.getAccountStatus() != AccountStatus.ACTIVE
+                || user.getRole() == null
+                || !role.name().equals(user.getRole().getName())) {
+            throw notFound();
+        }
     }
 
     private void initializeReadState(UUID conversationId, UUID userId) {

@@ -17,6 +17,7 @@ import {
 } from "./chat-connection.js";
 import {
   advanceRecoveryCursor,
+  clearThreadPrivateState,
   compareMessages,
   createPendingMessage,
   describeChatError,
@@ -25,6 +26,7 @@ import {
   markMessageFailed,
   MAX_CONTENT_LENGTH,
   mergeMessages,
+  nextRecoveryRequest,
   normalizeMessage,
   reconcileAck,
   SEND_TIMEOUT_MS
@@ -99,6 +101,7 @@ const state = {
   messages: [],
   olderCursor: null,
   recoveryCursor: null,
+  recoveryFloorId: null,
   loadingOlder: false,
   loadSequence: 0,
   lastRead: null,
@@ -257,12 +260,7 @@ function applyConnectionState(next) {
 
 function clearPrivateState() {
   clear(refs.list);
-  state.messages = [];
-  state.conversation = null;
-  state.lastRead = null;
-  state.unreadCount = 0;
-  state.hasUnseen = false;
-  state.composerBlocked = false;
+  clearThreadPrivateState(state);
   state.sendTimers.forEach((timer) => window.clearTimeout(timer));
   state.sendTimers.clear();
   if (refs.input) {
@@ -552,15 +550,45 @@ async function recoverMissedMessages() {
   if (!state.conversation || state.destroyed) {
     return;
   }
-  const options = state.recoveryCursor
-    ? { after: state.recoveryCursor, limit: 100 }
-    : { limit: 100 };
-  const result = await getMessages(role, conversationId, options);
-  if (state.destroyed || !result.ok) {
-    return;
+
+  let direction = state.recoveryCursor ? "after" : "initial";
+  let cursor = state.recoveryCursor;
+  let firstPage = null;
+  const seen = new Set();
+
+  while (!state.destroyed) {
+    const options = { limit: 100 };
+    if (direction === "after") {
+      options.after = cursor;
+    } else if (direction === "before") {
+      options.before = cursor;
+    }
+    const stepKey = `${direction}:${cursor ?? ""}`;
+    if (seen.has(stepKey)) {
+      break;
+    }
+    seen.add(stepKey);
+
+    const result = await getMessages(role, conversationId, options);
+    if (state.destroyed || !result.ok) {
+      return;
+    }
+    if (!firstPage) {
+      firstPage = result.data;
+    }
+    state.messages = mergeMessages(state.messages, result.data.messages);
+
+    const next = nextRecoveryRequest(result.data, state.recoveryFloorId);
+    if (!next) {
+      break;
+    }
+    direction = next.direction;
+    cursor = next.cursor;
   }
-  state.messages = mergeMessages(state.messages, result.data.messages);
-  state.recoveryCursor = advanceRecoveryCursor(state.recoveryCursor, result.data);
+
+  if (firstPage) {
+    state.recoveryCursor = advanceRecoveryCursor(state.recoveryCursor, firstPage);
+  }
   render({ preserveScroll: !isNearBottom() });
   if (isNearBottom()) {
     scheduleMarkRead();
@@ -644,6 +672,7 @@ async function loadConversation() {
   state.messages = mergeMessages([], history.data.messages);
   state.olderCursor = history.data.nextCursor;
   state.recoveryCursor = history.data.nextCursor;
+  state.recoveryFloorId = history.data.messages.at(-1)?.id ?? null;
   state.lastRead = null;
   state.hasUnseen = false;
 
@@ -682,6 +711,7 @@ function destroyRuntime() {
     state.teardownDisposer();
     state.teardownDisposer = null;
   }
+  clearThreadPrivateState(state);
   resetChatService();
 }
 

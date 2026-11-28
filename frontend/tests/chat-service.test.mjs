@@ -273,6 +273,54 @@ test("recovery cursor advances only when the backend supplies a newer boundary",
   assert.equal(format.advanceRecoveryCursor(null, { nextCursor: "" }), null);
 });
 
+test("missed-message recovery walks older before pages instead of repeating an after window", () => {
+  const page = {
+    messages: [{ id: M1 }, { id: M2 }],
+    nextCursor: "oldest-visible-cursor",
+    hasMore: true
+  };
+  assert.deepEqual(format.nextRecoveryRequest(page, null), {
+    direction: "before",
+    cursor: "oldest-visible-cursor"
+  });
+  assert.deepEqual(format.nextRecoveryRequest(page, "older-floor-id"), {
+    direction: "before",
+    cursor: "oldest-visible-cursor"
+  });
+  assert.equal(format.nextRecoveryRequest(page, M2), null);
+  assert.equal(format.nextRecoveryRequest({ ...page, hasMore: false }, null), null);
+  assert.equal(format.nextRecoveryRequest({ ...page, nextCursor: null }, null), null);
+});
+
+test("thread teardown clears all private message fields and both cursors", () => {
+  const state = {
+    conversation: { conversationId: C1 },
+    messages: [{ id: M1 }],
+    olderCursor: "older",
+    recoveryCursor: "recovery",
+    recoveryFloorId: M1,
+    lastRead: { id: M1, sentAt: "2026-11-28T10:00:00Z" },
+    unreadCount: 3,
+    hasUnseen: true,
+    composerBlocked: true,
+    destroyed: true,
+    loadSequence: 7
+  };
+  const cleared = format.clearThreadPrivateState(state);
+  assert.equal(cleared, state);
+  assert.equal(state.conversation, null);
+  assert.deepEqual(state.messages, []);
+  assert.equal(state.olderCursor, null);
+  assert.equal(state.recoveryCursor, null);
+  assert.equal(state.recoveryFloorId, null);
+  assert.equal(state.lastRead, null);
+  assert.equal(state.unreadCount, 0);
+  assert.equal(state.hasUnseen, false);
+  assert.equal(state.composerBlocked, false);
+  assert.equal(state.destroyed, true);
+  assert.equal(state.loadSequence, 7);
+});
+
 test("idempotency keys are UUID-shaped and stable content validation is client-side only", () => {
   const key = chatService.generateIdempotencyKey();
   assert.equal(format.isUuid(key), true);
