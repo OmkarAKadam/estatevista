@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -23,12 +24,19 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.estatevista.audit.AuditEventService;
+import com.estatevista.websocket.AuthoritativeSessionValidator;
 import com.estatevista.websocket.WebSocketConnectionRegistry;
 import com.estatevista.websocket.WebSocketSessionRevocationService;
 
@@ -37,10 +45,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
+import org.springframework.messaging.simp.config.ChannelRegistration;
+import org.springframework.messaging.support.MessageHandlingRunnable;
 import org.springframework.messaging.simp.user.SimpUserRegistry;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.web.socket.CloseStatus;
@@ -48,6 +63,7 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketHttpHeaders;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
+import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 
 import tools.jackson.databind.JsonNode;
@@ -75,6 +91,7 @@ import tools.jackson.databind.ObjectMapper;
                 "app.websocket-security.validation-cache-ttl-ms=0"
         })
 @ActiveProfiles("test")
+@Import(ChatWebSocketIntegrationTest.ControlledOutboundChannelConfig.class)
 @EnabledIfEnvironmentVariable(named = "TEST_DB_URL", matches = ".+")
 class ChatWebSocketIntegrationTest {
 
@@ -82,6 +99,8 @@ class ChatWebSocketIntegrationTest {
     private static final String PASSWORD = "Chat-Password-123";
     private static final String WS_ENDPOINT = "/ws";
     private static final String SEND_DESTINATION = "/app/chat.send";
+    private static final UUID ADMIN_ROLE_ID =
+            UUID.fromString("00000000-0000-0000-0000-000000000003");
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
     private static final Duration EVENT_WINDOW = Duration.ofSeconds(2);
     private static final Duration QUIET_WINDOW = Duration.ofMillis(800);
@@ -109,6 +128,9 @@ class ChatWebSocketIntegrationTest {
     @Autowired
     private SimpUserRegistry simpUserRegistry;
 
+    @Autowired
+    private AuthoritativeSessionValidator validator;
+
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(TIMEOUT)
             .build();
@@ -118,6 +140,7 @@ class ChatWebSocketIntegrationTest {
 
     @AfterEach
     void cleanUp() {
+        ControlledOutboundExecutor.INSTANCE.reset();
         for (WebSocketConnectionRegistry.ConnectionRecord record : List.copyOf(registry.all())) {
             revocation.revokeConnection(
                     record, WebSocketSessionRevocationService.REASON_SESSION_REVOKED);
@@ -502,15 +525,313 @@ class ChatWebSocketIntegrationTest {
             assertThat(rows.get(0).idempotencyKey()).isEqualTo(key);
             assertThat(rows.get(0).sentAt()).isNotNull();
 
-            // Boundary: the socket is revoked before the agent publishes, so this
-            // deterministically proves suppression for a revoked session and
-            // rejection of sends from it. It does not claim to win the narrow
-            // race where a frame was already queued in the outbound channel at
-            // the instant of revocation; that timing is not controllable over
-            // the public transport without instrumenting the broker.
+            // This socket is revoked before the agent publishes, so it proves
+            // suppression for a revoked session and rejection of sends from it.
+            // The queued-after-publish race is covered deterministically by the
+            // controlled outbound executor tests below.
         } finally {
             closeQuietly(buyer);
             closeQuietly(agent);
+        }
+    }
+
+    @Test
+    void queuedMessageCreatedIsDroppedAtTransportWhenRecipientSessionIsRevoked() throws Exception {
+        Fixture fixture = newConversationFixture("transport-created");
+        Connected buyer = connectAndAuthenticate(fixture.buyer());
+        Connected agent = connectAndAuthenticate(fixture.agent());
+        String agentSession = soleStompSessionId(fixture.agent());
+        Gate gate = arm(1, agentSession);
+        CompletableFuture<Void> send = sendAsync(
+                buyer.session, fixture.conversationId(), "queued before logout", UUID.randomUUID());
+        try {
+            awaitQueued(gate);
+            // The recipient frame is held in the server-controlled outbound
+            // queue, so no earlier frame can be mistaken for a queued frame.
+            assertThat(awaitChatFrames(agent, QUIET_WINDOW)).isEmpty();
+            ControlledOutboundExecutor.INSTANCE.disarm();
+            assertThat(logout(fixture.agent()).statusCode()).isEqualTo(200);
+            release(gate);
+            send.get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+
+            assertThat(awaitChatFrames(agent, EVENT_WINDOW)).isEmpty();
+            List<ChatFrame> senderFrames = awaitChatFrames(buyer, EVENT_WINDOW);
+            assertThat(events(senderFrames, "MESSAGE_CREATED")).hasSize(1);
+            assertThat(events(senderFrames, "PERSISTENCE_ACK")).hasSize(1);
+            assertThat(messageRows(fixture.conversationId())).hasSize(1);
+            // Logout closes the real transport before the app wrapper runs, so
+            // the authoritative evidence is the session revocation itself.
+            assertThat(countRevocationAudits(
+                    fixture.agent().userId(), WebSocketSessionRevocationService.REASON_LOGOUT))
+                    .isGreaterThanOrEqualTo(1);
+        } finally {
+            release(gate);
+            closeQuietly(buyer);
+            closeQuietly(agent);
+        }
+    }
+
+    @Test
+    void queuedAckIsDroppedOnlyForRevokedSenderConnectionAndExactRetryRemainsSenderScoped()
+            throws Exception {
+        Fixture fixture = newConversationFixture("transport-ack");
+        Connected sender = connectAndAuthenticate(fixture.buyer());
+        Set<String> beforeSecond = stompSessionIds(fixture.buyer());
+        Connected otherSenderSession = connectAndAuthenticate(fixture.buyer());
+        String secondSession = stompSessionIds(fixture.buyer()).stream()
+                .filter(session -> !beforeSecond.contains(session))
+                .findFirst().orElseThrow();
+        Gate gate = arm(2, secondSession);
+        UUID key = UUID.randomUUID();
+        CompletableFuture<Void> send = sendAsync(
+                sender.session, fixture.conversationId(), "ack targeting", key);
+        try {
+            awaitQueued(gate);
+            assertThat(awaitChatFrames(otherSenderSession, QUIET_WINDOW)).isEmpty();
+            ControlledOutboundExecutor.INSTANCE.disarm();
+            revokeConnectionByStomp(secondSession, WebSocketSessionRevocationService.REASON_SESSION_REVOKED);
+            release(gate);
+            send.get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+
+            assertThat(awaitChatFrames(otherSenderSession, EVENT_WINDOW)).isEmpty();
+            List<ChatFrame> senderFrames = awaitChatFrames(sender, EVENT_WINDOW);
+            assertThat(events(senderFrames, "PERSISTENCE_ACK")).hasSize(1);
+            assertThat(events(senderFrames, "MESSAGE_CREATED")).hasSize(1);
+            assertThat(messageRows(fixture.conversationId())).hasSize(1);
+            assertThat(countRevocationAudits(
+                    fixture.buyer().userId(), WebSocketSessionRevocationService.REASON_SESSION_REVOKED))
+                    .isGreaterThanOrEqualTo(1);
+
+            // convertAndSendToUser targets every live session of the sender, not
+            // only the originating connection. An exact retry emits one ack to
+            // the remaining live session and never republishes MESSAGE_CREATED.
+            send(sender.session, fixture.conversationId(), "ack targeting", key);
+            List<ChatFrame> retryFrames = awaitChatFrames(sender, EVENT_WINDOW);
+            assertThat(events(retryFrames, "PERSISTENCE_ACK")).hasSize(1);
+            assertThat(events(retryFrames, "MESSAGE_CREATED")).isEmpty();
+            assertThat(awaitChatFrames(otherSenderSession, QUIET_WINDOW)).isEmpty();
+            assertThat(messageRows(fixture.conversationId())).hasSize(1);
+        } finally {
+            release(gate);
+            closeQuietly(sender);
+            closeQuietly(otherSenderSession);
+        }
+    }
+
+    @Test
+    void accountWideRevocationDropsQueuedFramesForEveryConnectionOfTheAccount() throws Exception {
+        Fixture fixture = newConversationFixture("transport-account");
+        Connected sender = connectAndAuthenticate(fixture.buyer());
+        String firstSession = soleStompSessionId(fixture.buyer());
+        Connected otherSenderSession = connectAndAuthenticate(fixture.buyer());
+        String secondSession = stompSessionIds(fixture.buyer()).stream()
+                .filter(session -> !firstSession.equals(session))
+                .findFirst().orElseThrow();
+        Gate gate = arm(4, Set.of(firstSession, secondSession));
+        CompletableFuture<Void> send = sendAsync(
+                sender.session, fixture.conversationId(), "account revocation", UUID.randomUUID());
+        try {
+            awaitQueued(gate);
+            assertThat(awaitChatFrames(sender, QUIET_WINDOW)).isEmpty();
+            assertThat(awaitChatFrames(otherSenderSession, QUIET_WINDOW)).isEmpty();
+            ControlledOutboundExecutor.INSTANCE.disarm();
+            assertThat(revocation.revokeAccount(
+                    fixture.buyer().userId(), WebSocketSessionRevocationService.REASON_ACCOUNT_REVOKED))
+                    .isGreaterThanOrEqualTo(2);
+            release(gate);
+            send.get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+
+            assertThat(awaitChatFrames(sender, EVENT_WINDOW)).isEmpty();
+            assertThat(awaitChatFrames(otherSenderSession, EVENT_WINDOW)).isEmpty();
+            assertThat(messageRows(fixture.conversationId())).hasSize(1);
+            assertThat(countRevocationAudits(
+                    fixture.buyer().userId(), WebSocketSessionRevocationService.REASON_ACCOUNT_REVOKED))
+                    .isGreaterThanOrEqualTo(2);
+        } finally {
+            release(gate);
+            closeQuietly(sender);
+            closeQuietly(otherSenderSession);
+        }
+    }
+
+    @Test
+    void queuedFrameIsDroppedWhenAuthoritativeSessionValidationFailsAfterQueueing() throws Exception {
+        Fixture fixture = newConversationFixture("transport-validation");
+        Connected sender = connectAndAuthenticate(fixture.buyer());
+        String stompSessionId = soleStompSessionId(fixture.buyer());
+        Gate gate = arm(2, stompSessionId);
+        CompletableFuture<Void> send = sendAsync(
+                sender.session, fixture.conversationId(), "validation failure", UUID.randomUUID());
+        try {
+            awaitQueued(gate);
+            assertThat(awaitChatFrames(sender, QUIET_WINDOW)).isEmpty();
+            ControlledOutboundExecutor.INSTANCE.disarm();
+            WebSocketConnectionRegistry.ConnectionRecord record =
+                    registry.byStompSession(stompSessionId);
+            assertThat(record).isNotNull();
+            validator.deleteSession(record.springSessionId());
+            release(gate);
+            send.get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+
+            assertThat(awaitChatFrames(sender, EVENT_WINDOW)).isEmpty();
+            assertThat(messageRows(fixture.conversationId())).hasSize(1);
+            assertThat(countRevocationAudits(
+                    fixture.buyer().userId(), WebSocketSessionRevocationService.REASON_AUTHORIZATION_LOSS))
+                    .isGreaterThanOrEqualTo(1);
+        } finally {
+            release(gate);
+            closeQuietly(sender);
+        }
+    }
+
+    @Test
+    void queuedFrameIsDroppedWhenAccountStatusIsLostAfterQueueing() throws Exception {
+        Fixture fixture = newConversationFixture("transport-status");
+        Connected sender = connectAndAuthenticate(fixture.buyer());
+        String stompSessionId = soleStompSessionId(fixture.buyer());
+        Gate gate = arm(2, stompSessionId);
+        CompletableFuture<Void> send = sendAsync(
+                sender.session, fixture.conversationId(), "status loss", UUID.randomUUID());
+        try {
+            awaitQueued(gate);
+            assertThat(awaitChatFrames(sender, QUIET_WINDOW)).isEmpty();
+            ControlledOutboundExecutor.INSTANCE.disarm();
+            jdbcTemplate.update(
+                    "UPDATE users SET account_status = 'SUSPENDED' WHERE id = ?",
+                    fixture.buyer().userId());
+            release(gate);
+            send.get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+
+            assertThat(awaitChatFrames(sender, EVENT_WINDOW)).isEmpty();
+            assertThat(messageRows(fixture.conversationId())).hasSize(1);
+            assertThat(countRevocationAudits(
+                    fixture.buyer().userId(), WebSocketSessionRevocationService.REASON_AUTHORIZATION_LOSS))
+                    .isGreaterThanOrEqualTo(1);
+        } finally {
+            release(gate);
+            closeQuietly(sender);
+        }
+    }
+
+    @Test
+    void queuedFrameIsDroppedWhenChatRoleIsLostAfterQueueing() throws Exception {
+        Fixture fixture = newConversationFixture("transport-role");
+        Connected sender = connectAndAuthenticate(fixture.buyer());
+        String stompSessionId = soleStompSessionId(fixture.buyer());
+        Gate gate = arm(2, stompSessionId);
+        CompletableFuture<Void> send = sendAsync(
+                sender.session, fixture.conversationId(), "role loss", UUID.randomUUID());
+        try {
+            awaitQueued(gate);
+            assertThat(awaitChatFrames(sender, QUIET_WINDOW)).isEmpty();
+            ControlledOutboundExecutor.INSTANCE.disarm();
+            jdbcTemplate.update(
+                    "UPDATE users SET role_id = ? WHERE id = ?", ADMIN_ROLE_ID, fixture.buyer().userId());
+            release(gate);
+            send.get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+
+            assertThat(awaitChatFrames(sender, EVENT_WINDOW)).isEmpty();
+            assertThat(messageRows(fixture.conversationId())).hasSize(1);
+            assertThat(countRevocationAudits(
+                    fixture.buyer().userId(), WebSocketSessionRevocationService.REASON_AUTHORIZATION_LOSS))
+                    .isGreaterThanOrEqualTo(1);
+        } finally {
+            release(gate);
+            closeQuietly(sender);
+        }
+    }
+
+    @Test
+    void queuedErrorFrameOnTheErrorsQueueIsDroppedAfterRevocation() throws Exception {
+        Fixture fixture = newConversationFixture("transport-error");
+        Connected sender = connectAndAuthenticate(fixture.buyer());
+        String stompSessionId = soleStompSessionId(fixture.buyer());
+        Gate gate = arm(1, stompSessionId);
+        CompletableFuture<Void> send = CompletableFuture.runAsync(() -> {
+            try {
+                sendRaw(sender.session, "{\"conversationId\":\"" + fixture.conversationId()
+                        + "\",\"content\":\"missing key\"}", "");
+            } catch (Exception exception) {
+                throw new CompletionException(exception);
+            }
+        });
+        try {
+            awaitQueued(gate);
+            assertThat(awaitChatFrames(sender, QUIET_WINDOW)).isEmpty();
+            ControlledOutboundExecutor.INSTANCE.disarm();
+            revokeConnectionByStomp(stompSessionId, WebSocketSessionRevocationService.REASON_SESSION_REVOKED);
+            release(gate);
+            send.get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+
+            assertThat(awaitChatFrames(sender, EVENT_WINDOW)).isEmpty();
+            assertThat(messageRows(fixture.conversationId())).isEmpty();
+            assertThat(countRevocationAudits(
+                    fixture.buyer().userId(), WebSocketSessionRevocationService.REASON_SESSION_REVOKED))
+                    .isGreaterThanOrEqualTo(1);
+        } finally {
+            release(gate);
+            closeQuietly(sender);
+        }
+    }
+
+    @Test
+    void queuedFrameIsDroppedByFinalTransportCheckWhenSubscriptionAuthorityIsRemovedAfterQueueing()
+            throws Exception {
+        Fixture fixture = newConversationFixture("transport-subscription");
+        Connected sender = connectAndAuthenticate(fixture.buyer());
+        String stompSessionId = soleStompSessionId(fixture.buyer());
+        Gate gate = arm(2, stompSessionId);
+        CompletableFuture<Void> send = sendAsync(
+                sender.session, fixture.conversationId(), "subscription loss", UUID.randomUUID());
+        try {
+            awaitQueued(gate);
+            assertThat(awaitChatFrames(sender, QUIET_WINDOW)).isEmpty();
+            ControlledOutboundExecutor.INSTANCE.disarm();
+            WebSocketConnectionRegistry.ConnectionRecord record =
+                    registry.byStompSession(stompSessionId);
+            assertThat(record).isNotNull();
+            registry.removeSubscription(record, "messages");
+            release(gate);
+            send.get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+
+            // Both frames passed the channel check before queueing. The real
+            // transport still exists, so their suppression and TRANSPORT_ audit
+            // prove the final authorization recheck immediately before the write.
+            assertThat(awaitChatFrames(sender, EVENT_WINDOW)).isEmpty();
+            assertThat(messageRows(fixture.conversationId())).hasSize(1);
+            assertThat(countWsAuthFailures(
+                    fixture.buyer().userId(), "TRANSPORT_SUBSCRIPTION_MISSING"))
+                    .isGreaterThanOrEqualTo(1);
+        } finally {
+            release(gate);
+            closeQuietly(sender);
+        }
+    }
+
+    @Test
+    void queuedPrivateFrameIsDeliveredWhenNoRevocationOccurs() throws Exception {
+        Fixture fixture = newConversationFixture("transport-allowed");
+        Connected sender = connectAndAuthenticate(fixture.buyer());
+        String stompSessionId = soleStompSessionId(fixture.buyer());
+        Gate gate = arm(2, stompSessionId);
+        CompletableFuture<Void> send = sendAsync(
+                sender.session, fixture.conversationId(), "normal delivery", UUID.randomUUID());
+        try {
+            awaitQueued(gate);
+            assertThat(awaitChatFrames(sender, QUIET_WINDOW)).isEmpty();
+            ControlledOutboundExecutor.INSTANCE.disarm();
+            release(gate);
+            send.get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
+
+            List<ChatFrame> frames = awaitChatFrames(sender, EVENT_WINDOW);
+            assertThat(events(frames, "PERSISTENCE_ACK")).hasSize(1);
+            assertThat(events(frames, "MESSAGE_CREATED")).hasSize(1);
+            assertThat(messageRows(fixture.conversationId())).hasSize(1);
+            assertThat(countWsAuthFailures(
+                    fixture.buyer().userId(), "TRANSPORT_SESSION_CLOSED")).isZero();
+        } finally {
+            release(gate);
+            closeQuietly(sender);
         }
     }
 
@@ -585,6 +906,73 @@ class ChatWebSocketIntegrationTest {
                         resultSet.getObject("sent_at", OffsetDateTime.class).toInstant(),
                         resultSet.getString("message_type")),
                 conversationId);
+    }
+
+    private CompletableFuture<Void> sendAsync(
+            WebSocketSession session, UUID conversationId, String content, UUID idempotencyKey) {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                send(session, conversationId, content, idempotencyKey);
+            } catch (Exception exception) {
+                throw new CompletionException(exception);
+            }
+        });
+    }
+
+    private Set<String> stompSessionIds(Credentials user) {
+        return registry.forUser(user.userId()).stream()
+                .map(WebSocketConnectionRegistry.ConnectionRecord::stompSessionId)
+                .filter(session -> session != null)
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
+    private String soleStompSessionId(Credentials user) {
+        Set<String> sessions = stompSessionIds(user);
+        assertThat(sessions).as("STOMP sessions for %s", user.email()).hasSize(1);
+        return sessions.iterator().next();
+    }
+
+    private void revokeConnectionByStomp(String stompSessionId, String reason) {
+        WebSocketConnectionRegistry.ConnectionRecord record = registry.byStompSession(stompSessionId);
+        assertThat(record).as("live STOMP session %s", stompSessionId).isNotNull();
+        assertThat(revocation.revokeConnection(record, reason)).isTrue();
+    }
+
+    private int countWsAuthFailures(UUID userId, String reason) {
+        return jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM audit_logs
+                WHERE actor_id = ? AND action = ? AND after_data::text LIKE ?
+                """, Integer.class, userId, AuditEventService.ACTION_WS_AUTH_FAILURE,
+                "%" + reason + "%");
+    }
+
+    private int countRevocationAudits(UUID userId, String reason) {
+        return jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM audit_logs
+                WHERE actor_id = ? AND action = ? AND after_data::text LIKE ?
+                """, Integer.class, userId, AuditEventService.ACTION_WS_SESSION_REVOKED,
+                "%" + reason + "%");
+    }
+
+    private Gate arm(int expectedFrames, String stompSessionId, String... types) {
+        return arm(expectedFrames, Set.of(stompSessionId), types);
+    }
+
+    private Gate arm(int expectedFrames, Set<String> stompSessionIds, String... types) {
+        Set<String> acceptedTypes = types.length == 0 ? null : Set.of(types);
+        Gate gate = new Gate(expectedFrames, Set.copyOf(stompSessionIds), acceptedTypes);
+        ControlledOutboundExecutor.INSTANCE.arm(gate);
+        return gate;
+    }
+
+    private void awaitQueued(Gate gate) throws InterruptedException {
+        assertThat(gate.queued.await(TIMEOUT.toSeconds(), TimeUnit.SECONDS))
+                .as("outbound frame reached the controlled executor")
+                .isTrue();
+    }
+
+    private static void release(Gate gate) {
+        gate.release.countDown();
     }
 
     private int messageAuditRows(UUID messageId) {
@@ -986,6 +1374,117 @@ class ChatWebSocketIntegrationTest {
     }
 
     private record ChatFrame(String raw, JsonNode json) {
+    }
+
+    /** Deterministically pauses the real outbound channel after channel entry. */
+    @TestConfiguration(proxyBeanMethods = false)
+    static final class ControlledOutboundChannelConfig implements WebSocketMessageBrokerConfigurer {
+        @Override
+        public void configureClientOutboundChannel(ChannelRegistration registration) {
+            registration.executor(ControlledOutboundExecutor.INSTANCE);
+        }
+    }
+
+    /** Holds every event frame for the selected STOMP sessions at executor entry. */
+    private static final class Gate {
+        private static final Pattern EVENT_TYPE =
+                Pattern.compile("\\\"type\\\"\\s*:\\s*\\\"([A-Z_]+)\\\"");
+
+        private final Set<String> stompSessionIds;
+        private final Set<String> types;
+        private final CountDownLatch queued;
+        private final CountDownLatch release = new CountDownLatch(1);
+
+        private Gate(int expectedFrames, Set<String> stompSessionIds, Set<String> types) {
+            this.stompSessionIds = stompSessionIds;
+            this.types = types;
+            this.queued = new CountDownLatch(expectedFrames);
+        }
+
+        private boolean matches(Message<?> message) {
+            SimpMessageHeaderAccessor accessor = SimpMessageHeaderAccessor.wrap(message);
+            if (!stompSessionIds.contains(accessor.getSessionId())) {
+                return false;
+            }
+            Matcher matcher = EVENT_TYPE.matcher(payloadText(message));
+            return matcher.find() && (types == null || types.contains(matcher.group(1)));
+        }
+
+        private static String payloadText(Message<?> message) {
+            Object payload = message.getPayload();
+            if (payload instanceof byte[] bytes) {
+                return new String(bytes, StandardCharsets.UTF_8);
+            }
+            return payload == null ? "" : payload.toString();
+        }
+    }
+
+    /** Runs queued frames only after the test releases the armed gate. */
+    private static final class ControlledOutboundExecutor implements TaskExecutor {
+        private static final ControlledOutboundExecutor INSTANCE = new ControlledOutboundExecutor();
+
+        private final AtomicReference<Gate> armed = new AtomicReference<>();
+        private final AtomicInteger inFlight = new AtomicInteger();
+        private final ExecutorService worker = Executors.newCachedThreadPool(runnable -> {
+            Thread thread = new Thread(runnable, "controlled-outbound-dispatch");
+            thread.setDaemon(true);
+            return thread;
+        });
+
+        private void arm(Gate gate) {
+            Gate previous = armed.getAndSet(gate);
+            if (previous != null) {
+                previous.release.countDown();
+            }
+        }
+
+        private void disarm() {
+            armed.set(null);
+        }
+
+        private void reset() {
+            Gate gate = armed.getAndSet(null);
+            if (gate != null) {
+                gate.release.countDown();
+            }
+            long deadline = System.nanoTime() + TIMEOUT.toNanos();
+            while (inFlight.get() > 0 && System.nanoTime() < deadline) {
+                Thread.onSpinWait();
+            }
+        }
+
+        @Override
+        public void execute(Runnable command) {
+            Gate gate = armed.get();
+            if (gate != null
+                    && command instanceof MessageHandlingRunnable runnable
+                    && gate.matches(runnable.getMessage())) {
+                gate.queued.countDown();
+                submit(() -> {
+                    try {
+                        if (!gate.release.await(TIMEOUT.toSeconds(), TimeUnit.SECONDS)) {
+                            Thread.currentThread().interrupt();
+                        }
+                    } catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                    }
+                    command.run();
+                });
+                return;
+            }
+            submit(command);
+        }
+
+        private void submit(Runnable command) {
+            inFlight.incrementAndGet();
+            worker.execute(() -> {
+                try {
+                    command.run();
+                } finally {
+                    inFlight.decrementAndGet();
+                }
+            });
+        }
     }
 
     private static final class TestWebSocketHandler extends AbstractWebSocketHandler {

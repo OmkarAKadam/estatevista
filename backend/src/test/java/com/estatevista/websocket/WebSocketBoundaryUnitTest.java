@@ -3,6 +3,7 @@ package com.estatevista.websocket;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -25,9 +26,15 @@ import com.estatevista.audit.AuditEventService;
 import com.estatevista.authorization.AccountAuthorizationService;
 import com.estatevista.authorization.AuthenticatedAccount;
 import com.estatevista.authorization.PlatformRole;
+import com.estatevista.chat.repository.ConversationRepository;
+import com.estatevista.chat.repository.MessageRepository;
 import com.estatevista.config.AppProperties;
 import com.estatevista.config.WebSocketSecurityProperties;
 import com.estatevista.user.entity.AccountStatus;
+import com.estatevista.websocket.OutboundDispatchAuthorizationService.Boundary;
+import com.estatevista.websocket.OutboundDispatchAuthorizationService.Decision;
+import com.estatevista.websocket.OutboundDispatchAuthorizationService.Frame;
+import com.estatevista.websocket.OutboundDispatchAuthorizationService.Outcome;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.messaging.Message;
@@ -40,6 +47,8 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
+
+import tools.jackson.databind.ObjectMapper;
 
 /** Deterministic unit coverage for the Stage 7.2 final outbound boundary. */
 class WebSocketBoundaryUnitTest {
@@ -55,6 +64,12 @@ class WebSocketBoundaryUnitTest {
     private final WebSocketOutboundAuthorizationInterceptor interceptor =
             new WebSocketOutboundAuthorizationInterceptor(
                     registry, validator, revocation, accounts, audit);
+    private final ConversationRepository conversations = mock(ConversationRepository.class);
+    private final MessageRepository messages = mock(MessageRepository.class);
+    private final ObjectMapper objectMapper = mock(ObjectMapper.class);
+    private final OutboundDispatchAuthorizationService authorization =
+            new OutboundDispatchAuthorizationService(
+                    registry, validator, accounts, conversations, messages, audit, objectMapper);
 
     @Test
     void revalidationIntervalAboveHardMaximumFailsClosed() {
@@ -155,6 +170,39 @@ class WebSocketBoundaryUnitTest {
         verify(audit).recordWebSocketSecurityEvent(
                 eq(fixture.userId()), eq(AuditEventService.ACTION_WS_AUTH_FAILURE),
                 eq("OUTBOUND_DESTINATION_DENIED"), eq("/topic/property-updates"), any());
+    }
+
+    @Test
+    void finalTransportBoundaryAllowsSubscribedNotificationQueueFrameWithoutChatLookups() {
+        Fixture fixture = fixture();
+        registry.addSubscription(fixture.record(), "/user/queue/notifications", "sub-notes");
+        Frame frame = new Frame(
+                "/user/queue/notifications", "sub-notes", "{\"type\":\"NEW_MESSAGE\"}");
+
+        Decision decision = authorization.authorize(Boundary.TRANSPORT, fixture.record(), frame);
+
+        assertThat(decision.outcome()).isEqualTo(Outcome.ALLOW);
+        verify(conversations, never()).findParticipantConversation(any(), any(), anyBoolean());
+        verify(messages, never()).findByConversationIdAndId(any(), any());
+    }
+
+    @Test
+    void notificationQueueFramesUseBoundarySpecificDropReasons() {
+        Fixture fixture = fixture();
+        registry.addSubscription(fixture.record(), "/user/queue/notifications", "sub-notes");
+        Frame frame = new Frame(
+                "/user/queue/notifications", "sub-notes", "{\"type\":\"NEW_MESSAGE\"}");
+
+        assertThat(authorization.authorize(Boundary.CHANNEL, fixture.record(), frame).reason())
+                .isNull();
+        registry.removeSubscription(fixture.record(), "sub-notes");
+
+        Decision transport = authorization.authorize(Boundary.TRANSPORT, fixture.record(), frame);
+        assertThat(transport.outcome()).isEqualTo(Outcome.DROP);
+        assertThat(transport.reason()).isEqualTo("TRANSPORT_SUBSCRIPTION_MISSING");
+        verify(audit).recordWebSocketSecurityEvent(
+                eq(fixture.userId()), eq(AuditEventService.ACTION_WS_AUTH_FAILURE),
+                eq("TRANSPORT_SUBSCRIPTION_MISSING"), eq("/user/queue/notifications"), any());
     }
 
     @Test
