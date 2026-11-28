@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="assets/css/components.css">
   <link rel="stylesheet" href="assets/css/property-details.css">
   <link rel="stylesheet" href="assets/css/inquiries.css">
+  <link rel="stylesheet" href="assets/css/chat.css">
 </head>
 <body>
   <a class="ev-skip-link" href="#main">Skip to main content</a>
@@ -100,8 +101,10 @@
 
               <div class="property-detail__actions">
                 <button class="btn btn-primary" type="button" data-inquiry-focus>Enquire about this home</button>
+                <button class="btn btn-secondary ev-chat-action" type="button" data-chat-message-agent hidden>Message agent</button>
                 <a class="btn btn-secondary" href="properties.html">Back to properties</a>
                 <span id="detailFavoriteHost" class="property-detail__favorite"></span>
+                <span class="ev-chat-property-feedback" data-chat-property-feedback role="status" aria-live="polite" hidden></span>
               </div>
               <p class="property-detail__disclaimer">Listing details are served live by the EstateVista property API.</p>
             </div>
@@ -271,6 +274,7 @@
   <script type="module" src="assets/js/favorites/favorites-bridge.js"></script>
   <script type="module" src="assets/js/inquiries/inquiry-bridge.js"></script>
   <script type="module" src="assets/js/inquiries/inquiry-property.js"></script>
+  <script type="module" src="assets/js/chat/chat-property.js"></script>
   <script type="module" src="assets/js/auth/auth-init.js"></script>
 </body>
 </html>
